@@ -91,6 +91,83 @@ export default defineComponent({
       return s;
     }
 
+    async function backfillMessages(friendSet: Set<string>, relays: string[]) {
+      try {
+        // Get the most recent message timestamp from inbox
+        const now = Math.floor(Date.now() / 1000);
+        let lastMessageTime = now;
+        
+        if (msgs.inbox && msgs.inbox.length > 0) {
+          // Find the most recent message
+          const sorted = [...msgs.inbox].sort((a, b) => b.created_at - a.created_at);
+          lastMessageTime = sorted[0].created_at;
+        }
+        
+        // Calculate 3 days ago from the last message time
+        const threeDaysInSeconds = 3 * 24 * 60 * 60;
+        const since = lastMessageTime - threeDaysInSeconds;
+        
+        logger.info(`Backfilling messages from ${new Date(since * 1000).toLocaleString()} to ${new Date(lastMessageTime * 1000).toLocaleString()}`);
+        
+        // Create a filter with time range
+        const backfillFilter = {
+          kinds: [24242],
+          authors: Array.from(friendSet),
+          since: since,
+          until: lastMessageTime
+        };
+        
+        status.value = "回填历史消息中";
+        
+        // Subscribe to historical events
+        const backfillSub = subscribe(relays, [backfillFilter]);
+        let backfillCount = 0;
+        
+        backfillSub.on("event", async (evt: any) => {
+          try {
+            if (!friendSet.has(evt.pubkey)) return;
+            let payload: any;
+            try { payload = JSON.parse(evt.content); } catch { return; }
+            if (!payload?.keys || !payload?.pkg) return;
+            const myEntry = payload.keys.find((k: any) => k.to === keys.pkHex);
+            if (!myEntry) return;
+            let symHex: string | null = null;
+            try {
+              symHex = await envelopeDecryptSym(keys.skHex, evt.pubkey, myEntry.enc);
+            } catch (e) {
+              logger.warn("nip04.decrypt failed", e);
+              if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
+                symHex = myEntry.enc;
+              } else {
+                return;
+              }
+            }
+            try {
+              const plain = await symDecryptPackage(symHex, payload.pkg);
+              const added = addMessageIfNew(evt, plain);
+              if (added) backfillCount++;
+            } catch (e) {
+              logger.warn("symDecryptPackage failed", e);
+            }
+          } catch (e) {
+            logger.warn("handle backfill event fail", e);
+          }
+        });
+        
+        backfillSub.on("eose", () => {
+          logger.info(`Backfill complete: ${backfillCount} new messages`);
+          // Close the backfill subscription
+          try {
+            if (typeof backfillSub.unsub === "function") backfillSub.unsub();
+          } catch (e) {
+            logger.warn("close backfill sub error", e);
+          }
+        });
+      } catch (e) {
+        logger.error("backfill failed", e);
+      }
+    }
+
     async function startSub() {
       try {
         await friends.load();
@@ -108,9 +185,13 @@ export default defineComponent({
           return;
         }
 
+        const relays = getRelaysFromStorage();
+        
+        // First, backfill historical messages
+        await backfillMessages(friendSet, relays);
+
         const filters = { kinds: [24242], authors: Array.from(friendSet) };
         status.value = "连接中";
-        const relays = getRelaysFromStorage();
 
         try {
           if (sub) {
