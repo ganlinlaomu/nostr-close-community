@@ -3,58 +3,57 @@
     <div class="login-center">
       <h1 class="title">STAY</h1>
 
+      <div class="login-info">
+        <p>选择登录方式</p>
+      </div>
+
       <div class="login-actions">
-        <button class="btn" @click="showLogin = true; showRegister = false">私要登入</button>
-        <button class="btn" @click="showRegister = true; showLogin = false">注册</button>
+        <!-- Browser Extension Login (NIP-07) -->
+        <button class="btn btn-primary" @click="loginWithExtension" aria-label="Login with browser extension">
+          <span class="btn-icon" role="img" aria-label="plugin icon">🔌</span>
+          浏览器插件登录
+        </button>
+
+        <!-- Bunker Remote Signer Login (NIP-46) -->
+        <button class="btn btn-secondary" @click="showBunker = true" aria-label="Login with remote signer">
+          <span class="btn-icon" role="img" aria-label="lock icon">🔐</span>
+          远程签名器 (Bunker)
+        </button>
       </div>
 
-      <!-- 登录表单（点击“私要登入”显示）-->
-      <div v-if="showLogin" class="form card" style="margin-top:12px;">
-        <label>私钥 (hex)</label>
-        <input v-model="sk" class="input" placeholder="输入你的私钥 hex" />
-        <div style="margin-top:8px;">
-          <button class="btn" @click="doLogin">登录</button>
-          <button class="btn" style="margin-left:8px" @click="genTemp">生成临时</button>
+      <!-- Bunker Login Form -->
+      <div v-if="showBunker" class="form card" style="margin-top:12px;">
+        <label>Bunker URL 或 NIP-05</label>
+        <input 
+          v-model="bunkerInput" 
+          class="input" 
+          placeholder="bunker://... 或 name@domain.com" 
+        />
+        <div class="small" style="margin-top:8px; text-align: left;">
+          输入 bunker:// URL 或 NIP-05 地址 (例如: user@nsec.app)
         </div>
-        <div class="small" style="margin-top:8px;">
-          （示例）私钥会用来登录并保存在本地，仅用于开发。生产请使用安全存储。
+        <div style="margin-top:12px;">
+          <button 
+            class="btn" 
+            @click="doLoginBunker" 
+            :disabled="loading"
+            :aria-label="loading ? 'Connecting to remote signer' : 'Connect to remote signer'"
+          >
+            {{ loading ? '连接中...' : '连接' }}
+          </button>
+          <button class="btn" style="margin-left:8px" @click="showBunker = false" :disabled="loading">取消</button>
         </div>
       </div>
 
-      <!-- 注册表单（点击“注册”显示）-->
-      <div v-if="showRegister" class="form card" style="margin-top:12px;">
-        <label>昵称（可选）</label>
-        <input v-model="displayName" class="input" placeholder="显示名（可选）" />
+      <!-- Error Message -->
+      <div v-if="errorMessage" class="error-message" style="margin-top:12px;">
+        {{ errorMessage }}
+      </div>
 
-        <div style="margin-top:8px;">
-          <label>备份密码（可选，用于生成并保存本地加密备份）</label>
-          <input v-model="regPassword" type="password" class="input" placeholder="备份密码（建议）" />
-        </div>
-
-        <div style="margin-top:8px;">
-          <label><input type="checkbox" v-model="publishProfile" /> 注册后自动发布 profile（kind=0）到 relays</label>
-        </div>
-
-        <div style="margin-top:8px;">
-          <button class="btn" @click="doRegister">生成并注册</button>
-        </div>
-
-        <div v-if="generated" class="card" style="margin-top:12px;">
-          <h4>已生成密钥（请妥善备份）</h4>
-          <div><strong>私钥</strong></div>
-          <div class="small">{{ skGenerated }}</div>
-          <div style="margin-top:8px;"><strong>公钥</strong></div>
-          <div class="small">{{ pkGenerated }}</div>
-
-          <div style="margin-top:8px;">
-            <button class="btn" @click="copy(skGenerated)">复制私钥</button>
-            <button class="btn" style="margin-left:8px" @click="copy(pkGenerated)">复制公钥</button>
-          </div>
-
-          <div class="small" style="margin-top:8px;">
-            已为私钥生成本地加密备份（如你输入了密码）。请导出并妥善保存。
-          </div>
-        </div>
+      <!-- Help Text -->
+      <div class="help-text" style="margin-top:24px;">
+        <p><strong>浏览器插件登录</strong>: 使用如 Alby, nos2x, Flamingo 等 Nostr 浏览器扩展</p>
+        <p><strong>远程签名器</strong>: 使用如 nsec.app 等支持 NIP-46 的远程签名服务</p>
       </div>
     </div>
   </div>
@@ -70,58 +69,51 @@ export default defineComponent({
     const ks = useKeyStore();
     const router = useRouter();
 
-    const showLogin = ref(false);
-    const showRegister = ref(false);
+    const showBunker = ref(false);
+    const bunkerInput = ref("");
+    const errorMessage = ref("");
+    const loading = ref(false);
 
-    const sk = ref("");
-    const displayName = ref("");
-    const regPassword = ref("");
-    const publishProfile = ref(false);
-
-    const generated = ref(false);
-    const skGenerated = ref("");
-    const pkGenerated = ref("");
-
-    const doLogin = () => {
+    const loginWithExtension = async () => {
+      errorMessage.value = "";
+      loading.value = true;
+      
       try {
-        ks.loginWithSk(sk.value.trim());
+        await ks.loginWithExtension();
         router.push("/");
       } catch (e: any) {
-        alert(e.message || "登录失败");
+        errorMessage.value = e.message || "浏览器插件登录失败";
+      } finally {
+        loading.value = false;
       }
     };
 
-    const genTemp = () => {
-      ks.generateTemp();
-      router.push("/");
-    };
+    const doLoginBunker = async () => {
+      if (!bunkerInput.value.trim()) {
+        errorMessage.value = "请输入 Bunker URL 或 NIP-05 地址";
+        return;
+      }
 
-    const doRegister = async () => {
+      errorMessage.value = "";
+      loading.value = true;
+
       try {
-        const res = await ks.register(displayName.value.trim(), publishProfile.value, regPassword.value);
-        skGenerated.value = res.sk;
-        pkGenerated.value = res.pk;
-        generated.value = true;
-        // short delay so user can copy keys
-        setTimeout(() => router.push("/"), 800);
+        await ks.loginWithBunker(bunkerInput.value);
+        router.push("/");
       } catch (e: any) {
-        alert(e.message || "注册失败");
-      }
-    };
-
-    const copy = (text: string) => {
-      try {
-        navigator.clipboard.writeText(text);
-        alert("已复制到剪贴板");
-      } catch {
-        alert("复制失败，请手动复制");
+        errorMessage.value = e.message || "Bunker 登录失败";
+      } finally {
+        loading.value = false;
       }
     };
 
     return {
-      showLogin, showRegister, sk, doLogin, genTemp,
-      displayName, regPassword, publishProfile, doRegister,
-      generated, skGenerated, pkGenerated, copy
+      showBunker,
+      bunkerInput,
+      errorMessage,
+      loading,
+      loginWithExtension,
+      doLoginBunker
     };
   }
 });
@@ -145,13 +137,64 @@ export default defineComponent({
   margin: 0;
   letter-spacing: 6px;
 }
+.login-info {
+  margin-top: 12px;
+  font-size: 16px;
+  color: #666;
+}
 .login-actions {
   display: flex;
+  flex-direction: column;
   gap: 12px;
   justify-content: center;
-  margin-top: 18px;
+  margin-top: 24px;
+}
+.login-actions .btn {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.btn-icon {
+  font-size: 20px;
+}
+.btn-primary {
+  background: #7c3aed;
+  color: white;
+}
+.btn-primary:hover {
+  background: #6d28d9;
+}
+.btn-secondary {
+  background: #10b981;
+  color: white;
+}
+.btn-secondary:hover {
+  background: #059669;
 }
 .form .input {
   margin-top: 8px;
+}
+.error-message {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #fca5a5;
+}
+.help-text {
+  font-size: 14px;
+  color: #666;
+  text-align: left;
+  line-height: 1.6;
+}
+.help-text p {
+  margin: 8px 0;
+}
+.help-text strong {
+  color: #333;
 }
 </style>
