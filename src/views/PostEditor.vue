@@ -176,10 +176,7 @@ export default defineComponent({
       const order: string[] = [];
       const seen = new Set<string>();
       for (const f of list) {
-        // 支持 groups 数组（多标签）
-        const tags = f.groups && Array.isArray(f.groups) && f.groups.length > 0 
-          ? f.groups 
-          : (f.group ? [f.group] : ["未分组"]);
+        const tags = getFriendTags(f);
         for (const g of tags) {
           if (!seen.has(g)) {
             seen.add(g);
@@ -194,10 +191,7 @@ export default defineComponent({
       const map: Record<string, number> = {};
       const list = friends.list || [];
       for (const f of list) {
-        // 支持 groups 数组（多标签）
-        const tags = f.groups && Array.isArray(f.groups) && f.groups.length > 0 
-          ? f.groups 
-          : (f.group ? [f.group] : ["未分组"]);
+        const tags = getFriendTags(f);
         for (const g of tags) {
           map[g] = (map[g] || 0) + 1;
         }
@@ -207,6 +201,13 @@ export default defineComponent({
 
     const selectedSet = computed(() => new Set(selectedGroups.value || []));
 
+    // Helper function to extract tags from a friend object
+    function getFriendTags(friend: any): string[] {
+      return friend.groups && Array.isArray(friend.groups) && friend.groups.length > 0 
+        ? friend.groups 
+        : (friend.group ? [friend.group] : ["未分组"]);
+    }
+
     const recipients = computed(() => {
       const list = friends.list || [];
       if (list.length === 0) return [] as string[];
@@ -215,9 +216,7 @@ export default defineComponent({
       // 收集所有匹配的好友，但使用 Set 确保每个人只计数一次
       const uniquePubkeys = new Set<string>();
       for (const f of list) {
-        const tags = f.groups && Array.isArray(f.groups) && f.groups.length > 0 
-          ? f.groups 
-          : (f.group ? [f.group] : ["未分组"]);
+        const tags = getFriendTags(f);
         // 如果好友的任何一个标签被选中，就包含这个好友
         if (tags.some((tag: string) => sel.has(tag))) {
           uniquePubkeys.add(f.pubkey);
