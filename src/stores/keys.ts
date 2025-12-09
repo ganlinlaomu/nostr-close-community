@@ -5,6 +5,8 @@ import { useFriendsStore } from "./friends";
 import { useMessagesStore } from "./messages";
 import type { WindowNostr } from "nostr-tools/lib/types/nip07";
 import { BunkerSigner, type BunkerPointer, parseBunkerInput } from "nostr-tools/nip46";
+import { finalizeEvent } from "nostr-tools";
+import type { EventTemplate, VerifiedEvent } from "nostr-tools/lib/types/core";
 
 /**
  * keys store with robust nostr-tools feature detection.
@@ -141,7 +143,7 @@ export const useKeyStore = defineStore("keys", {
      * @param event - The event template to sign
      * @returns Promise<VerifiedEvent> - The signed event
      */
-    async signEvent(event: any): Promise<any> {
+    async signEvent(event: EventTemplate): Promise<VerifiedEvent> {
       if (!this.pkHex || !this.loginMethod) {
         throw new Error("未登录，无法签名事件");
       }
@@ -152,7 +154,6 @@ export const useKeyStore = defineStore("keys", {
           if (!this.skHex) {
             throw new Error("私钥登录但未找到私钥");
           }
-          const { finalizeEvent } = await import("nostr-tools");
           return finalizeEvent(event, this.skHex);
 
         case "nip07":

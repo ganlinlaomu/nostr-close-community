@@ -80,16 +80,15 @@ router.beforeEach(async (to, from, next) => {
           keyStore.loginMethod = loginMethod as "sk" | "nip07" | "nip46" | "";
         }
         
-        // Restore bunker signer if needed
+        // Restore bunker signer if needed (non-blocking, runs in background)
         if (loginMethod === "nip46" && bunkerInput && !keyStore.bunkerSigner) {
-          // Try to restore bunker connection (this may fail if bunker is offline)
-          try {
-            await keyStore.loginWithBunker(bunkerInput);
-          } catch (e) {
+          // Try to restore bunker connection asynchronously
+          // Don't block navigation on bunker restoration
+          keyStore.loginWithBunker(bunkerInput).catch((e) => {
             // If bunker restore fails, clear the login state
             console.warn("Failed to restore bunker connection:", e);
             keyStore.logout();
-          }
+          });
         }
       } catch {
         // ignore storage errors
