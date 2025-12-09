@@ -64,11 +64,12 @@ export default defineComponent({
     const shortRelay = (r: string) => (r ? r.replace(/^wss?:\/\//, "").replace(/\/$/, "").slice(0, 22) : "");
 
     function displayName(pubkey: string) {
-      if (!pubkey) return "";
+      if (!pubkey) return "未知用户";
       if (keys.pkHex && pubkey === keys.pkHex) return "你";
       const f = (friends.list || []).find((x: any) => x.pubkey === pubkey);
       if (f && f.name && String(f.name).trim().length > 0) return f.name;
-      return ""; // Don't show shortened public key
+      // Return shortened public key as fallback
+      return pubkey.slice(0, 8) + "...";
     }
 
     function addMessageIfNew(evt: any, plain: string) {

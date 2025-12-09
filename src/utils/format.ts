@@ -39,6 +39,11 @@ export function formatRelativeTime(timestamp: number): string {
   const now = Math.floor(Date.now() / 1000);
   const diff = now - timestamp;
   
+  // Handle invalid or future timestamps
+  if (!timestamp || timestamp <= 0 || diff < 0) {
+    return '刚刚';
+  }
+  
   if (diff < 60) {
     return '刚刚';
   }

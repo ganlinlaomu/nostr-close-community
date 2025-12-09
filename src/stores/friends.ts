@@ -4,7 +4,7 @@ import { useKeyStore } from "./keys";
 export type Friend = {
   id?: string; // optional internal id
   pubkey: string;
-  name: string; // required nickname
+  name: string; // required nickname for new friends
   groups?: string[]; // multiple group tags
   group?: string; // legacy single group field (for backward compatibility)
   note?: string;
