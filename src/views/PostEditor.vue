@@ -547,7 +547,7 @@ export default defineComponent({
 .thumb { width:100%; height:100%; object-fit:cover; display:block; }
 .thumb.placeholder { display:flex; align-items:center; justify-content:center; color:#94a3b8; }
 .meta { flex:1; display:flex; flex-direction:column; gap:6px; min-width: 0; }
-.name { font-size:13px; color:#111827; word-break: break-all; }
+.name { font-size:13px; color:#111827; word-break: break-all; overflow-wrap: break-word; }
 .progress { color:#2563eb; font-size:13px; }
 .ok { color:#16a34a; }
 .err { color:#dc2626; word-break: break-word; }
@@ -582,11 +582,12 @@ export default defineComponent({
   font-size:13px; 
   color:#374151; 
   white-space:nowrap;
+  flex-shrink: 0;
 }
 .chip:disabled { opacity:0.5; cursor:default; }
 .chip-selected { background: linear-gradient(90deg,#1976d2 0%, #2a9df4 100%); color:white; box-shadow:0 6px 18px rgba(25,118,210,0.12); }
 .chip-count { background: rgba(0,0,0,0.06); padding:2px 6px; border-radius:999px; font-size:12px; margin-left:6px; }
-.divider { width:1px; height:28px; background: rgba(0,0,0,0.06); margin:0 6px; }
+.divider { width:1px; height:28px; background: rgba(0,0,0,0.06); margin:0 6px; flex-shrink: 0; }
 .recips-info { margin-top:8px; color:#374151; font-size:13px; }
 
 /* action buttons */
