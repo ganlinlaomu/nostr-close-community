@@ -69,7 +69,7 @@ export default defineComponent({
     });
 
     const onAdd = async () => {
-      if (!keys.pkHex) {
+      if (!keys.isLoggedIn) {
         ui.addToast("请先登录", 2000, "error");
         return;
       }

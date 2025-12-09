@@ -1,9 +1,8 @@
 import { defineStore } from "pinia";
-import { finalizeEvent } from "nostr-tools";
 import { pool } from "@/nostr/relays";
 import { getRelaysFromStorage } from "@/nostr/relays";
 import { useKeyStore } from "@/stores/keys";
-import { genSymHex, symEncryptPackage, envelopeEncryptSym } from "@/nostr/crypto";
+import { genSymHex, symEncryptPackage } from "@/nostr/crypto";
 import { logger } from "@/utils/logger";
 import { useMessagesStore } from "@/stores/messages";
 
@@ -18,7 +17,7 @@ export const usePostsStore = defineStore("posts", {
   actions: {
     async publishNip44PerMessage(recipients: string[], plaintext: string) {
       const key = useKeyStore();
-      if (!key.skHex || !key.pkHex) throw new Error("未登录");
+      if (!key.isLoggedIn) throw new Error("未登录");
 
       if (!Array.isArray(recipients) || recipients.length === 0) {
         throw new Error("recipients 不能为空");
@@ -31,7 +30,7 @@ export const usePostsStore = defineStore("posts", {
       const keysArr: Array<{ to: string; enc: string }> = [];
       for (const r of recipients) {
         try {
-          const enc = await envelopeEncryptSym(key.skHex, r, symHex);
+          const enc = await key.nip04Encrypt(r, symHex);
           keysArr.push({ to: r, enc });
         } catch (e) {
           logger.warn("envelope encrypt failed for", r, e);
@@ -50,7 +49,7 @@ export const usePostsStore = defineStore("posts", {
         content: contentStr
       };
 
-      const signed = finalizeEvent(event as any, key.skHex);
+      const signed = await key.signEvent(event);
 
       const relays = getRelaysFromStorage();
 
