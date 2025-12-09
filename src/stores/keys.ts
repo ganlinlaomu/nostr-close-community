@@ -51,7 +51,8 @@ export const useKeyStore = defineStore("keys", {
     skHex: "" as string,
     pkHex: "" as string,
     loginMethod: "" as "sk" | "nip07" | "nip46" | "",
-    bunkerSigner: null as BunkerSigner | null
+    bunkerSigner: null as BunkerSigner | null,
+    loginTimestamp: 0 as number // Unix timestamp when user logged in
   }),
   getters: {
     /**
@@ -177,6 +178,7 @@ export const useKeyStore = defineStore("keys", {
     async loginWithSk(sk: string) {
       this.skHex = sk;
       this.loginMethod = "sk";
+      this.loginTimestamp = Math.floor(Date.now() / 1000);
       try {
         const pk = await safeGetPublicKey(sk);
         this.pkHex = pk;
@@ -184,12 +186,14 @@ export const useKeyStore = defineStore("keys", {
         this.skHex = "";
         this.pkHex = "";
         this.loginMethod = "";
+        this.loginTimestamp = 0;
         throw e;
       }
       try {
         localStorage.setItem("skHex", this.skHex);
         localStorage.setItem("pkHex", this.pkHex);
         localStorage.setItem("loginMethod", this.loginMethod);
+        localStorage.setItem("loginTimestamp", String(this.loginTimestamp));
       } catch {}
       // load account-scoped stores
       try {
@@ -215,10 +219,12 @@ export const useKeyStore = defineStore("keys", {
         this.pkHex = pk;
         this.skHex = ""; // No private key with extension
         this.loginMethod = "nip07";
+        this.loginTimestamp = Math.floor(Date.now() / 1000);
 
         try {
           localStorage.setItem("pkHex", this.pkHex);
           localStorage.setItem("loginMethod", this.loginMethod);
+          localStorage.setItem("loginTimestamp", String(this.loginTimestamp));
           localStorage.removeItem("skHex"); // Ensure no private key is stored
         } catch {}
 
@@ -234,6 +240,7 @@ export const useKeyStore = defineStore("keys", {
       } catch (e: any) {
         this.pkHex = "";
         this.loginMethod = "";
+        this.loginTimestamp = 0;
         throw new Error(`浏览器插件登录失败: ${e.message || e}`);
       }
     },
@@ -274,11 +281,13 @@ export const useKeyStore = defineStore("keys", {
         this.pkHex = pk;
         this.skHex = ""; // No private key with bunker
         this.loginMethod = "nip46";
+        this.loginTimestamp = Math.floor(Date.now() / 1000);
         this.bunkerSigner = signer;
 
         try {
           localStorage.setItem("pkHex", this.pkHex);
           localStorage.setItem("loginMethod", this.loginMethod);
+          localStorage.setItem("loginTimestamp", String(this.loginTimestamp));
           localStorage.setItem("bunkerInput", bunkerInput);
           localStorage.removeItem("skHex"); // Ensure no private key is stored
         } catch {}
@@ -295,6 +304,7 @@ export const useKeyStore = defineStore("keys", {
       } catch (e: any) {
         this.pkHex = "";
         this.loginMethod = "";
+        this.loginTimestamp = 0;
         this.bunkerSigner = null;
         
         // Re-throw with a user-friendly message if not already handled
@@ -340,6 +350,7 @@ export const useKeyStore = defineStore("keys", {
       this.skHex = "";
       this.pkHex = "";
       this.loginMethod = "";
+      this.loginTimestamp = 0;
       
       // Close bunker signer if exists
       if (this.bunkerSigner) {
@@ -353,6 +364,7 @@ export const useKeyStore = defineStore("keys", {
         localStorage.removeItem("skHex");
         localStorage.removeItem("pkHex");
         localStorage.removeItem("loginMethod");
+        localStorage.removeItem("loginTimestamp");
         localStorage.removeItem("bunkerInput");
       } catch {}
       // clear in-memory stores (do not delete persisted storage by default)

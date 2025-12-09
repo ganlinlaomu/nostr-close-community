@@ -204,32 +204,25 @@ export default defineComponent({
 
     async function backfillMessages(friendSet: Set<string>, relays: string[]) {
       try {
-        // Get the most recent message timestamp from inbox
         const now = Math.floor(Date.now() / 1000);
-        let lastMessageTime = 0; // Start from epoch if no messages
         
-        if (msgs.inbox && msgs.inbox.length > 0) {
-          // Find the most recent message
-          const sorted = [...msgs.inbox].sort((a, b) => b.created_at - a.created_at);
-          lastMessageTime = sorted[0].created_at;
-          logger.info(`最后一条消息时间: ${new Date(lastMessageTime * 1000).toLocaleString()}`);
+        // Use login timestamp to determine the fetch window
+        // Fetch messages from 3 days before login time
+        const threeDaysInSeconds = 3 * 24 * 60 * 60;
+        let since: number;
+        
+        if (keys.loginTimestamp && keys.loginTimestamp > 0) {
+          // Fetch from 3 days before login timestamp
+          since = Math.max(keys.loginTimestamp - threeDaysInSeconds, 0);
+          logger.info(`使用登录时间点: ${new Date(keys.loginTimestamp * 1000).toLocaleString()}`);
+          logger.info(`获取最近3天的消息，从 ${new Date(since * 1000).toLocaleString()} 开始`);
         } else {
-          // If no messages, fetch from 7 days ago to bootstrap
-          lastMessageTime = now - (7 * 24 * 60 * 60);
-          logger.info(`没有找到消息，从7天前开始获取`);
+          // Fallback: if no login timestamp, fetch from 3 days ago from now
+          since = now - threeDaysInSeconds;
+          logger.info(`未找到登录时间戳，从当前时间3天前开始获取: ${new Date(since * 1000).toLocaleString()}`);
         }
         
-        // If last message is recent (within 1 hour), extend the window back 1 day to catch missed messages
-        const oneHourAgo = now - 3600;
-        let since = lastMessageTime;
-        if (lastMessageTime > oneHourAgo) {
-          since = Math.max(lastMessageTime - (24 * 60 * 60), 0);
-          logger.info(`检测到最近活动，将获取窗口扩展到最后一条消息之前1天`);
-        }
-        
-        logger.info(`从 ${new Date(since * 1000).toLocaleString()} 获取消息到现在`);
-        
-        // Create a filter with time range - fetch from last message to now
+        // Create a filter with time range - fetch from 3 days before login to now
         const backfillFilter = {
           kinds: [24242],
           authors: Array.from(friendSet),
