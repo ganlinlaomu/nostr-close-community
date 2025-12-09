@@ -73,6 +73,7 @@ import { useKeyStore } from "@/stores/keys";
 import { getRelaysFromStorage, subscribe } from "@/nostr/relays";
 import { symDecryptPackage } from "@/nostr/crypto";
 import { useMessagesStore } from "@/stores/messages";
+import { useInteractionsStore } from "@/stores/interactions";
 import { logger } from "@/utils/logger";
 import { formatRelativeTime } from "@/utils/format";
 import PostImagePreview from "@/components/PostImagePreview.vue";
@@ -88,15 +89,15 @@ export default defineComponent({
     const friends = useFriendsStore();
     const keys = useKeyStore();
     const msgs = useMessagesStore();
+    const interactions = useInteractionsStore();
 
     const status = ref("未连接");
     let sub: any = null;
+    let interactionsSub: any = null;
 
     const messagesRef = ref([] as any[]);
     
-    // State for likes and comments
-    const likes = ref<Map<string, Set<string>>>(new Map()); // messageId -> Set of user pubkeys
-    const comments = ref<Map<string, Array<{ id: string; author: string; text: string; timestamp: number }>>>(new Map());
+    // State for comments UI
     const showingComments = ref<Set<string>>(new Set());
     const commentInputs = ref<Record<string, string>>({});
 
@@ -138,33 +139,30 @@ export default defineComponent({
     }
 
     // Like functionality
-    function toggleLike(message: any) {
+    async function toggleLike(message: any) {
       if (!keys.pkHex) return;
       
       const messageId = message.id;
-      if (!likes.value.has(messageId)) {
-        likes.value.set(messageId, new Set());
-      }
+      const isCurrentlyLiked = interactions.isLikedByUser(messageId, keys.pkHex);
       
-      const likeSet = likes.value.get(messageId)!;
-      if (likeSet.has(keys.pkHex)) {
-        likeSet.delete(keys.pkHex);
-      } else {
-        likeSet.add(keys.pkHex);
+      try {
+        if (isCurrentlyLiked) {
+          await interactions.removeLike(messageId, message.pubkey);
+        } else {
+          await interactions.sendLike(messageId, message.pubkey);
+        }
+      } catch (e: any) {
+        logger.error("Toggle like failed", e);
       }
-      
-      // Trigger reactivity
-      likes.value = new Map(likes.value);
-      saveLikesToStorage();
     }
 
     function isLiked(messageId: string): boolean {
       if (!keys.pkHex) return false;
-      return likes.value.get(messageId)?.has(keys.pkHex) || false;
+      return interactions.isLikedByUser(messageId, keys.pkHex);
     }
 
     function getLikeCount(messageId: string): number {
-      return likes.value.get(messageId)?.size || 0;
+      return interactions.getLikeCount(messageId);
     }
 
     // Comment functionality
@@ -178,128 +176,68 @@ export default defineComponent({
       showingComments.value = new Set(showingComments.value);
     }
 
-    function addComment(messageId: string) {
+    async function addComment(messageId: string) {
       if (!keys.pkHex) return;
       const text = commentInputs.value[messageId]?.trim();
       if (!text) return;
 
-      if (!comments.value.has(messageId)) {
-        comments.value.set(messageId, []);
+      // Find the message to get the author
+      const message = msgs.inbox.find((m) => m.id === messageId);
+      if (!message) return;
+
+      try {
+        await interactions.sendComment(messageId, message.pubkey, text);
+        // Clear input
+        commentInputs.value[messageId] = "";
+      } catch (e: any) {
+        logger.error("Add comment failed", e);
       }
-
-      const commentList = comments.value.get(messageId)!;
-      // Use crypto.randomUUID if available, otherwise fallback to timestamp + random
-      const commentId = typeof crypto !== 'undefined' && crypto.randomUUID 
-        ? crypto.randomUUID() 
-        : Date.now().toString() + '-' + Math.random().toString(36).slice(2, 11);
-      
-      commentList.push({
-        id: commentId,
-        author: keys.pkHex,
-        text: text,
-        timestamp: Math.floor(Date.now() / 1000)
-      });
-
-      // Clear input
-      commentInputs.value[messageId] = "";
-      
-      // Trigger reactivity
-      comments.value = new Map(comments.value);
-      saveCommentsToStorage();
     }
 
     function getComments(messageId: string) {
-      return comments.value.get(messageId) || [];
+      return interactions.getComments(messageId);
     }
 
     function getCommentCount(messageId: string): number {
-      return comments.value.get(messageId)?.length || 0;
-    }
-
-    // Persistence
-    function saveLikesToStorage() {
-      try {
-        const data: Record<string, string[]> = {};
-        likes.value.forEach((likeSet, messageId) => {
-          data[messageId] = Array.from(likeSet);
-        });
-        localStorage.setItem('message_likes', JSON.stringify(data));
-      } catch (e) {
-        logger.warn("Failed to save likes", e);
-      }
-    }
-
-    function loadLikesFromStorage() {
-      try {
-        const stored = localStorage.getItem('message_likes');
-        if (stored) {
-          const data = JSON.parse(stored);
-          const newLikes = new Map<string, Set<string>>();
-          Object.keys(data).forEach(messageId => {
-            newLikes.set(messageId, new Set(data[messageId]));
-          });
-          likes.value = newLikes;
-        }
-      } catch (e) {
-        logger.warn("Failed to load likes", e);
-      }
-    }
-
-    function saveCommentsToStorage() {
-      try {
-        const data: Record<string, any[]> = {};
-        comments.value.forEach((commentList, messageId) => {
-          data[messageId] = commentList;
-        });
-        localStorage.setItem('message_comments', JSON.stringify(data));
-      } catch (e) {
-        logger.warn("Failed to save comments", e);
-      }
-    }
-
-    function loadCommentsFromStorage() {
-      try {
-        const stored = localStorage.getItem('message_comments');
-        if (stored) {
-          const data = JSON.parse(stored);
-          const newComments = new Map();
-          Object.keys(data).forEach(messageId => {
-            newComments.set(messageId, data[messageId]);
-          });
-          comments.value = newComments;
-        }
-      } catch (e) {
-        logger.warn("Failed to load comments", e);
-      }
+      return interactions.getCommentCount(messageId);
     }
 
     async function backfillMessages(friendSet: Set<string>, relays: string[]) {
       try {
         // Get the most recent message timestamp from inbox
         const now = Math.floor(Date.now() / 1000);
-        let lastMessageTime = now;
+        let lastMessageTime = 0; // Start from epoch if no messages
         
         if (msgs.inbox && msgs.inbox.length > 0) {
           // Find the most recent message
           const sorted = [...msgs.inbox].sort((a, b) => b.created_at - a.created_at);
           lastMessageTime = sorted[0].created_at;
+          logger.info(`Last message time: ${new Date(lastMessageTime * 1000).toLocaleString()}`);
+        } else {
+          // If no messages, fetch from 7 days ago to bootstrap
+          lastMessageTime = now - (7 * 24 * 60 * 60);
+          logger.info(`No messages found, fetching from 7 days ago`);
         }
         
-        // Calculate 3 days ago from the last message time
-        const threeDaysInSeconds = 3 * 24 * 60 * 60;
-        const since = lastMessageTime - threeDaysInSeconds;
+        // If last message is recent (within 1 hour), extend the window back 1 day to catch missed messages
+        const oneHourAgo = now - 3600;
+        let since = lastMessageTime;
+        if (lastMessageTime > oneHourAgo) {
+          since = Math.max(lastMessageTime - (24 * 60 * 60), 0);
+          logger.info(`Recent activity detected, extending fetch window to 1 day before last message`);
+        }
         
-        logger.info(`Backfilling messages from ${new Date(since * 1000).toLocaleString()} to ${new Date(lastMessageTime * 1000).toLocaleString()}`);
+        logger.info(`Fetching messages from ${new Date(since * 1000).toLocaleString()} to now`);
         
-        // Create a filter with time range
+        // Create a filter with time range - fetch from last message to now
         const backfillFilter = {
           kinds: [24242],
           authors: Array.from(friendSet),
-          since: since,
-          until: lastMessageTime
+          since: since
+          // No 'until' - fetch up to current time
         };
         
-        status.value = "回填历史消息中";
+        status.value = "获取最新消息中";
         
         // Subscribe to historical events
         const backfillSub = subscribe(relays, [backfillFilter]);
@@ -337,7 +275,8 @@ export default defineComponent({
         });
         
         backfillSub.on("eose", () => {
-          logger.info(`Backfill complete: ${backfillCount} new messages`);
+          logger.info(`获取完成: ${backfillCount} 条新消息`);
+          status.value = backfillCount > 0 ? `获取到 ${backfillCount} 条新消息` : "已是最新";
           // Close the backfill subscription
           try {
             if (typeof backfillSub.unsub === "function") backfillSub.unsub();
@@ -358,6 +297,7 @@ export default defineComponent({
           return;
         }
         await msgs.load();
+        await interactions.load(); // Load interactions
         updateLocalRefs();
 
         const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
@@ -426,6 +366,24 @@ export default defineComponent({
           logger.warn("subscribe adapter failed", e);
           status.value = "订阅失败";
         }
+        
+        // Subscribe to interactions (kind 24243)
+        try {
+          const interactionsFilter = {
+            kinds: [24243],
+            "#p": [keys.pkHex] // Only get interactions targeted at us
+          };
+          
+          interactionsSub = subscribe(relays, [interactionsFilter]);
+          
+          interactionsSub.on("event", async (evt: any) => {
+            await interactions.processInteractionEvent(evt, keys.pkHex);
+          });
+          
+          logger.debug("Subscribed to interactions");
+        } catch (e) {
+          logger.warn("subscribe to interactions failed", e);
+        }
       } catch (e) {
         logger.error("startSub failed", e);
         status.value = "订阅失败";
@@ -433,14 +391,15 @@ export default defineComponent({
     }
 
     onMounted(async () => { 
-      loadLikesFromStorage();
-      loadCommentsFromStorage();
       await startSub(); 
     });
 
     onBeforeUnmount(() => {
       if (sub) {
         try { if (typeof sub.close === "function") sub.close(); else if (typeof sub.unsub === "function") sub.unsub(); else if (typeof sub.unsubscribe === "function") sub.unsubscribe(); else if (typeof sub === "function") sub(); } catch {}
+      }
+      if (interactionsSub) {
+        try { if (typeof interactionsSub.close === "function") interactionsSub.close(); else if (typeof interactionsSub.unsub === "function") interactionsSub.unsub(); else if (typeof interactionsSub.unsubscribe === "function") interactionsSub.unsubscribe(); else if (typeof interactionsSub === "function") interactionsSub(); } catch {}
       }
     });
 
