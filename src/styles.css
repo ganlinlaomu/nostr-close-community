@@ -38,6 +38,8 @@ body {
   padding: 12px;
   width: 100%;
   overflow-x: hidden;
+  /* Ensure app fills viewport to prevent gray background from showing behind bottom nav */
+  min-height: calc(100vh - 72px);
 }
 .header {
   display:flex;
