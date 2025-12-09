@@ -59,7 +59,8 @@ export default defineComponent({
   justify-content: space-around;
   background: #ffffff;
   border-top: 1px solid rgba(0,0,0,0.06);
-  z-index: 1000;
+  /* Higher z-index to stay above modals and overlays for navigation access */
+  z-index: 2100;
 }
 .nav-item {
   display: flex;
