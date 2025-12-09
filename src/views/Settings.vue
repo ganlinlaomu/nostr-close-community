@@ -244,6 +244,17 @@ export default defineComponent({
     }
 
     // Blossom functions
+    function migrateOldBlossomFormat() {
+      const url = localStorage.getItem("blossom_upload_url") || "";
+      const token = localStorage.getItem("blossom_token") || "";
+      if (url) {
+        blossomList.value = [{ url, token }];
+        saveBlossomsToStorage();
+      } else {
+        blossomList.value = [];
+      }
+    }
+
     function loadBlossoms() {
       const stored = localStorage.getItem("blossom_servers");
       if (stored) {
@@ -251,25 +262,11 @@ export default defineComponent({
           blossomList.value = JSON.parse(stored);
         } catch (e) {
           // Migration from old format
-          const url = localStorage.getItem("blossom_upload_url") || "";
-          const token = localStorage.getItem("blossom_token") || "";
-          if (url) {
-            blossomList.value = [{ url, token }];
-            saveBlossomsToStorage();
-          } else {
-            blossomList.value = [];
-          }
+          migrateOldBlossomFormat();
         }
       } else {
         // Migration from old format
-        const url = localStorage.getItem("blossom_upload_url") || "";
-        const token = localStorage.getItem("blossom_token") || "";
-        if (url) {
-          blossomList.value = [{ url, token }];
-          saveBlossomsToStorage();
-        } else {
-          blossomList.value = [];
-        }
+        migrateOldBlossomFormat();
       }
     }
 
@@ -332,6 +329,14 @@ export default defineComponent({
 
     function refreshStatuses() {
       const info = inspectRelays();
+      // Clear old statuses for removed relays
+      const currentRelays = new Set(relayList.value);
+      for (const r in statuses) {
+        if (!currentRelays.has(r)) {
+          delete statuses[r];
+        }
+      }
+      // Update statuses for current relays
       for (const r of relayList.value) {
         statuses[r] = info[r] || { ready: false, queueLength: 0, subs: 0, okHandlers: 0 };
       }
