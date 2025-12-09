@@ -78,3 +78,28 @@ body {
 }
 .list { display:flex; flex-direction:column; gap:8px; }
 .small { font-size:12px; color:#64748b; }
+/* ========= 移动端底部栏稳定补丁（不改 HTML） ========= */
+
+/* 1. 让 html/body 不参与滚动 */
+html, body {
+  height: 100%;
+  overflow: hidden !important;
+}
+
+/* 2. 把真正的滚动层换给 #app */
+#app {
+  height: 100%;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 3. 稳定 fixed 底部导航 */
+.bottom-nav {
+  position: fixed !important;
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  transform: translateZ(0);
+  will-change: transform;
+}
