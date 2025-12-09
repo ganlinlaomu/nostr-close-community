@@ -5,6 +5,8 @@ import { useFriendsStore } from "./friends";
 import { useMessagesStore } from "./messages";
 import type { WindowNostr } from "nostr-tools/lib/types/nip07";
 import { BunkerSigner, type BunkerPointer, parseBunkerInput } from "nostr-tools/nip46";
+import { finalizeEvent } from "nostr-tools";
+import type { EventTemplate, VerifiedEvent } from "nostr-tools/lib/types/core";
 
 /**
  * keys store with robust nostr-tools feature detection.
@@ -51,7 +53,127 @@ export const useKeyStore = defineStore("keys", {
     loginMethod: "" as "sk" | "nip07" | "nip46" | "",
     bunkerSigner: null as BunkerSigner | null
   }),
+  getters: {
+    /**
+     * Check if user is logged in with any method
+     */
+    isLoggedIn(): boolean {
+      return !!this.pkHex && !!this.loginMethod;
+    }
+  },
   actions: {
+    /**
+     * Unified NIP-04 decryption that works with all login methods
+     * @param senderPubHex - The public key of the sender
+     * @param ciphertext - The encrypted content
+     * @returns Promise<string> - The decrypted plaintext
+     */
+    async nip04Decrypt(senderPubHex: string, ciphertext: string): Promise<string> {
+      if (!this.pkHex || !this.loginMethod) {
+        throw new Error("未登录，无法解密消息");
+      }
+
+      switch (this.loginMethod) {
+        case "sk":
+          // Direct decryption with private key
+          if (!this.skHex) {
+            throw new Error("私钥登录但未找到私钥");
+          }
+          return await nostr.nip04.decrypt(this.skHex, senderPubHex, ciphertext);
+
+        case "nip07":
+          // Use browser extension
+          if (!window.nostr?.nip04?.decrypt) {
+            throw new Error("浏览器插件不支持 NIP-04 解密");
+          }
+          return await window.nostr.nip04.decrypt(senderPubHex, ciphertext);
+
+        case "nip46":
+          // Use bunker signer
+          if (!this.bunkerSigner) {
+            throw new Error("Bunker 签名器未初始化");
+          }
+          return await this.bunkerSigner.nip04Decrypt(senderPubHex, ciphertext);
+
+        default:
+          throw new Error(`未知的登录方式: ${this.loginMethod}`);
+      }
+    },
+
+    /**
+     * Unified NIP-04 encryption that works with all login methods
+     * @param recipientPubHex - The public key of the recipient
+     * @param plaintext - The plaintext to encrypt
+     * @returns Promise<string> - The encrypted ciphertext
+     */
+    async nip04Encrypt(recipientPubHex: string, plaintext: string): Promise<string> {
+      if (!this.pkHex || !this.loginMethod) {
+        throw new Error("未登录，无法加密消息");
+      }
+
+      switch (this.loginMethod) {
+        case "sk":
+          // Direct encryption with private key
+          if (!this.skHex) {
+            throw new Error("私钥登录但未找到私钥");
+          }
+          return await nostr.nip04.encrypt(this.skHex, recipientPubHex, plaintext);
+
+        case "nip07":
+          // Use browser extension
+          if (!window.nostr?.nip04?.encrypt) {
+            throw new Error("浏览器插件不支持 NIP-04 加密");
+          }
+          return await window.nostr.nip04.encrypt(recipientPubHex, plaintext);
+
+        case "nip46":
+          // Use bunker signer
+          if (!this.bunkerSigner) {
+            throw new Error("Bunker 签名器未初始化");
+          }
+          return await this.bunkerSigner.nip04Encrypt(recipientPubHex, plaintext);
+
+        default:
+          throw new Error(`未知的登录方式: ${this.loginMethod}`);
+      }
+    },
+
+    /**
+     * Unified event signing that works with all login methods
+     * @param event - The event template to sign
+     * @returns Promise<VerifiedEvent> - The signed event
+     */
+    async signEvent(event: EventTemplate): Promise<VerifiedEvent> {
+      if (!this.pkHex || !this.loginMethod) {
+        throw new Error("未登录，无法签名事件");
+      }
+
+      switch (this.loginMethod) {
+        case "sk":
+          // Direct signing with private key
+          if (!this.skHex) {
+            throw new Error("私钥登录但未找到私钥");
+          }
+          return finalizeEvent(event, this.skHex);
+
+        case "nip07":
+          // Use browser extension
+          if (!window.nostr?.signEvent) {
+            throw new Error("浏览器插件不支持事件签名");
+          }
+          return await window.nostr.signEvent(event);
+
+        case "nip46":
+          // Use bunker signer
+          if (!this.bunkerSigner) {
+            throw new Error("Bunker 签名器未初始化");
+          }
+          return await this.bunkerSigner.signEvent(event);
+
+        default:
+          throw new Error(`未知的登录方式: ${this.loginMethod}`);
+      }
+    },
     async loginWithSk(sk: string) {
       this.skHex = sk;
       this.loginMethod = "sk";

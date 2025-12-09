@@ -32,7 +32,7 @@ import { defineComponent, ref, onMounted, onBeforeUnmount } from "vue";
 import { useFriendsStore } from "@/stores/friends";
 import { useKeyStore } from "@/stores/keys";
 import { getRelaysFromStorage, subscribe } from "@/nostr/relays";
-import { envelopeDecryptSym, symDecryptPackage } from "@/nostr/crypto";
+import { symDecryptPackage } from "@/nostr/crypto";
 import { useMessagesStore } from "@/stores/messages";
 import { logger } from "@/utils/logger";
 import PostImagePreview from "@/components/PostImagePreview.vue";
@@ -133,7 +133,7 @@ export default defineComponent({
             if (!myEntry) return;
             let symHex: string | null = null;
             try {
-              symHex = await envelopeDecryptSym(keys.skHex, evt.pubkey, myEntry.enc);
+              symHex = await keys.nip04Decrypt(evt.pubkey, myEntry.enc);
             } catch (e) {
               logger.warn("nip04.decrypt failed", e);
               if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
@@ -171,7 +171,7 @@ export default defineComponent({
     async function startSub() {
       try {
         await friends.load();
-        if (!keys.pkHex || !keys.skHex) {
+        if (!keys.isLoggedIn) {
           status.value = "未登录";
           return;
         }
@@ -218,7 +218,7 @@ export default defineComponent({
               if (!myEntry) return;
               let symHex: string | null = null;
               try {
-                symHex = await envelopeDecryptSym(keys.skHex, evt.pubkey, myEntry.enc);
+                symHex = await keys.nip04Decrypt(evt.pubkey, myEntry.enc);
               } catch (e) {
                 logger.warn("nip04.decrypt failed", e);
                 if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
