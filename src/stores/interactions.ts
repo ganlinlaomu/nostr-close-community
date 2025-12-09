@@ -25,6 +25,7 @@ export interface Comment {
   text: string;
   timestamp: number;
   type: 'comment';
+  parentCommentId?: string; // Optional: ID of parent comment for replies
 }
 
 export type Interaction = Like | Comment;
@@ -46,6 +47,13 @@ export const useInteractionsStore = defineStore("interactions", {
     getComments: (state) => (messageId: string): Comment[] => {
       const items = state.interactions.get(messageId) || [];
       return items.filter(i => i.type === 'comment') as Comment[];
+    },
+    
+    getReplies: (state) => (messageId: string, parentCommentId: string): Comment[] => {
+      const items = state.interactions.get(messageId) || [];
+      return items.filter(i => 
+        i.type === 'comment' && (i as Comment).parentCommentId === parentCommentId
+      ) as Comment[];
     },
     
     getLikeCount: (state) => (messageId: string): number => {
@@ -91,7 +99,7 @@ export const useInteractionsStore = defineStore("interactions", {
     /**
      * Send an encrypted comment to the message author
      */
-    async sendComment(messageId: string, messageAuthor: string, text: string) {
+    async sendComment(messageId: string, messageAuthor: string, text: string, parentCommentId?: string) {
       const key = useKeyStore();
       if (!key.isLoggedIn) throw new Error("未登录");
       
@@ -103,7 +111,8 @@ export const useInteractionsStore = defineStore("interactions", {
         author: key.pkHex,
         text: text.trim(),
         timestamp: Math.floor(Date.now() / 1000),
-        type: 'comment'
+        type: 'comment',
+        parentCommentId // Add parent comment ID if this is a reply
       };
       
       await this._sendInteraction(interaction, messageAuthor);
@@ -257,18 +266,35 @@ export const useInteractionsStore = defineStore("interactions", {
     _addInteraction(messageId: string, interaction: Interaction) {
       const items = this.interactions.get(messageId) || [];
       
-      // Check for duplicates (same author, same type, same timestamp within 5 seconds)
-      const isDuplicate = items.some(i => 
-        i.author === interaction.author &&
-        i.type === interaction.type &&
-        Math.abs(i.timestamp - interaction.timestamp) < 5
-      );
-      
-      if (!isDuplicate) {
-        items.push(interaction);
-        this.interactions.set(messageId, items);
-        this._saveToStorage();
+      // For likes: prevent duplicate likes from same user on same message
+      if (interaction.type === 'like') {
+        const existingLike = items.find(i => 
+          i.type === 'like' && i.author === interaction.author
+        );
+        
+        if (existingLike) {
+          // User has already liked this message, don't add duplicate
+          return;
+        }
       }
+      
+      // For comments: check for duplicates (same author, same text, same timestamp within 5 seconds)
+      if (interaction.type === 'comment') {
+        const isDuplicate = items.some(i => 
+          i.type === 'comment' &&
+          i.author === interaction.author &&
+          (i as Comment).text === (interaction as Comment).text &&
+          Math.abs(i.timestamp - interaction.timestamp) < 5
+        );
+        
+        if (isDuplicate) {
+          return;
+        }
+      }
+      
+      items.push(interaction);
+      this.interactions.set(messageId, items);
+      this._saveToStorage();
     },
     
     /**
