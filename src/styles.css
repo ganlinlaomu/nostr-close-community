@@ -11,6 +11,9 @@ html {
   overflow-x: hidden;
   width: 100%;
   max-width: 100vw;
+  height: 100%;
+  /* Prevent overscroll background issues */
+  overscroll-behavior: none;
 }
 
 body {
@@ -22,9 +25,12 @@ body {
   overflow-x: hidden;
   width: 100%;
   max-width: 100vw;
+  min-height: 100vh;
   /* Better mobile touch handling */
   -webkit-overflow-scrolling: touch;
   touch-action: manipulation;
+  /* Prevent overscroll background issues */
+  overscroll-behavior-y: none;
 }
 #app {
   max-width: 720px;
