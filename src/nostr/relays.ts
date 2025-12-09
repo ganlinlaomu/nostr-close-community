@@ -26,7 +26,7 @@ const relaysMap: Record<string, RelayConn> = {};
 
 export const DEFAULT_RELAYS = [
   "wss://relay.damus.io",
-  "wss://nostr-pub.wellorder.net"
+  "wss://relay.0xchat.com",
 ];
 
 export function getRelaysFromStorage() {
