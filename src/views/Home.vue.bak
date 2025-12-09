@@ -1,0 +1,187 @@
+<template>
+  <div>
+    <div class="card">
+      <h3>信息流（时间线）</h3>
+      <div class="small">已自动订阅你添加的好友，实时解密可读消息</div>
+      <div class="small" style="margin-top:6px;">订阅状态: {{ status }}</div>
+    </div>
+
+    <div class="card">
+      <h4>消息</h4>
+      <div v-if="messages.length === 0" class="small">还没有消息</div>
+      <div class="list">
+        <div v-for="m in messages" :key="m.id" class="card">
+          <div class="small">
+            {{ displayName(m.pubkey) }}
+            <span class="muted"> · {{ shortPub(m.pubkey) }} · {{ toLocalTime(m.created_at) }}</span>
+          </div>
+          <div style="margin-top:8px;">{{ m.content }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script lang="ts">
+import { defineComponent, ref, onMounted, onBeforeUnmount } from "vue";
+import { useFriendsStore } from "@/stores/friends";
+import { useKeyStore } from "@/stores/keys";
+import { getRelaysFromStorage, subscribe } from "@/nostr/relays";
+import { envelopeDecryptSym, symDecryptPackage } from "@/nostr/crypto";
+import { useMessagesStore } from "@/stores/messages";
+import { logger } from "@/utils/logger";
+
+export default defineComponent({
+  setup() {
+    const friends = useFriendsStore();
+    const keys = useKeyStore();
+    const msgs = useMessagesStore();
+
+    const status = ref("未连接");
+    let sub: any = null;
+
+    // messages is reactive view of messages store inbox
+    const messagesRef = ref([] as any[]);
+
+    function updateLocalRefs() {
+      messagesRef.value = msgs.inbox;
+    }
+
+    const toLocalTime = (ts: number) => new Date(ts * 1000).toLocaleString();
+    const shortPub = (s: string) => (s ? s.slice(0, 8) + "..." : "");
+    const shortRelay = (r: string) => (r ? r.replace(/^wss?:\/\//, "").replace(/\/$/, "").slice(0, 22) : "");
+
+    function displayName(pubkey: string) {
+      if (!pubkey) return "";
+      // if it's me
+      if (keys.pkHex && pubkey === keys.pkHex) return "你";
+      // find friend by pubkey
+      const f = (friends.list || []).find((x: any) => x.pubkey === pubkey);
+      if (f && f.name && String(f.name).trim().length > 0) return f.name;
+      // fallback to shortpub
+      return shortPub(pubkey);
+    }
+
+    // dedupe using messages store's inbox ids and session-scoped seen set per-account
+    const SEEN_KEY_PREFIX = "nostr_seen_ids_";
+    function seenKeyFor(pk: string | null | undefined) {
+      if (!pk) return null;
+      return SEEN_KEY_PREFIX + pk;
+    }
+
+    function addMessageIfNew(evt: any, plain: string) {
+      if (!evt || !evt.id) return false;
+      // use msgs.inbox as source of truth
+      if (msgs.inbox.find((m) => m.id === evt.id)) return false;
+      const added = { id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at, content: plain };
+      msgs.addInbox(added);
+      updateLocalRefs();
+      return true;
+    }
+
+    async function startSub() {
+      try {
+        await friends.load();
+        if (!keys.pkHex || !keys.skHex) {
+          status.value = "未登录";
+          return;
+        }
+        // ensure messages store loaded for this pk
+        await msgs.load();
+        updateLocalRefs();
+
+        const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
+
+        // Ensure we always include ourselves so we can see our own messages
+        if (keys.pkHex) friendSet.add(keys.pkHex);
+
+        if (friendSet.size === 0) {
+          status.value = "好友为空";
+          return;
+        }
+        const filters = { kinds: [24242], authors: Array.from(friendSet) };
+        status.value = "连接中";
+        const relays = getRelaysFromStorage();
+
+        // close previous sub if any
+        try {
+          if (sub) {
+            if (typeof sub.close === "function") sub.close();
+            else if (typeof sub.unsub === "function") sub.unsub();
+            else if (typeof sub.unsubscribe === "function") sub.unsubscribe();
+            else if (typeof sub === "function") sub();
+          }
+        } catch (e) {
+          logger.warn("close prev sub error", e);
+        }
+        sub = null;
+
+        try {
+          const adapterSub = subscribe(relays, [filters]);
+          sub = adapterSub;
+          adapterSub.on("event", async (evt: any) => {
+            try {
+              if (!friendSet.has(evt.pubkey)) return;
+              let payload: any;
+              try { payload = JSON.parse(evt.content); } catch { return; }
+              if (!payload?.keys || !payload?.pkg) return;
+              const myEntry = payload.keys.find((k: any) => k.to === keys.pkHex);
+              if (!myEntry) return;
+              let symHex: string | null = null;
+              try {
+                symHex = await envelopeDecryptSym(keys.skHex, evt.pubkey, myEntry.enc);
+              } catch (e) {
+                logger.warn("nip04.decrypt failed", e);
+                if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
+                  symHex = myEntry.enc;
+                } else {
+                  return;
+                }
+              }
+              try {
+                const plain = await symDecryptPackage(symHex, payload.pkg);
+                addMessageIfNew(evt, plain);
+              } catch (e) {
+                logger.warn("symDecryptPackage failed", e);
+              }
+            } catch (e) {
+              logger.warn("handle event fail", e);
+            }
+          });
+          adapterSub.on("eose", () => {
+            status.value = "同步完成";
+          });
+
+          setTimeout(() => { if (status.value === "连接中") status.value = "已订阅"; }, 800);
+        } catch (e) {
+          logger.warn("subscribe adapter failed", e);
+          status.value = "订阅失败";
+        }
+      } catch (e) {
+        logger.error("startSub failed", e);
+        status.value = "订阅失败";
+      }
+    }
+
+    onMounted(async () => {
+      await startSub();
+    });
+
+    onBeforeUnmount(() => {
+      if (sub) {
+        try { if (typeof sub.close === "function") sub.close(); else if (typeof sub.unsub === "function") sub.unsub(); else if (typeof sub.unsubscribe === "function") sub.unsubscribe(); else if (typeof sub === "function") sub(); } catch {}
+      }
+    });
+
+    return { messages: messagesRef, toLocalTime, shortPub, status, shortRelay, displayName };
+  }
+});
+</script>
+
+<style scoped>
+/* no change */
+.small { font-size:12px; color:#64748b; }
+.card { background: #fff; padding:12px; border-radius:10px; margin-bottom:12px; box-shadow: 0 4px 10px rgba(0,0,0,0.04); }
+.list { display:flex; flex-direction:column; gap:8px; }
+.muted { color: #94a3b8; font-size: 12px; margin-left:6px; }
+</style>
