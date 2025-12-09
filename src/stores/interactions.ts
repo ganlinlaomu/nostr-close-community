@@ -73,7 +73,9 @@ export const useInteractionsStore = defineStore("interactions", {
       if (!key.isLoggedIn) throw new Error("未登录");
       
       const interaction: Like = {
-        id: crypto.randomUUID(),
+        id: typeof crypto !== 'undefined' && crypto.randomUUID 
+          ? crypto.randomUUID() 
+          : Date.now().toString() + '-' + Math.random().toString(36).slice(2, 11),
         messageId,
         author: key.pkHex,
         timestamp: Math.floor(Date.now() / 1000),
@@ -94,7 +96,9 @@ export const useInteractionsStore = defineStore("interactions", {
       if (!key.isLoggedIn) throw new Error("未登录");
       
       const interaction: Comment = {
-        id: crypto.randomUUID(),
+        id: typeof crypto !== 'undefined' && crypto.randomUUID 
+          ? crypto.randomUUID() 
+          : Date.now().toString() + '-' + Math.random().toString(36).slice(2, 11),
         messageId,
         author: key.pkHex,
         text: text.trim(),

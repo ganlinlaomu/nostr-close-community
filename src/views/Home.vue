@@ -212,11 +212,11 @@ export default defineComponent({
           // Find the most recent message
           const sorted = [...msgs.inbox].sort((a, b) => b.created_at - a.created_at);
           lastMessageTime = sorted[0].created_at;
-          logger.info(`Last message time: ${new Date(lastMessageTime * 1000).toLocaleString()}`);
+          logger.info(`最后一条消息时间: ${new Date(lastMessageTime * 1000).toLocaleString()}`);
         } else {
           // If no messages, fetch from 7 days ago to bootstrap
           lastMessageTime = now - (7 * 24 * 60 * 60);
-          logger.info(`No messages found, fetching from 7 days ago`);
+          logger.info(`没有找到消息，从7天前开始获取`);
         }
         
         // If last message is recent (within 1 hour), extend the window back 1 day to catch missed messages
@@ -224,10 +224,10 @@ export default defineComponent({
         let since = lastMessageTime;
         if (lastMessageTime > oneHourAgo) {
           since = Math.max(lastMessageTime - (24 * 60 * 60), 0);
-          logger.info(`Recent activity detected, extending fetch window to 1 day before last message`);
+          logger.info(`检测到最近活动，将获取窗口扩展到最后一条消息之前1天`);
         }
         
-        logger.info(`Fetching messages from ${new Date(since * 1000).toLocaleString()} to now`);
+        logger.info(`从 ${new Date(since * 1000).toLocaleString()} 获取消息到现在`);
         
         // Create a filter with time range - fetch from last message to now
         const backfillFilter = {
@@ -380,7 +380,7 @@ export default defineComponent({
             await interactions.processInteractionEvent(evt, keys.pkHex);
           });
           
-          logger.debug("Subscribed to interactions");
+          logger.debug("已订阅互动事件");
         } catch (e) {
           logger.warn("subscribe to interactions failed", e);
         }
