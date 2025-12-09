@@ -188,8 +188,13 @@ export default defineComponent({
       }
 
       const commentList = comments.value.get(messageId)!;
+      // Use crypto.randomUUID if available, otherwise fallback to timestamp + random
+      const commentId = typeof crypto !== 'undefined' && crypto.randomUUID 
+        ? crypto.randomUUID() 
+        : Date.now().toString() + '-' + Math.random().toString(36).slice(2, 11);
+      
       commentList.push({
-        id: Date.now().toString() + Math.random().toString(36).slice(2),
+        id: commentId,
         author: keys.pkHex,
         text: text,
         timestamp: Math.floor(Date.now() / 1000)
