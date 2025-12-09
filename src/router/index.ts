@@ -67,14 +67,30 @@ router.beforeEach(async (to, from, next) => {
   try {
     const keyStore = useKeyStore();
     // If store hasn't loaded keys from localStorage yet, try to hydrate quickly
-    // (some apps persist keys in localStorage under skHex/pkHex). If your app already
-    // hydrates keys on startup, this is redundant but harmless.
     if (!keyStore.pkHex) {
       try {
         const sk = localStorage.getItem("skHex") || "";
         const pk = localStorage.getItem("pkHex") || "";
+        const loginMethod = localStorage.getItem("loginMethod") || "";
+        const bunkerInput = localStorage.getItem("bunkerInput") || "";
+        
         if (sk && !keyStore.skHex) keyStore.skHex = sk;
         if (pk && !keyStore.pkHex) keyStore.pkHex = pk;
+        if (loginMethod && !keyStore.loginMethod) {
+          keyStore.loginMethod = loginMethod as "sk" | "nip07" | "nip46" | "";
+        }
+        
+        // Restore bunker signer if needed
+        if (loginMethod === "nip46" && bunkerInput && !keyStore.bunkerSigner) {
+          // Try to restore bunker connection (this may fail if bunker is offline)
+          try {
+            await keyStore.loginWithBunker(bunkerInput);
+          } catch (e) {
+            // If bunker restore fails, clear the login state
+            console.warn("Failed to restore bunker connection:", e);
+            keyStore.logout();
+          }
+        }
       } catch {
         // ignore storage errors
       }
@@ -84,14 +100,14 @@ router.beforeEach(async (to, from, next) => {
 
     if (to.path === "/login") {
       // If already logged in, redirect away from login
-      if (keyStore.pkHex) {
+      if (keyStore.isLoggedIn) {
         return next({ path: "/" });
       }
       return next();
     }
 
     if (requiresAuth) {
-      if (!keyStore.pkHex) {
+      if (!keyStore.isLoggedIn) {
         // not logged in -> go to login
         return next({ path: "/login", query: { redirect: to.fullPath } });
       }
