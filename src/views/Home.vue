@@ -213,7 +213,7 @@ export default defineComponent({
         
         if (keys.loginTimestamp && keys.loginTimestamp > 0) {
           // Fetch from 3 days before login timestamp
-          since = keys.loginTimestamp - threeDaysInSeconds;
+          since = Math.max(keys.loginTimestamp - threeDaysInSeconds, 0);
           logger.info(`使用登录时间点: ${new Date(keys.loginTimestamp * 1000).toLocaleString()}`);
           logger.info(`获取最近3天的消息，从 ${new Date(since * 1000).toLocaleString()} 开始`);
         } else {
