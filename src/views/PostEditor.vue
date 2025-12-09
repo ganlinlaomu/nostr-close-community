@@ -370,7 +370,7 @@ export default defineComponent({
 
     onMounted(async ()=>{
       await checkBlossom();
-      if (!keys.isLoggedIn) {
+      if (!keys.pkHex) {
         router.replace({ path: "/login", query: { redirect: "/post" } });
         return;
       }
@@ -390,7 +390,7 @@ export default defineComponent({
     watch(()=>groups.value, (g)=>{ if (g.length===0) { allFriends.value = true; selectedGroups.value = [] } });
 
     async function onSend() {
-      if (!keys.isLoggedIn) { error.value = "请先登录"; return; }
+      if (!keys.pkHex) { error.value = "请先登录"; return; }
       if (!canSend.value) { error.value = "请输入内容"; return; }
       sending.value = true;
       error.value = null;
