@@ -491,10 +491,14 @@ export default defineComponent({
   border: 1px solid #e6edf3;
   border-radius: 8px;
   resize: vertical;
-  font-size: 14px;
+  /* Prevent iOS zoom on focus */
+  font-size: 16px;
   box-sizing: border-box; /* 确保 padding 包含在宽度内 */
   overflow-y: auto; /* 添加滚动条防止内容溢出 */
   -webkit-overflow-scrolling: touch; /* 优化移动端滚动 */
+  /* Better mobile input handling */
+  -webkit-appearance: none;
+  touch-action: manipulation;
 }
 .meta-row {
   margin-top: 12px;
