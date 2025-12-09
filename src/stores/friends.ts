@@ -1,0 +1,119 @@
+import { defineStore } from "pinia";
+import { useKeyStore } from "./keys";
+
+export type Friend = {
+  id?: string; // optional internal id
+  pubkey: string;
+  name?: string;
+  group?: string;
+  note?: string;
+};
+
+function storageKeyFor(pkHex: string | null | undefined) {
+  if (!pkHex) return null;
+  return `nostr_friends_${pkHex}`;
+}
+
+export const useFriendsStore = defineStore("friends", {
+  state: () => ({
+    list: [] as Friend[],
+    loadedFor: "" as string // pkHex this list was loaded for
+  }),
+  actions: {
+    // load friend list for current logged-in key (or provided pk)
+    async load(pk?: string) {
+      const ks = useKeyStore();
+      const targetPk = pk ?? ks.pkHex;
+      if (!targetPk) {
+        this.list = [];
+        this.loadedFor = "";
+        return;
+      }
+      // if already loaded for same pk, skip
+      if (this.loadedFor === targetPk) return;
+      this.loadedFor = targetPk;
+      const key = storageKeyFor(targetPk);
+      if (!key) {
+        this.list = [];
+        return;
+      }
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) {
+          this.list = [];
+          return;
+        }
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          this.list = parsed;
+        } else {
+          this.list = [];
+        }
+      } catch {
+        this.list = [];
+      }
+    },
+
+    // save current list to storage under current loadedFor pk
+    save() {
+      const key = storageKeyFor(this.loadedFor || "");
+      if (!key) return;
+      try {
+        localStorage.setItem(key, JSON.stringify(this.list));
+      } catch {
+        // ignore storage errors
+      }
+    },
+
+    add(friend: Friend) {
+      if (!friend || !friend.pubkey) return;
+      // prevent duplicate by pubkey
+      if (this.list.find((f) => f.pubkey === friend.pubkey)) return;
+      this.list.push({ ...friend });
+      this.save();
+    },
+
+    remove(pubkey: string) {
+      const idx = this.list.findIndex((f) => f.pubkey === pubkey);
+      if (idx === -1) return;
+      this.list.splice(idx, 1);
+      this.save();
+    },
+
+    update(pubkey: string, patch: Partial<Friend>) {
+      const f = this.list.find((x) => x.pubkey === pubkey);
+      if (!f) return;
+      Object.assign(f, patch);
+      this.save();
+    },
+
+    // Reset in-memory friend list for current loadedFor.
+    // If removeFromStorage is true, also remove the stored list for that pk.
+    reset(removeFromStorage = false) {
+      const key = storageKeyFor(this.loadedFor || "");
+      this.list = [];
+      if (removeFromStorage && key) {
+        try {
+          localStorage.removeItem(key);
+        } catch {}
+      }
+      this.loadedFor = "";
+    },
+
+    // utility: get all stored friend keys (for debugging or UI)
+    storedPks(): string[] {
+      try {
+        const out: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith("nostr_friends_")) {
+            out.push(k.replace("nostr_friends_", ""));
+          }
+        }
+        return out;
+      } catch {
+        return [];
+      }
+    }
+  }
+});

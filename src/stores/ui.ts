@@ -1,0 +1,31 @@
+import { defineStore } from "pinia";
+import { ref } from "vue";
+
+type Toast = {
+  id: number;
+  message: string;
+  timeout?: number;
+  type?: "info" | "success" | "error";
+};
+
+export const useUIStore = defineStore("ui", () => {
+  const toasts = ref<Toast[]>([]);
+  let nextId = 1;
+
+  function addToast(message: string, timeout = 2000, type: Toast["type"] = "info") {
+    const id = nextId++;
+    const t: Toast = { id, message, timeout, type };
+    toasts.value.push(t);
+    if (timeout && timeout > 0) {
+      setTimeout(() => removeToast(id), timeout);
+    }
+    return id;
+  }
+
+  function removeToast(id: number) {
+    const idx = toasts.value.findIndex(t => t.id === id);
+    if (idx !== -1) toasts.value.splice(idx, 1);
+  }
+
+  return { toasts, addToast, removeToast };
+});
