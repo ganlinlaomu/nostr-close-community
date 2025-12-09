@@ -73,11 +73,15 @@ router.beforeEach(async (to, from, next) => {
         const pk = localStorage.getItem("pkHex") || "";
         const loginMethod = localStorage.getItem("loginMethod") || "";
         const bunkerInput = localStorage.getItem("bunkerInput") || "";
+        const loginTimestamp = localStorage.getItem("loginTimestamp") || "0";
         
         if (sk && !keyStore.skHex) keyStore.skHex = sk;
         if (pk && !keyStore.pkHex) keyStore.pkHex = pk;
         if (loginMethod && !keyStore.loginMethod) {
           keyStore.loginMethod = loginMethod as "sk" | "nip07" | "nip46" | "";
+        }
+        if (loginTimestamp && !keyStore.loginTimestamp) {
+          keyStore.loginTimestamp = parseInt(loginTimestamp, 10) || 0;
         }
         
         // Restore bunker signer if needed (non-blocking, runs in background)
