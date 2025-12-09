@@ -3,57 +3,65 @@
   --card: #ffffff;
   --primary: #0f172a;
   --accent: #1976d2;
-  --z-bottom-nav: 9999;
+  --z-bottom-nav: 99999;
 }
-* { box-sizing: border-box; }
 
-/* Prevent horizontal overflow on mobile */
-html {
-  overflow-x: hidden;
+/* 基础盒模型 */
+* {
+  box-sizing: border-box;
+}
+
+/* ✅ 关键修复：使用稳定视口高度，避免滚动顶掉 fixed 元素 */
+html, body {
+  margin: 0;
+  padding: 0;
   width: 100%;
   max-width: 100vw;
-  /* Prevent overscroll background issues */
-  overscroll-behavior: none;
+  min-height: 100svh;           /* 🔧 从 100dvh 改为 100svh */
+  overflow-x: hidden;
 }
 
+/* Body 样式 */
 body {
-  margin: 0;
-  font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial;
   background: var(--bg);
   color: var(--primary);
-  padding-bottom: 72px; /* 给底部导航留出空间（适合手机） */
-  overflow-x: hidden;
-  width: 100%;
-  max-width: 100vw;
-  min-height: 100vh;
-  /* Better mobile touch handling */
+
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+
   -webkit-overflow-scrolling: touch;
   touch-action: manipulation;
-  /* Prevent overscroll background issues */
-  overscroll-behavior-y: none;
+  overscroll-behavior-y: auto;
 }
+
+/* ✅ App 容器修复 */
 #app {
   max-width: 720px;
   margin: 0 auto;
   padding: 12px;
   width: 100%;
+  min-height: 100svh;           /* 🔧 从 100dvh 改为 100svh */
   overflow-x: hidden;
-  /* Ensure app fills viewport to prevent gray background from showing behind bottom nav */
-  min-height: calc(100vh - 72px);
 }
+
+/* 头部栏 */
 .header {
-  display:flex;
-  align-items:center;
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap:12px;
+  gap: 12px;
 }
+
+/* 卡片 */
 .card {
   background: var(--card);
   padding: 12px;
   border-radius: 12px;
   margin-bottom: 12px;
-  box-shadow: 0 6px 18px rgba(15,23,42,0.06);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
 }
+
+/* 按钮 */
 .btn {
   background: var(--accent);
   color: white;
@@ -62,22 +70,62 @@ body {
   border-radius: 8px;
   cursor: pointer;
 }
-.input, textarea {
-  width:100%;
+
+/* 输入框 */
+.input,
+textarea {
+  width: 100%;
   max-width: 100%;
-  padding:8px;
-  border-radius:8px;
-  border:1px solid #e2e8f0;
-  margin-top:8px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  margin-top: 8px;
   box-sizing: border-box;
-  /* Prevent iOS zoom on focus */
   font-size: 16px;
-  /* Better mobile input handling */
+
   -webkit-appearance: none;
   touch-action: manipulation;
 }
-.list { display:flex; flex-direction:column; gap:8px; }
-.small { font-size:12px; color:#64748b; }
+
+/* 列表 */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 小字 */
+.small {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* ✅ 底部导航栏修复版 */
+.bottom-nav {
+  position: fixed;             /* 保持 fixed，避免 sticky 布局问题 */
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  height: 72px;
+  background: #ffffff;
+  border-top: 1px solid #e2e8f0;
+  padding-bottom: env(safe-area-inset-bottom);
+
+  /* ✅ 移动端稳定显示关键 */
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
+
+  z-index: var(--z-bottom-nav);
+}
+
+/* 兼容不支持 svh 的旧浏览器 */
+@supports not (height: 100svh) {
+  html, body, #app {
+    min-height: 100vh;
+  }
+}
 /* ========= 移动端底部栏稳定补丁（不改 HTML） ========= */
 
 /* 1. 让 html/body 不参与滚动 */
@@ -103,3 +151,4 @@ html, body {
   transform: translateZ(0);
   will-change: transform;
 }
+
