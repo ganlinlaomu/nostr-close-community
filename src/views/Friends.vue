@@ -10,7 +10,7 @@
             <div><strong>{{ f.name }}</strong></div>
             <div class="small">
               <span v-if="f.groups && f.groups.length > 0">
-                {{ f.groups.join(', ') }}
+                {{ f.groups[0] }}
               </span>
               <span v-else-if="f.group">{{ f.group }}</span>
               <span v-else>未分组</span>
@@ -62,9 +62,9 @@
             <input 
               v-model="formData.groupsInput" 
               class="input" 
-              placeholder="多个标签用逗号分隔，如: 家人, 朋友, 工作"
+              placeholder="如: 家人"
             />
-            <div class="small" style="margin-top: 4px;">多个分组请用逗号分隔</div>
+            <div class="small" style="margin-top: 4px;">只能设置一个分组</div>
           </div>
 
           <div class="form-actions">
@@ -124,14 +124,14 @@ export default defineComponent({
 
     const startEdit = (friend: Friend) => {
       editMode.value = true;
-      const groupsStr = friend.groups && friend.groups.length > 0 
-        ? friend.groups.join(", ")
+      const groupStr = friend.groups && friend.groups.length > 0 
+        ? friend.groups[0]
         : friend.group || "";
       
       formData.value = {
         pubkey: friend.pubkey,
         name: friend.name || "",
-        groupsInput: groupsStr,
+        groupsInput: groupStr,
         originalPubkey: friend.pubkey
       };
       showModal.value = true;
@@ -163,15 +163,13 @@ export default defineComponent({
       try {
         if (editMode.value) {
           // Update existing friend
-          const groups = formData.value.groupsInput
-            .split(",")
-            .map(g => g.trim())
-            .filter(g => g.length > 0);
+          const groupInput = formData.value.groupsInput.trim();
+          const group = groupInput.length > 0 ? groupInput : undefined;
           
           const ok = friends.update(formData.value.originalPubkey, {
             name: nameVal,
-            groups: groups.length > 0 ? groups : undefined,
-            group: groups.length > 0 ? groups[0] : undefined // keep first group for backward compat
+            groups: group ? [group] : undefined,
+            group: group
           });
 
           if (ok) {
@@ -194,17 +192,15 @@ export default defineComponent({
             return;
           }
 
-          const groups = formData.value.groupsInput
-            .split(",")
-            .map(g => g.trim())
-            .filter(g => g.length > 0);
+          const groupInput = formData.value.groupsInput.trim();
+          const group = groupInput.length > 0 ? groupInput : undefined;
 
           await friends.load();
           const ok = friends.add({
             pubkey: hexKey,
             name: nameVal,
-            groups: groups.length > 0 ? groups : undefined,
-            group: groups.length > 0 ? groups[0] : undefined
+            groups: group ? [group] : undefined,
+            group: group
           });
 
           if (ok) {

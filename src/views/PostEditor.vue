@@ -471,7 +471,9 @@ export default defineComponent({
 .editor-body {
   padding: 12px;
   max-width: 100%;
+  max-height: 70vh; /* 限制最大高度 */
   overflow-x: hidden; /* Prevent content from stretching the page */
+  overflow-y: auto; /* 允许垂直滚动 */
 }
 .editor-textarea {
   width: 100%;
@@ -483,6 +485,8 @@ export default defineComponent({
   resize: vertical;
   font-size: 14px;
   box-sizing: border-box; /* 确保 padding 包含在宽度内 */
+  overflow-y: auto; /* 添加滚动条防止内容溢出 */
+  -webkit-overflow-scrolling: touch; /* 优化移动端滚动 */
 }
 .meta-row {
   margin-top: 12px;

@@ -119,15 +119,6 @@
         </div>
       </div>
 
-      <!-- Debug Mode Section -->
-      <div class="section">
-        <h4>调试模式</h4>
-        <div class="checkbox-group">
-          <input type="checkbox" v-model="debugEnabled" id="debug-toggle" />
-          <label for="debug-toggle">启用调试输出（console.debug）</label>
-        </div>
-      </div>
-
       <!-- Account Section -->
       <div class="section">
         <h4>账户</h4>
@@ -145,7 +136,6 @@ import { defineComponent, ref, reactive, onMounted, computed } from "vue";
 import { DEFAULT_RELAYS, getRelaysFromStorage, inspectRelays, reconnectRelay } from "@/nostr/relays";
 import { useKeyStore } from "@/stores/keys";
 import { db } from "@/db/dexie";
-import { isDebugEnabled } from "@/utils/logger";
 
 interface BlossomServer {
   url: string;
@@ -156,7 +146,6 @@ export default defineComponent({
   setup() {
     const ks = useKeyStore();
     const shortPk = computed(() => (ks.pkHex ? ks.pkHex.slice(0, 8) + "..." : ""));
-    const debugEnabled = ref(isDebugEnabled());
 
     // Relay management
     const newRelay = ref("");
@@ -360,11 +349,6 @@ export default defineComponent({
       // Auto-refresh statuses every 5 seconds
       const intervalId = setInterval(refreshStatuses, 5000);
       
-      // Save debug flag whenever it changes
-      const unwatchDebug = () => {
-        localStorage.setItem("nostr_debug", debugEnabled.value ? "1" : "0");
-      };
-      
       return () => {
         clearInterval(intervalId);
       };
@@ -372,7 +356,6 @@ export default defineComponent({
 
     return {
       shortPk,
-      debugEnabled,
       newRelay,
       relayList,
       statuses,
@@ -631,23 +614,6 @@ export default defineComponent({
   background: #fef3c7;
   border-left: 3px solid #f59e0b;
   border-radius: 4px;
-}
-
-.checkbox-group {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.checkbox-group input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-}
-
-.checkbox-group label {
-  cursor: pointer;
-  user-select: none;
 }
 
 .account-info {

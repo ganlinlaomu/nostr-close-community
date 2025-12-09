@@ -20,7 +20,46 @@
           <PostImagePreview :content="m.content" :showAll="false" style="margin-top:8px;" />
 
           <!-- 如果仍需显示文本（去除了图片 URL/Markdown），使用 textWithoutImages -->
-          <div v-if="textWithoutImages(m.content)" style="margin-top:8px; white-space:pre-wrap;">{{ textWithoutImages(m.content) }}</div>
+          <div v-if="textWithoutImages(m.content)" class="message-text">{{ textWithoutImages(m.content) }}</div>
+          
+          <!-- 操作按钮：点赞和评论 -->
+          <div class="message-actions">
+            <button class="action-btn" @click="toggleLike(m)" :class="{ 'liked': isLiked(m.id) }">
+              <span class="action-icon">{{ isLiked(m.id) ? '❤️' : '🤍' }}</span>
+              <span class="action-text">{{ getLikeCount(m.id) }}</span>
+            </button>
+            <button class="action-btn" @click="toggleComments(m.id)">
+              <span class="action-icon">💬</span>
+              <span class="action-text">{{ getCommentCount(m.id) }}</span>
+            </button>
+          </div>
+
+          <!-- 评论区域 -->
+          <div v-if="showingComments.has(m.id)" class="comments-section">
+            <div class="comments-list">
+              <div v-for="comment in getComments(m.id)" :key="comment.id" class="comment-item">
+                <div class="comment-header small">
+                  <strong>{{ displayName(comment.author) }}</strong>
+                  <span class="muted"> · {{ toLocalTime(comment.timestamp) }}</span>
+                </div>
+                <div class="comment-text">{{ comment.text }}</div>
+              </div>
+              <div v-if="getComments(m.id).length === 0" class="small muted">暂无评论</div>
+            </div>
+            
+            <!-- 评论输入框 -->
+            <div class="comment-input-container">
+              <input 
+                v-model="commentInputs[m.id]" 
+                class="comment-input" 
+                placeholder="写下你的评论..."
+                @keyup.enter="addComment(m.id)"
+              />
+              <button class="comment-submit" @click="addComment(m.id)" :disabled="!commentInputs[m.id]?.trim()">
+                发送
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -54,6 +93,12 @@ export default defineComponent({
     let sub: any = null;
 
     const messagesRef = ref([] as any[]);
+    
+    // State for likes and comments
+    const likes = ref<Map<string, Set<string>>>(new Map()); // messageId -> Set of user pubkeys
+    const comments = ref<Map<string, Array<{ id: string; author: string; text: string; timestamp: number }>>>(new Map());
+    const showingComments = ref<Set<string>>(new Set());
+    const commentInputs = ref<Record<string, string>>({});
 
     function updateLocalRefs() {
       messagesRef.value = msgs.inbox;
@@ -65,7 +110,7 @@ export default defineComponent({
 
     function displayName(pubkey: string) {
       if (!pubkey) return "未知用户";
-      if (keys.pkHex && pubkey === keys.pkHex) return "你";
+      if (keys.pkHex && pubkey === keys.pkHex) return "自己";
       const f = (friends.list || []).find((x: any) => x.pubkey === pubkey);
       if (f && f.name && String(f.name).trim().length > 0) return f.name;
       // Return shortened public key as fallback
@@ -81,7 +126,6 @@ export default defineComponent({
       return true;
     }
 
-    // Strip image markdown and plain image urls from content, return remaining text trimmed.
     function textWithoutImages(content: string): string {
       if (!content) return "";
       // remove markdown image ![alt](url)
@@ -91,6 +135,142 @@ export default defineComponent({
       // collapse multiple blank lines and trim
       s = s.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
       return s;
+    }
+
+    // Like functionality
+    function toggleLike(message: any) {
+      if (!keys.pkHex) return;
+      
+      const messageId = message.id;
+      if (!likes.value.has(messageId)) {
+        likes.value.set(messageId, new Set());
+      }
+      
+      const likeSet = likes.value.get(messageId)!;
+      if (likeSet.has(keys.pkHex)) {
+        likeSet.delete(keys.pkHex);
+      } else {
+        likeSet.add(keys.pkHex);
+      }
+      
+      // Trigger reactivity
+      likes.value = new Map(likes.value);
+      saveLikesToStorage();
+    }
+
+    function isLiked(messageId: string): boolean {
+      if (!keys.pkHex) return false;
+      return likes.value.get(messageId)?.has(keys.pkHex) || false;
+    }
+
+    function getLikeCount(messageId: string): number {
+      return likes.value.get(messageId)?.size || 0;
+    }
+
+    // Comment functionality
+    function toggleComments(messageId: string) {
+      if (showingComments.value.has(messageId)) {
+        showingComments.value.delete(messageId);
+      } else {
+        showingComments.value.add(messageId);
+      }
+      // Trigger reactivity
+      showingComments.value = new Set(showingComments.value);
+    }
+
+    function addComment(messageId: string) {
+      if (!keys.pkHex) return;
+      const text = commentInputs.value[messageId]?.trim();
+      if (!text) return;
+
+      if (!comments.value.has(messageId)) {
+        comments.value.set(messageId, []);
+      }
+
+      const commentList = comments.value.get(messageId)!;
+      // Use crypto.randomUUID if available, otherwise fallback to timestamp + random
+      const commentId = typeof crypto !== 'undefined' && crypto.randomUUID 
+        ? crypto.randomUUID() 
+        : Date.now().toString() + '-' + Math.random().toString(36).slice(2, 11);
+      
+      commentList.push({
+        id: commentId,
+        author: keys.pkHex,
+        text: text,
+        timestamp: Math.floor(Date.now() / 1000)
+      });
+
+      // Clear input
+      commentInputs.value[messageId] = "";
+      
+      // Trigger reactivity
+      comments.value = new Map(comments.value);
+      saveCommentsToStorage();
+    }
+
+    function getComments(messageId: string) {
+      return comments.value.get(messageId) || [];
+    }
+
+    function getCommentCount(messageId: string): number {
+      return comments.value.get(messageId)?.length || 0;
+    }
+
+    // Persistence
+    function saveLikesToStorage() {
+      try {
+        const data: Record<string, string[]> = {};
+        likes.value.forEach((likeSet, messageId) => {
+          data[messageId] = Array.from(likeSet);
+        });
+        localStorage.setItem('message_likes', JSON.stringify(data));
+      } catch (e) {
+        logger.warn("Failed to save likes", e);
+      }
+    }
+
+    function loadLikesFromStorage() {
+      try {
+        const stored = localStorage.getItem('message_likes');
+        if (stored) {
+          const data = JSON.parse(stored);
+          const newLikes = new Map<string, Set<string>>();
+          Object.keys(data).forEach(messageId => {
+            newLikes.set(messageId, new Set(data[messageId]));
+          });
+          likes.value = newLikes;
+        }
+      } catch (e) {
+        logger.warn("Failed to load likes", e);
+      }
+    }
+
+    function saveCommentsToStorage() {
+      try {
+        const data: Record<string, any[]> = {};
+        comments.value.forEach((commentList, messageId) => {
+          data[messageId] = commentList;
+        });
+        localStorage.setItem('message_comments', JSON.stringify(data));
+      } catch (e) {
+        logger.warn("Failed to save comments", e);
+      }
+    }
+
+    function loadCommentsFromStorage() {
+      try {
+        const stored = localStorage.getItem('message_comments');
+        if (stored) {
+          const data = JSON.parse(stored);
+          const newComments = new Map();
+          Object.keys(data).forEach(messageId => {
+            newComments.set(messageId, data[messageId]);
+          });
+          comments.value = newComments;
+        }
+      } catch (e) {
+        logger.warn("Failed to load comments", e);
+      }
     }
 
     async function backfillMessages(friendSet: Set<string>, relays: string[]) {
@@ -252,7 +432,11 @@ export default defineComponent({
       }
     }
 
-    onMounted(async () => { await startSub(); });
+    onMounted(async () => { 
+      loadLikesFromStorage();
+      loadCommentsFromStorage();
+      await startSub(); 
+    });
 
     onBeforeUnmount(() => {
       if (sub) {
@@ -260,7 +444,25 @@ export default defineComponent({
       }
     });
 
-    return { messages: messagesRef, toLocalTime, shortPub, status, shortRelay, displayName, textWithoutImages };
+    return { 
+      messages: messagesRef, 
+      toLocalTime, 
+      shortPub, 
+      status, 
+      shortRelay, 
+      displayName, 
+      textWithoutImages,
+      // Like and comment functions
+      toggleLike,
+      isLiked,
+      getLikeCount,
+      toggleComments,
+      addComment,
+      getComments,
+      getCommentCount,
+      showingComments,
+      commentInputs
+    };
   }
 });
 </script>
@@ -270,4 +472,122 @@ export default defineComponent({
 .card { background: #fff; padding:12px; border-radius:10px; margin-bottom:12px; box-shadow: 0 4px 10px rgba(0,0,0,0.04); }
 .list { display:flex; flex-direction:column; gap:8px; }
 .muted { color: #94a3b8; font-size: 12px; margin-left:6px; }
+.message-text {
+  margin-top: 8px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+.message-actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 8px;
+  transition: all 0.2s;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.action-btn:hover {
+  background: #f8fafc;
+}
+
+.action-btn.liked {
+  color: #ef4444;
+}
+
+.action-icon {
+  font-size: 16px;
+}
+
+.action-text {
+  font-size: 13px;
+}
+
+.comments-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.comment-item {
+  background: #f8fafc;
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.comment-header {
+  margin-bottom: 4px;
+}
+
+.comment-text {
+  font-size: 13px;
+  color: #1e293b;
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.comment-input-container {
+  display: flex;
+  gap: 8px;
+}
+
+.comment-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.comment-input:focus {
+  outline: none;
+  border-color: #1976d2;
+}
+
+.comment-submit {
+  background: #1976d2;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.comment-submit:hover:not(:disabled) {
+  background: #1565c0;
+}
+
+.comment-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 </style>
