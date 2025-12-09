@@ -63,9 +63,9 @@ export default defineComponent({
   z-index: var(--z-bottom-nav, 9999);
   /* Ensure the navigation creates its own stacking context and stays on top */
   isolation: isolate;
-  /* Add backdrop filter for better visual separation */
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  /* Add backdrop filter for better visual separation (reduced blur for performance) */
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   /* Ensure it's always visible and clickable */
   pointer-events: auto;
   /* Add shadow for better visual separation */
