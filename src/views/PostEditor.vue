@@ -426,6 +426,11 @@ export default defineComponent({
 </script>
 
 <style scoped>
+/* Global box-sizing for all elements to prevent width issues */
+* {
+  box-sizing: border-box;
+}
+
 /* overlay and modal */
 .editor-overlay {
   position: fixed;
@@ -439,14 +444,15 @@ export default defineComponent({
 }
 
 .editor-card {
-  width: 100%;
-  max-width: 100%; /* Prevent content from stretching the page */
+  width: 100vw; /* Use viewport width instead of 100% */
+  max-width: 100vw; /* Prevent content from stretching the page */
   background: #fff;
   border-top-left-radius: 12px;
   border-top-right-radius: 12px;
   box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.12);
   transform: translateY(0);
   overflow-x: hidden; /* Prevent content from stretching the page */
+  box-sizing: border-box; /* Include padding in width calculation */
 }
 
 /* header */
@@ -471,9 +477,11 @@ export default defineComponent({
 .editor-body {
   padding: 12px;
   max-width: 100%;
+  width: 100%; /* Ensure full width usage */
   max-height: 70vh; /* 限制最大高度 */
   overflow-x: hidden; /* Prevent content from stretching the page */
   overflow-y: auto; /* 允许垂直滚动 */
+  box-sizing: border-box; /* Include padding in width calculation */
 }
 .editor-textarea {
   width: 100%;
@@ -545,7 +553,7 @@ export default defineComponent({
 .thumb { width:100%; height:100%; object-fit:cover; display:block; }
 .thumb.placeholder { display:flex; align-items:center; justify-content:center; color:#94a3b8; }
 .meta { flex:1; display:flex; flex-direction:column; gap:6px; min-width: 0; }
-.name { font-size:13px; color:#111827; word-break: break-all; }
+.name { font-size:13px; color:#111827; word-break: break-all; overflow-wrap: break-word; }
 .progress { color:#2563eb; font-size:13px; }
 .ok { color:#16a34a; }
 .err { color:#dc2626; word-break: break-word; }
@@ -569,6 +577,7 @@ export default defineComponent({
   padding-bottom:4px;
   flex: 1;
   min-width: 0;
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
 }
 .chip { 
   display:inline-flex; 
