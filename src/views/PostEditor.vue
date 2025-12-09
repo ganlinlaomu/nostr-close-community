@@ -444,15 +444,14 @@ export default defineComponent({
 }
 
 .editor-card {
-  width: 100vw; /* Use viewport width instead of 100% */
-  max-width: 100vw; /* Prevent content from stretching the page */
+  width: 100%;
+  max-width: 720px;
   background: #fff;
   border-top-left-radius: 12px;
   border-top-right-radius: 12px;
   box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.12);
   transform: translateY(0);
-  overflow-x: hidden; /* Prevent content from stretching the page */
-  box-sizing: border-box; /* Include padding in width calculation */
+  box-sizing: border-box;
 }
 
 /* header */
@@ -476,26 +475,19 @@ export default defineComponent({
 /* body */
 .editor-body {
   padding: 12px;
-  max-width: 100%;
-  width: 100%; /* Ensure full width usage */
-  max-height: 70vh; /* 限制最大高度 */
-  overflow-x: hidden; /* Prevent content from stretching the page */
-  overflow-y: auto; /* 允许垂直滚动 */
-  box-sizing: border-box; /* Include padding in width calculation */
+  max-height: 70vh;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 .editor-textarea {
   width: 100%;
-  max-width: 100%; /* 确保不超出父容器 */
   min-height: 140px;
   padding: 10px;
   border: 1px solid #e6edf3;
   border-radius: 8px;
   resize: vertical;
-  /* Prevent iOS zoom on focus */
   font-size: 16px;
-  box-sizing: border-box; /* 确保 padding 包含在宽度内 */
-  overflow-y: auto; /* 添加滚动条防止内容溢出 */
-  -webkit-overflow-scrolling: touch; /* 优化移动端滚动 */
+  box-sizing: border-box;
   /* Better mobile input handling */
   -webkit-appearance: none;
   touch-action: manipulation;
@@ -515,7 +507,7 @@ export default defineComponent({
   display:flex;
   align-items:center;
   gap:12px;
-  flex-wrap: wrap; /* 允许换行 */
+  flex-wrap: wrap;
 }
 .upload-btn {
   background:#1976d2;
@@ -540,8 +532,6 @@ export default defineComponent({
   padding:8px; 
   border-radius:8px; 
   border:1px solid rgba(0,0,0,0.04);
-  max-width: 100%;
-  overflow: hidden;
 }
 .thumb-wrap { 
   width:64px; 
@@ -571,8 +561,6 @@ export default defineComponent({
   align-items:center; 
   gap:8px; 
   flex-wrap:nowrap;
-  max-width: 100%;
-  overflow: hidden;
 }
 .chips-scroll { 
   display:flex; 
@@ -581,7 +569,6 @@ export default defineComponent({
   padding-bottom:4px;
   flex: 1;
   min-width: 0;
-  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
 }
 .chip { 
   display:inline-flex; 
@@ -653,7 +640,6 @@ export default defineComponent({
   .editor-card { 
     border-radius:12px; 
     max-height:80vh;
-    max-width: 720px; /* Limit max width on large screens */
   }
 }
 .error { margin-top:8px; color:#d00; font-size:13px; }
