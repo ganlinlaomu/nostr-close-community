@@ -3,11 +3,7 @@
     <div class="editor-overlay" v-if="visible" @keydown.esc="onClose" tabindex="-1" ref="overlay">
       <div class="editor-card" role="dialog" aria-modal="true">
         <header class="editor-header">
-          <button class="icon-btn" @click="onClose" aria-label="关闭">✕</button>
           <div class="title">发帖</div>
-          <button class="send-btn" :disabled="sending || !canSend" @click="onSend">
-            {{ sending ? "发送中..." : "发送" }}
-          </button>
         </header>
 
         <main class="editor-body">
@@ -18,11 +14,6 @@
             placeholder="写点什么...（将加密发送给你的好友）"
             rows="8"
           ></textarea>
-
-          <div class="meta-row">
-            <strong>收件人</strong>
-            <div class="small">默认发送给全部好友；使用分组或全部选择。</div>
-          </div>
 
           <!-- 图片上传区域 -->
           <div class="upload-panel">
@@ -72,6 +63,11 @@
 
           <!-- recipients chips -->
           <div class="meta-row" style="margin-top:12px;">
+            <strong>收件人</strong>
+            <div class="small">默认发送给全部好友；使用分组或全部选择。</div>
+          </div>
+
+          <div class="meta-row" style="margin-top:12px;">
             <strong>收件人选择</strong>
             <div class="small">默认全部好友；可点击分组进行多选。</div>
           </div>
@@ -109,6 +105,14 @@
             <div class="recips-info">
               目标人数：<strong>{{ recipientsCount }}</strong>
             </div>
+          </div>
+
+          <!-- 发送和取消按钮移到这里 -->
+          <div class="action-buttons">
+            <button class="cancel-btn" @click="onClose">取消</button>
+            <button class="send-btn" :disabled="sending || !canSend" @click="onSend">
+              {{ sending ? "发送中..." : "发送" }}
+            </button>
           </div>
 
           <div v-if="error" class="error">{{ error }}</div>
@@ -172,10 +176,15 @@ export default defineComponent({
       const order: string[] = [];
       const seen = new Set<string>();
       for (const f of list) {
-        const g = f.group || "未分组";
-        if (!seen.has(g)) {
-          seen.add(g);
-          order.push(g);
+        // 支持 groups 数组（多标签）
+        const tags = f.groups && Array.isArray(f.groups) && f.groups.length > 0 
+          ? f.groups 
+          : (f.group ? [f.group] : ["未分组"]);
+        for (const g of tags) {
+          if (!seen.has(g)) {
+            seen.add(g);
+            order.push(g);
+          }
         }
       }
       return order;
@@ -185,8 +194,13 @@ export default defineComponent({
       const map: Record<string, number> = {};
       const list = friends.list || [];
       for (const f of list) {
-        const g = f.group || "未分组";
-        map[g] = (map[g] || 0) + 1;
+        // 支持 groups 数组（多标签）
+        const tags = f.groups && Array.isArray(f.groups) && f.groups.length > 0 
+          ? f.groups 
+          : (f.group ? [f.group] : ["未分组"]);
+        for (const g of tags) {
+          map[g] = (map[g] || 0) + 1;
+        }
       }
       return map;
     });
@@ -198,7 +212,18 @@ export default defineComponent({
       if (list.length === 0) return [] as string[];
       if (allFriends.value) return list.map((f: any) => f.pubkey).filter(Boolean);
       const sel = selectedSet.value;
-      return list.filter((f: any) => sel.has(f.group || "未分组")).map((f: any) => f.pubkey);
+      // 收集所有匹配的好友，但使用 Set 确保每个人只计数一次
+      const uniquePubkeys = new Set<string>();
+      for (const f of list) {
+        const tags = f.groups && Array.isArray(f.groups) && f.groups.length > 0 
+          ? f.groups 
+          : (f.group ? [f.group] : ["未分组"]);
+        // 如果好友的任何一个标签被选中，就包含这个好友
+        if (tags.some((tag: string) => sel.has(tag))) {
+          uniquePubkeys.add(f.pubkey);
+        }
+      }
+      return Array.from(uniquePubkeys);
     });
 
     const recipientsCount = computed(() => {
@@ -320,7 +345,8 @@ export default defineComponent({
         item.progress = 100;
         if (content.value.length>0 && !content.value.endsWith("\n")) content.value += "\n";
         content.value += `![](${item.url})\n`;
-        nextTick(()=>{ try{ textarea.value?.focus() } catch{} });
+        // 移除自动聚焦，避免光标跳动
+        // nextTick(()=>{ try{ textarea.value?.focus() } catch{} });
       } catch (err:any) {
         console.error("upload error raw:", err);
         item.status = "error";
@@ -361,7 +387,8 @@ export default defineComponent({
       allFriends.value = true;
       selectedGroups.value = [];
       await nextTick();
-      try { textarea.value?.focus() } catch {}
+      // 移除自动聚焦，避免光标跳动和键盘自动弹出
+      // try { textarea.value?.focus() } catch {}
     });
 
     onBeforeUnmount(()=>{
@@ -423,19 +450,20 @@ export default defineComponent({
 
 .editor-card {
   width: 100%;
-  max-width: 720px;
+  max-width: 100vw; /* 防止超出视口宽度 */
   background: #fff;
   border-top-left-radius: 12px;
   border-top-right-radius: 12px;
   box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.12);
   transform: translateY(0);
+  overflow-x: hidden; /* 防止内容撑开页面 */
 }
 
 /* header */
 .editor-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   padding: 10px 12px;
   border-bottom: 1px solid #eee;
 }
@@ -448,31 +476,23 @@ export default defineComponent({
 .title {
   font-weight: 600;
 }
-.send-btn {
-  background: #1976d2;
-  color: white;
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-}
-.send-btn[disabled] {
-  opacity: 0.5;
-  cursor: default;
-}
 
 /* body */
 .editor-body {
   padding: 12px;
+  max-width: 100%;
+  overflow-x: hidden; /* 防止内容撑开页面 */
 }
 .editor-textarea {
   width: 100%;
+  max-width: 100%; /* 确保不超出父容器 */
   min-height: 140px;
   padding: 10px;
   border: 1px solid #e6edf3;
   border-radius: 8px;
   resize: vertical;
   font-size: 14px;
+  box-sizing: border-box; /* 确保 padding 包含在宽度内 */
 }
 .meta-row {
   margin-top: 12px;
@@ -489,6 +509,7 @@ export default defineComponent({
   display:flex;
   align-items:center;
   gap:12px;
+  flex-wrap: wrap; /* 允许换行 */
 }
 .upload-btn {
   background:#1976d2;
@@ -505,28 +526,111 @@ export default defineComponent({
 
 /* previews */
 .previews { margin-top:12px; display:flex; flex-direction:column; gap:8px; }
-.preview { display:flex; gap:10px; align-items:center; background:#fafafa; padding:8px; border-radius:8px; border:1px solid rgba(0,0,0,0.04); }
-.thumb-wrap { width:64px; height:64px; display:flex; align-items:center; justify-content:center; background:#fff; border-radius:6px; overflow:hidden; }
+.preview { 
+  display:flex; 
+  gap:10px; 
+  align-items:center; 
+  background:#fafafa; 
+  padding:8px; 
+  border-radius:8px; 
+  border:1px solid rgba(0,0,0,0.04);
+  max-width: 100%;
+  overflow: hidden;
+}
+.thumb-wrap { 
+  width:64px; 
+  height:64px; 
+  min-width: 64px;
+  display:flex; 
+  align-items:center; 
+  justify-content:center; 
+  background:#fff; 
+  border-radius:6px; 
+  overflow:hidden; 
+}
 .thumb { width:100%; height:100%; object-fit:cover; display:block; }
 .thumb.placeholder { display:flex; align-items:center; justify-content:center; color:#94a3b8; }
-.meta { flex:1; display:flex; flex-direction:column; gap:6px; }
-.name { font-size:13px; color:#111827; }
+.meta { flex:1; display:flex; flex-direction:column; gap:6px; min-width: 0; }
+.name { font-size:13px; color:#111827; word-break: break-all; }
 .progress { color:#2563eb; font-size:13px; }
 .ok { color:#16a34a; }
-.err { color:#dc2626; }
+.err { color:#dc2626; word-break: break-word; }
 .actions { display:flex; gap:8px; }
 .actions button { background:transparent; border:1px solid #e6edf3; padding:6px 8px; border-radius:6px; cursor:pointer; }
 
 /* chips UI */
 .groups { margin-top:12px; }
-.chips-row { display:flex; align-items:center; gap:8px; flex-wrap:nowrap; }
-.chips-scroll { display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; }
-.chip { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; background:#f3f6f9; border-radius:999px; border:1px solid transparent; cursor:pointer; font-size:13px; color:#374151; white-space:nowrap; }
+.chips-row { 
+  display:flex; 
+  align-items:center; 
+  gap:8px; 
+  flex-wrap:nowrap;
+  max-width: 100%;
+  overflow: hidden;
+}
+.chips-scroll { 
+  display:flex; 
+  gap:8px; 
+  overflow-x:auto; 
+  padding-bottom:4px;
+  flex: 1;
+  min-width: 0;
+}
+.chip { 
+  display:inline-flex; 
+  align-items:center; 
+  gap:8px; 
+  padding:6px 10px; 
+  background:#f3f6f9; 
+  border-radius:999px; 
+  border:1px solid transparent; 
+  cursor:pointer; 
+  font-size:13px; 
+  color:#374151; 
+  white-space:nowrap;
+  flex-shrink: 0;
+}
 .chip:disabled { opacity:0.5; cursor:default; }
 .chip-selected { background: linear-gradient(90deg,#1976d2 0%, #2a9df4 100%); color:white; box-shadow:0 6px 18px rgba(25,118,210,0.12); }
 .chip-count { background: rgba(0,0,0,0.06); padding:2px 6px; border-radius:999px; font-size:12px; margin-left:6px; }
-.divider { width:1px; height:28px; background: rgba(0,0,0,0.06); margin:0 6px; }
+.divider { width:1px; height:28px; background: rgba(0,0,0,0.06); margin:0 6px; flex-shrink: 0; }
 .recips-info { margin-top:8px; color:#374151; font-size:13px; }
+
+/* action buttons */
+.action-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+.cancel-btn {
+  background: #f3f6f9;
+  color: #374151;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 1px solid #e6edf3;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.cancel-btn:hover {
+  background: #e6edf3;
+}
+
+.send-btn {
+  background: #1976d2;
+  color: white;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+}
+.send-btn[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
 
 /* footer */
 .editor-footer { padding:10px 12px 20px; border-top:1px solid #f3f6f8; }
@@ -539,7 +643,11 @@ export default defineComponent({
 /* responsive */
 @media (min-width:720px) {
   .editor-overlay { align-items:center; }
-  .editor-card { border-radius:12px; max-height:80vh; }
+  .editor-card { 
+    border-radius:12px; 
+    max-height:80vh;
+    max-width: 720px; /* 在大屏幕上限制最大宽度 */
+  }
 }
 .error { margin-top:8px; color:#d00; font-size:13px; }
 .small { color:#64748b; font-size:12px; }
