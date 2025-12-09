@@ -9,14 +9,14 @@
 
       <div class="login-actions">
         <!-- Browser Extension Login (NIP-07) -->
-        <button class="btn btn-primary" @click="loginWithExtension">
-          <span class="btn-icon">🔌</span>
+        <button class="btn btn-primary" @click="loginWithExtension" aria-label="Login with browser extension">
+          <span class="btn-icon" role="img" aria-label="plugin icon">🔌</span>
           浏览器插件登录
         </button>
 
         <!-- Bunker Remote Signer Login (NIP-46) -->
-        <button class="btn btn-secondary" @click="showBunker = true">
-          <span class="btn-icon">🔐</span>
+        <button class="btn btn-secondary" @click="showBunker = true" aria-label="Login with remote signer">
+          <span class="btn-icon" role="img" aria-label="lock icon">🔐</span>
           远程签名器 (Bunker)
         </button>
       </div>
@@ -33,7 +33,12 @@
           输入 bunker:// URL 或 NIP-05 地址 (例如: user@nsec.app)
         </div>
         <div style="margin-top:12px;">
-          <button class="btn" @click="doLoginBunker" :disabled="loading">
+          <button 
+            class="btn" 
+            @click="doLoginBunker" 
+            :disabled="loading"
+            :aria-label="loading ? 'Connecting to remote signer' : 'Connect to remote signer'"
+          >
             {{ loading ? '连接中...' : '连接' }}
           </button>
           <button class="btn" style="margin-left:8px" @click="showBunker = false" :disabled="loading">取消</button>

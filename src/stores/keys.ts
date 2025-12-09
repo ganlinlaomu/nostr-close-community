@@ -126,17 +126,25 @@ export const useKeyStore = defineStore("keys", {
         const bunkerPointer = await parseBunkerInput(bunkerInput.trim());
         
         if (!bunkerPointer) {
-          throw new Error("无效的 bunker URL 或 NIP-05 地址");
+          throw new Error("无效的 bunker URL 或 NIP-05 地址。请检查输入格式。");
         }
 
         // Generate client secret key for bunker communication
         const clientSecretKey = crypto.getRandomValues(new Uint8Array(32));
         
-        // Create bunker signer
-        const signer = BunkerSigner.fromBunker(clientSecretKey, bunkerPointer, {});
+        // Create bunker signer with timeout handling
+        const signer = BunkerSigner.fromBunker(clientSecretKey, bunkerPointer, {
+          onauth: (url: string) => {
+            console.log("Bunker authentication required:", url);
+          }
+        });
         
-        // Connect to the bunker
-        await signer.sendRequest("connect", []);
+        // Connect to the bunker with timeout
+        try {
+          await signer.sendRequest("connect", []);
+        } catch (connectError: any) {
+          throw new Error(`无法连接到远程签名器。请确保 bunker 服务可用并且您已授权连接。详情: ${connectError.message || connectError}`);
+        }
         
         // Get public key from bunker
         const pk = await signer.getPublicKey();
@@ -166,6 +174,11 @@ export const useKeyStore = defineStore("keys", {
         this.pkHex = "";
         this.loginMethod = "";
         this.bunkerSigner = null;
+        
+        // Re-throw with a user-friendly message if not already handled
+        if (e.message && e.message.includes("无法连接")) {
+          throw e;
+        }
         throw new Error(`Bunker 登录失败: ${e.message || e}`);
       }
     },
