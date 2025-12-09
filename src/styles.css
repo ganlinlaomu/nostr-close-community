@@ -3,6 +3,7 @@
   --card: #ffffff;
   --primary: #0f172a;
   --accent: #1976d2;
+  --z-bottom-nav: 9999;
 }
 * { box-sizing: border-box; }
 

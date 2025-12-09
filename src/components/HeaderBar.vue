@@ -60,7 +60,7 @@ export default defineComponent({
   background: #ffffff;
   border-top: 1px solid rgba(0,0,0,0.06);
   /* Higher z-index to stay above modals and overlays for navigation access */
-  z-index: 9999;
+  z-index: var(--z-bottom-nav, 9999);
   /* Ensure the navigation creates its own stacking context and stays on top */
   isolation: isolate;
   /* Add backdrop filter for better visual separation */
@@ -68,8 +68,6 @@ export default defineComponent({
   -webkit-backdrop-filter: blur(10px);
   /* Ensure it's always visible and clickable */
   pointer-events: auto;
-  /* Prevent any content from appearing above */
-  will-change: transform;
   /* Add shadow for better visual separation */
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
 }
