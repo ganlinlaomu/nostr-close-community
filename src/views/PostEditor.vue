@@ -63,11 +63,6 @@
 
           <!-- recipients chips -->
           <div class="meta-row" style="margin-top:12px;">
-            <strong>收件人</strong>
-            <div class="small">默认发送给全部好友；使用分组或全部选择。</div>
-          </div>
-
-          <div class="meta-row" style="margin-top:12px;">
             <strong>收件人选择</strong>
             <div class="small">默认全部好友；可点击分组进行多选。</div>
           </div>
@@ -213,11 +208,11 @@ export default defineComponent({
       if (list.length === 0) return [] as string[];
       if (allFriends.value) return list.map((f: any) => f.pubkey).filter(Boolean);
       const sel = selectedSet.value;
-      // 收集所有匹配的好友，但使用 Set 确保每个人只计数一次
+      // Collect all matching friends, using Set to ensure each person is counted only once
       const uniquePubkeys = new Set<string>();
       for (const f of list) {
         const tags = getFriendTags(f);
-        // 如果好友的任何一个标签被选中，就包含这个好友
+        // If any tag of the friend is selected, include this friend
         if (tags.some((tag: string) => sel.has(tag))) {
           uniquePubkeys.add(f.pubkey);
         }
@@ -344,8 +339,6 @@ export default defineComponent({
         item.progress = 100;
         if (content.value.length>0 && !content.value.endsWith("\n")) content.value += "\n";
         content.value += `![](${item.url})\n`;
-        // 移除自动聚焦，避免光标跳动
-        // nextTick(()=>{ try{ textarea.value?.focus() } catch{} });
       } catch (err:any) {
         console.error("upload error raw:", err);
         item.status = "error";
@@ -386,8 +379,6 @@ export default defineComponent({
       allFriends.value = true;
       selectedGroups.value = [];
       await nextTick();
-      // 移除自动聚焦，避免光标跳动和键盘自动弹出
-      // try { textarea.value?.focus() } catch {}
     });
 
     onBeforeUnmount(()=>{
