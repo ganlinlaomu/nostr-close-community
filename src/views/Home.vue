@@ -236,6 +236,7 @@ export default defineComponent({
 
     function cancelReply(messageId: string) {
       replyingTo.value[messageId] = "";
+      commentInputs.value[messageId] = "";
     }
 
     function getComments(messageId: string) {
@@ -563,11 +564,6 @@ export default defineComponent({
   word-wrap: break-word;
   word-break: break-word;
   overflow-wrap: break-word;
-}
-
-.comment-input-container {
-  display: flex;
-  gap: 8px;
 }
 
 .comment-input {

@@ -276,10 +276,8 @@ export const useInteractionsStore = defineStore("interactions", {
           // User has already liked this message, don't add duplicate
           return;
         }
-      }
-      
-      // For comments: check for duplicates (same author, same text, same timestamp within 5 seconds)
-      if (interaction.type === 'comment') {
+      } else if (interaction.type === 'comment') {
+        // For comments: check for duplicates (same author, same text, same timestamp within 5 seconds)
         const isDuplicate = items.some(i => 
           i.type === 'comment' &&
           i.author === interaction.author &&
@@ -292,6 +290,7 @@ export const useInteractionsStore = defineStore("interactions", {
         }
       }
       
+      // Add interaction if no duplicates found
       items.push(interaction);
       this.interactions.set(messageId, items);
       this._saveToStorage();
