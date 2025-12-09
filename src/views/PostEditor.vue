@@ -370,6 +370,7 @@ export default defineComponent({
 
     onMounted(async ()=>{
       await checkBlossom();
+      // Check pkHex directly instead of isLoggedIn to avoid timing issues where loginMethod might not be set yet
       if (!keys.pkHex) {
         router.replace({ path: "/login", query: { redirect: "/post" } });
         return;
@@ -390,6 +391,7 @@ export default defineComponent({
     watch(()=>groups.value, (g)=>{ if (g.length===0) { allFriends.value = true; selectedGroups.value = [] } });
 
     async function onSend() {
+      // Use pkHex check for consistency with onMounted and reliability
       if (!keys.pkHex) { error.value = "请先登录"; return; }
       if (!canSend.value) { error.value = "请输入内容"; return; }
       sending.value = true;
