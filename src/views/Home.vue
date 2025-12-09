@@ -13,7 +13,7 @@
         <div v-for="m in messages" :key="m.id" class="card">
           <div class="small">
             {{ displayName(m.pubkey) }}
-            <span class="muted"> · {{ shortPub(m.pubkey) }} · {{ toLocalTime(m.created_at) }}</span>
+            <span class="muted"> · {{ toLocalTime(m.created_at) }}</span>
           </div>
 
           <!-- 图片预览（方案 B：直接从内容抽取图片 URL 并渲染） -->
@@ -35,6 +35,7 @@ import { getRelaysFromStorage, subscribe } from "@/nostr/relays";
 import { symDecryptPackage } from "@/nostr/crypto";
 import { useMessagesStore } from "@/stores/messages";
 import { logger } from "@/utils/logger";
+import { formatRelativeTime } from "@/utils/format";
 import PostImagePreview from "@/components/PostImagePreview.vue";
 
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
@@ -58,7 +59,7 @@ export default defineComponent({
       messagesRef.value = msgs.inbox;
     }
 
-    const toLocalTime = (ts: number) => new Date(ts * 1000).toLocaleString();
+    const toLocalTime = (ts: number) => formatRelativeTime(ts);
     const shortPub = (s: string) => (s ? s.slice(0, 8) + "..." : "");
     const shortRelay = (r: string) => (r ? r.replace(/^wss?:\/\//, "").replace(/\/$/, "").slice(0, 22) : "");
 
@@ -67,7 +68,7 @@ export default defineComponent({
       if (keys.pkHex && pubkey === keys.pkHex) return "你";
       const f = (friends.list || []).find((x: any) => x.pubkey === pubkey);
       if (f && f.name && String(f.name).trim().length > 0) return f.name;
-      return shortPub(pubkey);
+      return ""; // Don't show shortened public key
     }
 
     function addMessageIfNew(evt: any, plain: string) {
