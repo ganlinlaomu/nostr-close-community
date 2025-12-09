@@ -197,7 +197,7 @@ export default defineComponent({
     const selectedSet = computed(() => new Set(selectedGroups.value || []));
 
     // Helper function to extract tags from a friend object
-    function getFriendTags(friend: any): string[] {
+    function getFriendTags(friend: { groups?: string[]; group?: string }): string[] {
       return friend.groups && Array.isArray(friend.groups) && friend.groups.length > 0 
         ? friend.groups 
         : (friend.group ? [friend.group] : ["未分组"]);
@@ -213,7 +213,7 @@ export default defineComponent({
       for (const f of list) {
         const tags = getFriendTags(f);
         // If any tag of the friend is selected, include this friend
-        if (tags.some((tag: string) => sel.has(tag))) {
+        if (tags.some(tag => sel.has(tag))) {
           uniquePubkeys.add(f.pubkey);
         }
       }
@@ -440,13 +440,13 @@ export default defineComponent({
 
 .editor-card {
   width: 100%;
-  max-width: 100vw; /* 防止超出视口宽度 */
+  max-width: 100%; /* Prevent content from stretching the page */
   background: #fff;
   border-top-left-radius: 12px;
   border-top-right-radius: 12px;
   box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.12);
   transform: translateY(0);
-  overflow-x: hidden; /* 防止内容撑开页面 */
+  overflow-x: hidden; /* Prevent content from stretching the page */
 }
 
 /* header */
@@ -471,7 +471,7 @@ export default defineComponent({
 .editor-body {
   padding: 12px;
   max-width: 100%;
-  overflow-x: hidden; /* 防止内容撑开页面 */
+  overflow-x: hidden; /* Prevent content from stretching the page */
 }
 .editor-textarea {
   width: 100%;
@@ -636,7 +636,7 @@ export default defineComponent({
   .editor-card { 
     border-radius:12px; 
     max-height:80vh;
-    max-width: 720px; /* 在大屏幕上限制最大宽度 */
+    max-width: 720px; /* Limit max width on large screens */
   }
 }
 .error { margin-top:8px; color:#d00; font-size:13px; }
