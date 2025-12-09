@@ -4,8 +4,9 @@ import { useKeyStore } from "./keys";
 export type Friend = {
   id?: string; // optional internal id
   pubkey: string;
-  name?: string;
-  group?: string;
+  name: string; // required nickname for new friends
+  groups?: string[]; // multiple group tags
+  group?: string; // legacy single group field (for backward compatibility)
   note?: string;
 };
 
@@ -19,6 +20,16 @@ export const useFriendsStore = defineStore("friends", {
     list: [] as Friend[],
     loadedFor: "" as string // pkHex this list was loaded for
   }),
+  getters: {
+    // Get friends sorted by nickname
+    sortedList(): Friend[] {
+      return [...this.list].sort((a, b) => {
+        const nameA = (a.name || '').toLowerCase();
+        const nameB = (b.name || '').toLowerCase();
+        return nameA.localeCompare(nameB, 'zh-CN');
+      });
+    }
+  },
   actions: {
     // load friend list for current logged-in key (or provided pk)
     async load(pk?: string) {
@@ -66,25 +77,31 @@ export const useFriendsStore = defineStore("friends", {
     },
 
     add(friend: Friend) {
-      if (!friend || !friend.pubkey) return;
+      if (!friend || !friend.pubkey) return false;
+      if (!friend.name || !friend.name.trim()) return false; // require name
       // prevent duplicate by pubkey
-      if (this.list.find((f) => f.pubkey === friend.pubkey)) return;
+      if (this.list.find((f) => f.pubkey === friend.pubkey)) return false;
       this.list.push({ ...friend });
       this.save();
+      return true;
     },
 
     remove(pubkey: string) {
       const idx = this.list.findIndex((f) => f.pubkey === pubkey);
-      if (idx === -1) return;
+      if (idx === -1) return false;
       this.list.splice(idx, 1);
       this.save();
+      return true;
     },
 
     update(pubkey: string, patch: Partial<Friend>) {
       const f = this.list.find((x) => x.pubkey === pubkey);
-      if (!f) return;
+      if (!f) return false;
+      // Don't allow empty name
+      if (patch.name !== undefined && !patch.name.trim()) return false;
       Object.assign(f, patch);
       this.save();
+      return true;
     },
 
     // Reset in-memory friend list for current loadedFor.

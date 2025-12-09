@@ -1,44 +1,79 @@
-```vue
 <template>
-  <div>
+  <div class="friends-container">
+    <!-- Friend List -->
     <div class="card">
-      <h3>好友</h3>
-
-      <form @submit.prevent="onAdd">
-        <div>
-          <label>好友公钥（hex）</label>
-          <input v-model="pubkey" class="input" placeholder="好友公钥 64 hex" />
+      <h3>好友列表（{{ friends.sortedList.length }}）</h3>
+      <div v-if="friends.sortedList.length === 0" class="small">还没有好友</div>
+      <div class="list" v-else>
+        <div v-for="f in friends.sortedList" :key="f.pubkey" class="friend-item">
+          <div class="friend-info">
+            <div><strong>{{ f.name }}</strong></div>
+            <div class="small">
+              <span v-if="f.groups && f.groups.length > 0">
+                {{ f.groups.join(', ') }}
+              </span>
+              <span v-else-if="f.group">{{ f.group }}</span>
+              <span v-else>未分组</span>
+            </div>
+          </div>
+          <div class="friend-actions">
+            <button class="btn btn-edit" @click="startEdit(f)">编辑</button>
+            <button class="btn btn-delete" @click="confirmDelete(f)">删除</button>
+          </div>
         </div>
-
-        <div style="margin-top:8px;">
-          <label>显示名（可选）</label>
-          <input v-model="name" class="input" placeholder="昵称" />
-        </div>
-
-        <div style="margin-top:8px;">
-          <label>分组（可选）</label>
-          <input v-model="group" class="input" placeholder="例如 family / work" />
-        </div>
-
-        <div style="margin-top:12px;">
-          <button class="btn" :disabled="adding">{{ adding ? "添加中..." : "添加好友" }}</button>
-        </div>
-      </form>
+      </div>
     </div>
 
-    <div class="card">
-      <h4>已添加好友（{{ friends.list.length }}）</h4>
-      <div v-if="friends.list.length === 0" class="small">还没有好友</div>
-      <div class="list" v-else>
-        <div v-for="f in friends.list" :key="f.pubkey" class="card" style="display:flex;align-items:center;justify-content:space-between;">
-          <div>
-            <div><strong>{{ f.name || shortPub(f.pubkey) }}</strong></div>
-            <div class="small">{{ shortPub(f.pubkey) }} · {{ f.group || "未分组" }}</div>
+    <!-- Floating Add Button -->
+    <button class="fab" @click="startAdd" title="添加好友">
+      <span class="fab-icon">+</span>
+    </button>
+
+    <!-- Modal for Add/Edit Friend -->
+    <div v-if="showModal" class="modal-overlay" @click="closeModal">
+      <div class="modal-content" @click.stop>
+        <h3>{{ editMode ? '编辑好友' : '添加好友' }}</h3>
+        
+        <form @submit.prevent="saveForm">
+          <div class="form-group">
+            <label>好友公钥 <span class="required">*</span></label>
+            <input 
+              v-model="formData.pubkey" 
+              class="input" 
+              placeholder="hex key 或 npub key"
+              :disabled="editMode"
+              :class="{ 'input-disabled': editMode }"
+            />
+            <div class="small" style="margin-top: 4px;">支持 64 位 hex 格式或 npub 格式</div>
           </div>
-          <div>
-            <button class="btn" @click="removeFriend(f.pubkey)">移除</button>
+
+          <div class="form-group">
+            <label>昵称 <span class="required">*</span></label>
+            <input 
+              v-model="formData.name" 
+              class="input" 
+              placeholder="好友昵称"
+              required
+            />
           </div>
-        </div>
+
+          <div class="form-group">
+            <label>分组标签</label>
+            <input 
+              v-model="formData.groupsInput" 
+              class="input" 
+              placeholder="多个标签用逗号分隔，如: 家人, 朋友, 工作"
+            />
+            <div class="small" style="margin-top: 4px;">多个分组请用逗号分隔</div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-cancel" @click="closeModal">取消</button>
+            <button type="submit" class="btn" :disabled="saving">
+              {{ saving ? "保存中..." : "保存" }}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
@@ -46,9 +81,10 @@
 
 <script lang="ts">
 import { defineComponent, ref, onMounted } from "vue";
-import { useFriendsStore } from "@/stores/friends";
+import { useFriendsStore, Friend } from "@/stores/friends";
 import { useUIStore } from "@/stores/ui";
 import { useKeyStore } from "@/stores/keys";
+import { keyToHex } from "@/utils/format";
 
 export default defineComponent({
   setup() {
@@ -56,70 +92,333 @@ export default defineComponent({
     const ui = useUIStore();
     const keys = useKeyStore();
 
-    const pubkey = ref("");
-    const name = ref("");
-    const group = ref("");
-    const adding = ref(false);
-
-    const shortPub = (s: string) => (s ? s.slice(0, 8) + "..." : "");
+    const showModal = ref(false);
+    const editMode = ref(false);
+    const saving = ref(false);
+    
+    const formData = ref({
+      pubkey: "",
+      name: "",
+      groupsInput: "",
+      originalPubkey: "" // for edit mode
+    });
 
     onMounted(async () => {
-      // ensure we load friends for current logged-in key
       await friends.load();
     });
 
-    const onAdd = async () => {
+    const startAdd = () => {
       if (!keys.isLoggedIn) {
         ui.addToast("请先登录", 2000, "error");
         return;
       }
-      adding.value = true;
+      editMode.value = false;
+      formData.value = {
+        pubkey: "",
+        name: "",
+        groupsInput: "",
+        originalPubkey: ""
+      };
+      showModal.value = true;
+    };
+
+    const startEdit = (friend: Friend) => {
+      editMode.value = true;
+      const groupsStr = friend.groups && friend.groups.length > 0 
+        ? friend.groups.join(", ")
+        : friend.group || "";
+      
+      formData.value = {
+        pubkey: friend.pubkey,
+        name: friend.name || "",
+        groupsInput: groupsStr,
+        originalPubkey: friend.pubkey
+      };
+      showModal.value = true;
+    };
+
+    const closeModal = () => {
+      showModal.value = false;
+      formData.value = {
+        pubkey: "",
+        name: "",
+        groupsInput: "",
+        originalPubkey: ""
+      };
+    };
+
+    const saveForm = async () => {
+      if (!keys.isLoggedIn) {
+        ui.addToast("请先登录", 2000, "error");
+        return;
+      }
+
+      const nameVal = formData.value.name.trim();
+      if (!nameVal) {
+        ui.addToast("昵称为必填项", 2000, "error");
+        return;
+      }
+
+      saving.value = true;
       try {
-        const pk = (pubkey.value || "").trim();
-        if (!pk) {
-          ui.addToast("请输入好友公钥", 2000, "error");
-          return;
-        }
-        // validate basic hex form
-        if (!/^[0-9a-fA-F]{64}$/.test(pk)) {
-          ui.addToast("公钥格式错误，应为 64 位十六进制字符串", 3000, "error");
-          return;
-        }
-        // ensure store loaded for current account
-        await friends.load();
-        const ok = friends.add({ pubkey: pk, name: name.value.trim(), group: group.value.trim() });
-        if (ok) {
-          ui.addToast("好友已添加", 2000, "success");
-          // clear form
-          pubkey.value = "";
-          name.value = "";
-          group.value = "";
+        if (editMode.value) {
+          // Update existing friend
+          const groups = formData.value.groupsInput
+            .split(",")
+            .map(g => g.trim())
+            .filter(g => g.length > 0);
+          
+          const ok = friends.update(formData.value.originalPubkey, {
+            name: nameVal,
+            groups: groups.length > 0 ? groups : undefined,
+            group: groups.length > 0 ? groups[0] : undefined // keep first group for backward compat
+          });
+
+          if (ok) {
+            ui.addToast("好友信息已更新", 2000, "success");
+            closeModal();
+          } else {
+            ui.addToast("更新失败", 2000, "error");
+          }
         } else {
-          ui.addToast("添加失败：可能已存在或格式不对", 2400, "error");
+          // Add new friend
+          const pkInput = formData.value.pubkey.trim();
+          if (!pkInput) {
+            ui.addToast("请输入好友公钥", 2000, "error");
+            return;
+          }
+
+          const hexKey = keyToHex(pkInput);
+          if (!hexKey) {
+            ui.addToast("公钥格式错误，请输入有效的 hex 或 npub 格式公钥", 3000, "error");
+            return;
+          }
+
+          const groups = formData.value.groupsInput
+            .split(",")
+            .map(g => g.trim())
+            .filter(g => g.length > 0);
+
+          await friends.load();
+          const ok = friends.add({
+            pubkey: hexKey,
+            name: nameVal,
+            groups: groups.length > 0 ? groups : undefined,
+            group: groups.length > 0 ? groups[0] : undefined
+          });
+
+          if (ok) {
+            ui.addToast("好友已添加", 2000, "success");
+            closeModal();
+          } else {
+            ui.addToast("添加失败：该好友可能已存在", 2400, "error");
+          }
         }
       } catch (e) {
-        ui.addToast("添加好友出错", 2000, "error");
+        console.error("Save friend error:", e);
+        ui.addToast("操作失败", 2000, "error");
       } finally {
-        adding.value = false;
+        saving.value = false;
       }
     };
 
-    const removeFriend = (pk: string) => {
-      const ok = friends.remove(pk);
-      if (ok) ui.addToast("已移除", 1500, "info");
-      else ui.addToast("移除失败", 1500, "error");
+    const confirmDelete = (friend: Friend) => {
+      if (confirm(`确定要删除好友 "${friend.name}" 吗？`)) {
+        const ok = friends.remove(friend.pubkey);
+        if (ok) ui.addToast("已删除", 1500, "info");
+        else ui.addToast("删除失败", 1500, "error");
+      }
     };
 
-    return { friends, pubkey, name, group, onAdd, adding, shortPub, removeFriend };
+    return {
+      friends,
+      showModal,
+      editMode,
+      formData,
+      saving,
+      startAdd,
+      startEdit,
+      closeModal,
+      saveForm,
+      confirmDelete
+    };
   }
 });
 </script>
 
 <style scoped>
-/* minimal styling - keep consistent with app styles */
-.input { width: 100%; padding:8px; border-radius:6px; border:1px solid #e2e8f0; }
-.btn { background: #1976d2; color: #fff; padding:8px 12px; border-radius:8px; border:none; cursor:pointer; }
-.card { background: #fff; padding:12px; border-radius:10px; margin-bottom:12px; box-shadow: 0 4px 10px rgba(0,0,0,0.04); }
-.small { font-size:12px; color:#64748b; }
+.friends-container {
+  position: relative;
+  padding-bottom: 80px;
+}
+
+.friend-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background: #fff;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+.friend-info {
+  flex: 1;
+}
+
+.friend-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  background: #1976d2;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn:hover {
+  opacity: 0.9;
+}
+
+.btn-edit {
+  background: #10b981;
+}
+
+.btn-delete {
+  background: #ef4444;
+}
+
+.btn-cancel {
+  background: #6b7280;
+}
+
+/* Floating Action Button */
+.fab {
+  position: fixed;
+  bottom: 80px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #1976d2;
+  color: white;
+  border: none;
+  box-shadow: 0 4px 12px rgba(25, 118, 210, 0.4);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  transition: all 0.3s ease;
+}
+
+.fab:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(25, 118, 210, 0.5);
+}
+
+.fab-icon {
+  font-size: 32px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 500px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.modal-content h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.required {
+  color: #ef4444;
+}
+
+.input {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #1976d2;
+  box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
+}
+
+.input-disabled {
+  background: #f3f4f6;
+  cursor: not-allowed;
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+.small {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.card {
+  background: #fff;
+  padding: 16px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.04);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 12px;
+}
 </style>
-```
