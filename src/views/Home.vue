@@ -573,7 +573,7 @@ export default defineComponent({
         
         // Start backfill in background (don't await) - let cached content display first
         backfillMessages(friendSet, relays).catch((e) => {
-          logger.error("Background backfill messages failed", e);
+          logger.error("Failed to backfill historical messages from relays", e);
         });
 
         const filters = { kinds: [8964], authors: Array.from(friendSet) };
@@ -638,7 +638,7 @@ export default defineComponent({
         
         // Backfill historical interactions in background (don't await)
         backfillInteractions(relays).catch((e) => {
-          logger.error("Background backfill interactions failed", e);
+          logger.error("Failed to backfill historical interactions from relays", e);
         });
         
         // Subscribe to interactions (kind 24243)
