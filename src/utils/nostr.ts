@@ -1,10 +1,10 @@
 import { SimplePool, getEventHash, signEvent, getPublicKey, generatePrivateKey, nip04 } from 'nostr-tools';
 
 /**
- * NIP-44 style broadcast group implementation (for kind=24242 messages)
+ * NIP-44 style broadcast group implementation (for kind=8964 messages)
  *
  * Key points:
- * - group messages are broadcast (kind=24242) with tag ['g', groupId]
+ * - group messages are broadcast (kind=8964) with tag ['g', groupId]
  * - group symmetric key is distributed ONCE to new members using NIP-04 (kind=4 DM)
  * - messages do NOT contain recipient pubkeys or 'p' tags (only key-distribution DMs may include ['p', ...])
  *
@@ -92,7 +92,7 @@ export class NostrService {
    * Returns: { groupId, groupKeyB64, metaEvent }
    *
    * Side-effects:
-   * - publishes optional group meta event (kind=24242, tags: ['g', groupId], content includes public meta)
+   * - publishes optional group meta event (kind=8964, tags: ['g', groupId], content includes public meta)
    * - sends one-time kind=4 DMs to memberPubkeys containing the encrypted groupKey (nip04.encrypt)
    *
    * NOTE: DM may include ['p', memberPub] tag to allow relays to deliver quickly. This tag exists ONLY
@@ -109,7 +109,7 @@ export class NostrService {
 
     // publish optional group-meta event (public metadata without members)
     const metaEvt: any = {
-      kind: 24242,
+      kind: 8964,
       created_at: Math.floor(Date.now() / 1000),
       tags: [[GROUP_TAG, groupId], ['name', groupName]],
       content: JSON.stringify({ type: 'group-meta', groupId, name: groupName, owner: ownerPub }),
@@ -181,12 +181,12 @@ export class NostrService {
    * - groupKeyB64: base64 of 32-byte key (caller must have it locally)
    * - content: plaintext string
    * - privateKey: sender's private key
-   * - kind: default 24242
+   * - kind: default 8964
    *
    * Publishes a broadcast event (no recipient pubkeys, only ['g', groupId] tag)
    */
   async publishGroupMessage(opts: { groupId: string; groupKeyB64: string; content: string; privateKey?: string; kind?: number }) {
-    const { groupId, groupKeyB64, content, privateKey, kind = 24242 } = opts;
+    const { groupId, groupKeyB64, content, privateKey, kind = 8964 } = opts;
     const sk = privateKey || generatePrivateKey();
     const pub = getPublicKey(sk);
     const keyRaw = base64ToBytes(groupKeyB64);
@@ -215,7 +215,7 @@ export class NostrService {
    */
   subscribeGroup(options: { groupId: string; authors?: string[]; onEvent: (evt: any) => void }) {
     const subId = Math.random().toString(36).slice(2, 9);
-    const filters: any = { kinds: [24242], '#g': [options.groupId] };
+    const filters: any = { kinds: [8964], '#g': [options.groupId] };
     if (options.authors && options.authors.length) filters.authors = options.authors;
     const s = this.pool.sub(RELAYS, [filters]);
     s.on('event', (evt: any) => {
@@ -235,7 +235,7 @@ export class NostrService {
 
   /**
    * tryDecryptGroupEvent
-   * - evt: event (kind=24242 with ['g', groupId])
+   * - evt: event (kind=8964 with ['g', groupId])
    * - groupKeyB64: base64 group key stored locally
    * Returns decrypted plaintext or null on failure
    */
@@ -291,7 +291,7 @@ export class NostrService {
 
     // publish a group-rotate meta event so clients can know a rotation occurred (meta does not include key)
     const meta: any = {
-      kind: 24242,
+      kind: 8964,
       created_at: Math.floor(Date.now() / 1000),
       tags: [[GROUP_TAG, groupId], ['rotated', String(Date.now())]],
       content: JSON.stringify({ type: 'group-rotate', groupId, reason: rotateReason, owner: ownerPub }),

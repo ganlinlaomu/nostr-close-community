@@ -20,7 +20,7 @@ export function subscribeToGroupWithAuthors(groupId: string, authors: string[], 
   if (!myPub || !mySk) throw new Error("请先加载本地密钥");
 
   // 构造 filter：kinds + '#g' + authors（authors 可选但强烈推荐）
-  const filters: any = { kinds: [24242], '#g': [groupId] };
+  const filters: any = { kinds: [8964], '#g': [groupId] };
   if (Array.isArray(authors) && authors.length) filters.authors = authors;
 
   // 使用全局 pool（nostr-tools SimplePool）

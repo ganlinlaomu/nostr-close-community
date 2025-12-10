@@ -499,7 +499,7 @@ export default defineComponent({
         const stats = await backfillEvents({
           relays,
           filters: {
-            kinds: [24242],
+            kinds: [8964],
             authors: Array.from(friendSet),
             since,
             until
@@ -586,7 +586,7 @@ export default defineComponent({
         // First, backfill historical messages
         await backfillMessages(friendSet, relays);
 
-        const filters = { kinds: [24242], authors: Array.from(friendSet) };
+        const filters = { kinds: [8964], authors: Array.from(friendSet) };
         status.value = "连接中";
 
         try {
