@@ -259,19 +259,24 @@ export default defineComponent({
         let since: number;
         
         // Find the last message timestamp from inbox
-        const lastMessage = msgs.inbox.length > 0 
-          ? msgs.inbox.reduce((latest, msg) => 
-              msg.created_at > latest.created_at ? msg : latest
-            )
-          : null;
+        // Inbox is sorted with newest messages first (at index 0)
+        let lastMessageTime = 0;
+        if (msgs.inbox.length > 0) {
+          // Find the newest message (highest timestamp)
+          for (const msg of msgs.inbox) {
+            if (msg.created_at > lastMessageTime) {
+              lastMessageTime = msg.created_at;
+            }
+          }
+        }
         
-        if (lastMessage && lastMessage.created_at > 0) {
-          // If there's a last message, fetch from that timestamp up to 7 days
-          since = lastMessage.created_at;
+        if (lastMessageTime > 0) {
+          // If there's a last message, fetch from that timestamp forward
+          since = lastMessageTime;
           const sevenDaysAgo = now - sevenDaysInSeconds;
           // Ensure we don't fetch more than 7 days of data
           since = Math.max(since, sevenDaysAgo);
-          logger.info(`找到最后一条消息时间: ${new Date(lastMessage.created_at * 1000).toLocaleString()}`);
+          logger.info(`找到最后一条消息时间: ${new Date(lastMessageTime * 1000).toLocaleString()}`);
           logger.info(`从该时间点开始获取最多7天的数据，从 ${new Date(since * 1000).toLocaleString()} 开始`);
         } else if (keys.loginTimestamp && keys.loginTimestamp > 0) {
           // No last message, fetch 7 days from login timestamp
