@@ -67,9 +67,7 @@
                       <span class="muted"> · {{ toLocalTime(reply.timestamp) }}</span>
                     </div>
                     <div class="comment-text">{{ reply.text }}</div>
-                    <button class="reply-btn small" @click="startReply(m.id, reply.id, displayName(reply.author))">
-                      回复
-                    </button>
+                    <!-- 不显示回复按钮，因为只支持两层评论 -->
                   </div>
                 </div>
               </div>
