@@ -123,6 +123,13 @@ import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "
 const mdImageRE = /!\[[^\]]*?\]\(\s*(https?:\/\/[^\s)]+)\s*\)/gi;
 const plainImgUrlRE = /(https?:\/\/[^\s)]+?\.(?:png|jpe?g|gif|webp|avif|svg)(?:\?[^\s)]*)?)/gi;
 
+// Constants for time calculations and pagination
+const SECONDS_PER_DAY = 24 * 60 * 60;
+const SEVEN_DAYS_IN_SECONDS = 7 * SECONDS_PER_DAY;
+const THIRTY_DAYS_IN_SECONDS = 30 * SECONDS_PER_DAY;
+const SIXTY_DAYS_IN_SECONDS = 60 * SECONDS_PER_DAY;
+const MIN_MESSAGES_FOR_LOAD_MORE = 10;
+
 export default defineComponent({
   name: "Home",
   components: { PostImagePreview },
@@ -186,8 +193,8 @@ export default defineComponent({
       // Update canLoadMore based on whether we might have more history
       // If the oldest message is less than 60 days old, suggest there might be more
       const now = Math.floor(Date.now() / 1000);
-      const sixtyDaysAgo = now - (60 * 24 * 60 * 60);
-      canLoadMore.value = oldest > sixtyDaysAgo && msgs.inbox.length >= 10;
+      const sixtyDaysAgo = now - SIXTY_DAYS_IN_SECONDS;
+      canLoadMore.value = oldest > sixtyDaysAgo && msgs.inbox.length >= MIN_MESSAGES_FOR_LOAD_MORE;
     }
 
     const toLocalTime = (ts: number) => formatRelativeTime(ts);
@@ -350,7 +357,6 @@ export default defineComponent({
     async function backfillMessages(friendSet: Set<string>, relays: string[], isLoadMore: boolean = false) {
       try {
         const now = Math.floor(Date.now() / 1000);
-        const sevenDaysInSeconds = 7 * 24 * 60 * 60;
         
         // Determine time range for backfill
         let since: number;
@@ -364,8 +370,7 @@ export default defineComponent({
           }
           until = oldestLoadedTimestamp.value - 1;
           // Fetch 30 days backward from oldest loaded message
-          const thirtyDaysInSeconds = 30 * 24 * 60 * 60;
-          since = Math.max(until - thirtyDaysInSeconds, 0);
+          since = Math.max(until - THIRTY_DAYS_IN_SECONDS, 0);
           logger.info(`加载更多消息: ${new Date(since * 1000).toLocaleString()} 到 ${new Date(until * 1000).toLocaleString()}`);
         } else {
           // Normal initial backfill
@@ -391,20 +396,18 @@ export default defineComponent({
             logger.info(`使用保存的断点: ${new Date(since * 1000).toLocaleString()}`);
           } else if (lastMessageTime > 0) {
             // Start from last message but limit to 7 days max
-            since = Math.max(lastMessageTime, now - sevenDaysInSeconds);
+            since = Math.max(lastMessageTime, now - SEVEN_DAYS_IN_SECONDS);
             logger.info(`从最后消息时间开始: ${new Date(since * 1000).toLocaleString()}`);
           } else if (keys.loginTimestamp && keys.loginTimestamp > 0 && !isNaN(keys.loginTimestamp)) {
             // No messages and no breakpoint - this could be:
             // 1. First time login (loginTimestamp is close to now)
             // 2. Returning user with cleared cache (loginTimestamp is close to now but user has history)
             // In both cases, fetch last 30 days to ensure we get history for returning users
-            const thirtyDaysInSeconds = 30 * 24 * 60 * 60;
-            since = Math.max(Math.floor(keys.loginTimestamp) - thirtyDaysInSeconds, 0);
+            since = Math.max(Math.floor(keys.loginTimestamp) - THIRTY_DAYS_IN_SECONDS, 0);
             logger.info(`完全无缓存，获取登录时间前30天的消息: ${new Date(since * 1000).toLocaleString()}`);
           } else {
             // Fallback: 30 days from now
-            const thirtyDaysInSeconds = 30 * 24 * 60 * 60;
-            since = now - thirtyDaysInSeconds;
+            since = now - THIRTY_DAYS_IN_SECONDS;
             logger.info(`使用当前时间前30天: ${new Date(since * 1000).toLocaleString()}`);
           }
         }
