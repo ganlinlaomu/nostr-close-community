@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="card">
-      <h3>信息流（时间线）</h3>
+    
       <div class="small">已自动订阅你添加的好友，实时解密可读消息</div>
       <div class="small" style="margin-top:6px;">订阅状态: {{ status }}</div>
       <div v-if="messageTimeRange" class="small" style="margin-top:4px; color: #94a3b8;">
@@ -16,7 +16,7 @@
         <span class="new-message-icon">↓</span>
       </div>
       
-      <h4 style="margin: 0 0 12px 0;">消息</h4>
+      <h4 style="margin: 0 0 12px 0;">好友动态</h4>
       <div v-if="displayedMessages.length === 0" class="small">还没有消息</div>
       <div class="list">
         <div v-for="m in displayedMessages" :key="m.id" class="card">
