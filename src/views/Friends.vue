@@ -7,7 +7,7 @@
     <div v-else-if="friends.syncError" class="sync-status error">
       <span class="sync-icon">⚠</span> 同步失败: {{ friends.syncError }}
     </div>
-    <div v-else-if="friends.lastSyncTimestamp > 0" class="sync-status success">
+    <div v-else-if="friends.lastSyncTimestamp > 0 && showSyncSuccess" class="sync-status success" :class="{ 'fade-out': isFadingOut }">
       <span class="sync-icon">✓</span> 已同步
     </div>
 
@@ -101,7 +101,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted } from "vue";
+import { defineComponent, ref, onMounted, onBeforeUnmount, watch } from "vue";
 import { useFriendsStore, Friend } from "@/stores/friends";
 import { useUIStore } from "@/stores/ui";
 import { useKeyStore } from "@/stores/keys";
@@ -116,6 +116,10 @@ export default defineComponent({
     const showModal = ref(false);
     const editMode = ref(false);
     const saving = ref(false);
+    const showSyncSuccess = ref(false);
+    const isFadingOut = ref(false);
+    let hideTimeout: ReturnType<typeof setTimeout> | null = null;
+    let fadeTimeout: ReturnType<typeof setTimeout> | null = null;
     
     const formData = ref({
       pubkey: "",
@@ -124,8 +128,51 @@ export default defineComponent({
       originalPubkey: "" // for edit mode
     });
 
+    // Watch for sync completion to show/hide success message
+    watch(() => friends.lastSyncTimestamp, (newVal, oldVal) => {
+      if (newVal > 0 && newVal !== oldVal && !friends.syncing && !friends.syncError) {
+        // Clear any existing timeouts
+        if (hideTimeout) {
+          clearTimeout(hideTimeout);
+          hideTimeout = null;
+        }
+        if (fadeTimeout) {
+          clearTimeout(fadeTimeout);
+          fadeTimeout = null;
+        }
+        
+        // Show the success message
+        showSyncSuccess.value = true;
+        isFadingOut.value = false;
+        
+        // Start fade-out after 3 seconds
+        hideTimeout = setTimeout(() => {
+          isFadingOut.value = true;
+          // Hide completely after fade-out animation (0.5s)
+          fadeTimeout = setTimeout(() => {
+            showSyncSuccess.value = false;
+            isFadingOut.value = false;
+            fadeTimeout = null;
+          }, 500);
+          hideTimeout = null;
+        }, 3000);
+      }
+    });
+
     onMounted(async () => {
       await friends.load();
+    });
+
+    onBeforeUnmount(() => {
+      // Clean up timeouts to prevent memory leaks
+      if (hideTimeout) {
+        clearTimeout(hideTimeout);
+        hideTimeout = null;
+      }
+      if (fadeTimeout) {
+        clearTimeout(fadeTimeout);
+        fadeTimeout = null;
+      }
     });
 
     const startAdd = () => {
@@ -272,6 +319,8 @@ export default defineComponent({
       editMode,
       formData,
       saving,
+      showSyncSuccess,
+      isFadingOut,
       startAdd,
       startEdit,
       closeModal,
@@ -297,6 +346,11 @@ export default defineComponent({
   display: flex;
   align-items: center;
   gap: 8px;
+  transition: opacity 0.5s ease-out;
+}
+
+.sync-status.fade-out {
+  opacity: 0;
 }
 
 .sync-status.syncing {

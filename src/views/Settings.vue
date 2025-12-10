@@ -7,7 +7,7 @@
     <div v-else-if="settings.syncError" class="sync-status error">
       <span class="sync-icon">⚠</span> 同步失败: {{ settings.syncError }}
     </div>
-    <div v-else-if="settings.lastSyncTimestamp > 0" class="sync-status success">
+    <div v-else-if="settings.lastSyncTimestamp > 0 && showSyncSuccess" class="sync-status success" :class="{ 'fade-out': isFadingOut }">
       <span class="sync-icon">✓</span> 已同步
     </div>
 
@@ -153,7 +153,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, reactive, onMounted, computed } from "vue";
+import { defineComponent, ref, reactive, onMounted, onBeforeUnmount, computed, watch } from "vue";
 import { DEFAULT_RELAYS, getRelaysFromStorage, inspectRelays, reconnectRelay } from "@/nostr/relays";
 import { useKeyStore } from "@/stores/keys";
 import { useSettingsStore, type BlossomServer } from "@/stores/settings";
@@ -167,6 +167,12 @@ export default defineComponent({
     const ui = useUIStore();
     const shortPk = computed(() => (ks.pkHex ? ks.pkHex.slice(0, 8) + "..." : ""));
 
+    // Sync success message state
+    const showSyncSuccess = ref(false);
+    const isFadingOut = ref(false);
+    let hideTimeout: ReturnType<typeof setTimeout> | null = null;
+    let fadeTimeout: ReturnType<typeof setTimeout> | null = null;
+
     // Relay management
     const newRelay = ref("");
     const statuses = reactive<Record<string, any>>({});
@@ -178,6 +184,37 @@ export default defineComponent({
     const editingBlossom = ref<number | null>(null);
     const editedBlossomUrl = ref("");
     const editedBlossomToken = ref("");
+
+    // Watch for sync completion to show/hide success message
+    watch(() => settings.lastSyncTimestamp, (newVal, oldVal) => {
+      if (newVal > 0 && newVal !== oldVal && !settings.syncing && !settings.syncError) {
+        // Clear any existing timeouts
+        if (hideTimeout) {
+          clearTimeout(hideTimeout);
+          hideTimeout = null;
+        }
+        if (fadeTimeout) {
+          clearTimeout(fadeTimeout);
+          fadeTimeout = null;
+        }
+        
+        // Show the success message
+        showSyncSuccess.value = true;
+        isFadingOut.value = false;
+        
+        // Start fade-out after 3 seconds
+        hideTimeout = setTimeout(() => {
+          isFadingOut.value = true;
+          // Hide completely after fade-out animation (0.5s)
+          fadeTimeout = setTimeout(() => {
+            showSyncSuccess.value = false;
+            isFadingOut.value = false;
+            fadeTimeout = null;
+          }, 500);
+          hideTimeout = null;
+        }, 3000);
+      }
+    });
 
     function shortRelay(u: string) {
       return u.replace(/^wss?:\/\//, "").replace(/\/$/, "");
@@ -419,6 +456,18 @@ export default defineComponent({
       };
     });
 
+    onBeforeUnmount(() => {
+      // Clean up timeouts to prevent memory leaks
+      if (hideTimeout) {
+        clearTimeout(hideTimeout);
+        hideTimeout = null;
+      }
+      if (fadeTimeout) {
+        clearTimeout(fadeTimeout);
+        fadeTimeout = null;
+      }
+    });
+
     return {
       shortPk,
       newRelay,
@@ -446,7 +495,9 @@ export default defineComponent({
       reconnect,
       doLogout,
       settings,
-      manualSync
+      manualSync,
+      showSyncSuccess,
+      isFadingOut
     };
   }
 });
@@ -461,6 +512,11 @@ export default defineComponent({
   display: flex;
   align-items: center;
   gap: 8px;
+  transition: opacity 0.5s ease-out;
+}
+
+.sync-status.fade-out {
+  opacity: 0;
 }
 
 .sync-status.syncing {
