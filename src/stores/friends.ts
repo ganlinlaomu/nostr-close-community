@@ -260,16 +260,16 @@ export const useFriendsStore = defineStore("friends", {
         let receivedEose = false;
 
         return new Promise<boolean>((resolve) => {
+          const sub = subscribe(relays, [filters]);
+          
           const timeoutId = setTimeout(() => {
-            if (sub) sub.unsub();
+            sub.unsub();
             if (!latestEvent) {
               logger.info("No friend list found on relays (timeout)");
               this.syncing = false;
               resolve(false);
             }
           }, 5000); // 5 second timeout
-
-          const sub = subscribe(relays, [filters]);
 
           sub.on("event", (evt: any) => {
             if (!latestEvent || evt.created_at > latestEvent.created_at) {
