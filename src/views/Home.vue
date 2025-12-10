@@ -307,12 +307,16 @@ export default defineComponent({
         let notForMe = 0;
         let parseErrors = 0;
         let decryptErrors = 0;
+        let notFromFriends = 0;
         
         // Process event and decrypt
         const processEvent = async (evt: any) => {
           fetchedEvents++;
           try {
-            if (!friendSet.has(evt.pubkey)) return;
+            if (!friendSet.has(evt.pubkey)) {
+              notFromFriends++;
+              return;
+            }
             
             let payload: any;
             try { 
@@ -382,6 +386,7 @@ export default defineComponent({
               `获取: ${fetchedEvents} 条`,
               `解密成功: ${decryptedEvents} 条`,
             ];
+            if (notFromFriends > 0) summary.push(`非好友: ${notFromFriends} 条`);
             if (notForMe > 0) summary.push(`非自己: ${notForMe} 条`);
             if (parseErrors > 0) summary.push(`解析失败: ${parseErrors} 条`);
             if (decryptErrors > 0) summary.push(`解密失败: ${decryptErrors} 条`);
