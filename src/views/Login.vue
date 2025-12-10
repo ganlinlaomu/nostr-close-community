@@ -4,7 +4,7 @@
       <h1 class="title">STAY</h1>
 
       <div class="login-info">
-        <p>與家人同在</p>
+        <p>與家人同樂</p>
       </div>
 
       <div class="login-actions">
@@ -52,8 +52,8 @@
 
       <!-- Help Text -->
       <div class="help-text" style="margin-top:24px;">
-      // <p><strong>浏览器插件登录</strong>: 使用如 Alby, nos2x, Flamingo 等 Nostr 浏览器扩展</p> 
-       // <p><strong>远程签名器</strong>: 使用如 nsec.app 等支持 NIP-46 的远程签名服务</p>
+      
+       
       </div>
     </div>
   </div>
