@@ -239,6 +239,8 @@ export default defineComponent({
       const comment = allComments.find((c: any) => c.id === commentId);
       if (comment) {
         replyingToAuthor.value[messageId] = comment.author;
+      } else {
+        logger.warn("Could not find comment to reply to", { messageId, commentId });
       }
       
       // Focus input after state update
