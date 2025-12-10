@@ -6,10 +6,10 @@
       <div class="icon">🏠</div>
       <div class="label">首页</div>
     </router-link>
-    <router-link class="nav-item" to="/post">
+    <a class="nav-item" @click.prevent="handlePostClick">
       <div class="icon">✍️</div>
       <div class="label">发帖</div>
-    </router-link>
+    </a>
     <router-link class="nav-item" to="/friends">
       <div class="icon">👥</div>
       <div class="label">好友</div>
@@ -24,14 +24,21 @@
 <script lang="ts">
 import { defineComponent, computed } from "vue";
 import { useKeyStore } from "@/stores/keys";
+import { useUIStore } from "@/stores/ui";
 
 export default defineComponent({
   name: "Headbar",
   setup() {
     const keys = useKeyStore();
+    const ui = useUIStore();
     const isLoggedIn = computed(() => !!keys.pkHex);
     const shortPk = computed(() => (keys.pkHex ? keys.pkHex.slice(0, 8) + "..." : ""));
-    return { isLoggedIn, shortPk };
+    
+    function handlePostClick() {
+      ui.openPostEditor();
+    }
+    
+    return { isLoggedIn, shortPk, handlePostClick };
   }
 });
 </script>

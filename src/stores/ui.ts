@@ -27,5 +27,15 @@ export const useUIStore = defineStore("ui", () => {
     if (idx !== -1) toasts.value.splice(idx, 1);
   }
 
-  return { toasts, addToast, removeToast };
+  const showPostEditor = ref(false);
+
+  function openPostEditor() {
+    showPostEditor.value = true;
+  }
+
+  function closePostEditor() {
+    showPostEditor.value = false;
+  }
+
+  return { toasts, addToast, removeToast, showPostEditor, openPostEditor, closePostEditor };
 });
