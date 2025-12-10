@@ -301,8 +301,16 @@ export default defineComponent({
         
         status.value = "获取历史消息中...";
         
+        // Track decryption statistics
+        let fetchedEvents = 0;
+        let decryptedEvents = 0;
+        let notForMe = 0;
+        let parseErrors = 0;
+        let decryptErrors = 0;
+        
         // Process event and decrypt
         const processEvent = async (evt: any) => {
+          fetchedEvents++;
           try {
             if (!friendSet.has(evt.pubkey)) return;
             
@@ -310,35 +318,49 @@ export default defineComponent({
             try { 
               payload = JSON.parse(evt.content); 
             } catch { 
+              parseErrors++;
+              logger.warn(`事件 ${evt.id?.slice(0,8)} 解析失败: 无效的JSON`);
               return; 
             }
             
-            if (!payload?.keys || !payload?.pkg) return;
+            if (!payload?.keys || !payload?.pkg) {
+              parseErrors++;
+              return;
+            }
             
             const myEntry = payload.keys.find((k: any) => k.to === keys.pkHex);
-            if (!myEntry) return;
+            if (!myEntry) {
+              notForMe++;
+              return;
+            }
             
             let symHex: string | null = null;
             try {
               symHex = await keys.nip04Decrypt(evt.pubkey, myEntry.enc);
             } catch (e) {
-              logger.warn("nip04.decrypt failed", e);
+              logger.warn(`事件 ${evt.id?.slice(0,8)} NIP-04解密失败，尝试备用方案`, e);
               // Fallback: check if enc is already a hex key
               if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
                 symHex = myEntry.enc;
+                logger.info(`事件 ${evt.id?.slice(0,8)} 使用备用hex key`);
               } else {
+                decryptErrors++;
                 return;
               }
             }
             
             try {
               const plain = await symDecryptPackage(symHex, payload.pkg);
-              addMessageIfNew(evt, plain);
+              const added = addMessageIfNew(evt, plain);
+              if (added) {
+                decryptedEvents++;
+              }
             } catch (e) {
-              logger.warn("symDecryptPackage failed", e);
+              decryptErrors++;
+              logger.warn(`事件 ${evt.id?.slice(0,8)} 对称解密失败`, e);
             }
           } catch (e) {
-            logger.warn("处理回填事件失败", e);
+            logger.error("处理回填事件失败", e);
           }
         };
         
@@ -353,13 +375,28 @@ export default defineComponent({
           },
           onEvent: processEvent,
           onProgress: (stats) => {
-            status.value = `获取中: ${stats.totalEvents} 条消息`;
+            status.value = `获取中: ${stats.totalEvents} 条事件`;
           },
           onComplete: (stats) => {
-            logger.info(`回填完成: ${stats.totalEvents} 条消息`);
-            status.value = stats.totalEvents > 0 
-              ? `获取到 ${stats.totalEvents} 条消息` 
-              : "已是最新";
+            const summary = [
+              `获取: ${fetchedEvents} 条`,
+              `解密成功: ${decryptedEvents} 条`,
+            ];
+            if (notForMe > 0) summary.push(`非自己: ${notForMe} 条`);
+            if (parseErrors > 0) summary.push(`解析失败: ${parseErrors} 条`);
+            if (decryptErrors > 0) summary.push(`解密失败: ${decryptErrors} 条`);
+            
+            const summaryText = summary.join(', ');
+            logger.info(`回填完成: ${summaryText}`);
+            
+            if (decryptedEvents > 0) {
+              status.value = `获取成功 ${decryptedEvents} 条消息`;
+            } else if (fetchedEvents > 0) {
+              status.value = `获取了 ${fetchedEvents} 条事件但无法解密`;
+              logger.warn(`回填获取了事件但全部解密失败。可能原因: 1) 事件不是发给自己的 2) 密钥不匹配 3) 数据格式错误`);
+            } else {
+              status.value = "已是最新";
+            }
             
             // Save breakpoint for next time (use current time)
             saveBackfillBreakpoint(breakpointKey, now);
@@ -426,7 +463,12 @@ export default defineComponent({
             try {
               if (!friendSet.has(evt.pubkey)) return;
               let payload: any;
-              try { payload = JSON.parse(evt.content); } catch { return; }
+              try { 
+                payload = JSON.parse(evt.content); 
+              } catch { 
+                logger.warn(`实时事件 ${evt.id?.slice(0,8)} JSON解析失败`);
+                return; 
+              }
               if (!payload?.keys || !payload?.pkg) return;
               const myEntry = payload.keys.find((k: any) => k.to === keys.pkHex);
               if (!myEntry) return;
@@ -434,7 +476,7 @@ export default defineComponent({
               try {
                 symHex = await keys.nip04Decrypt(evt.pubkey, myEntry.enc);
               } catch (e) {
-                logger.warn("nip04.decrypt failed", e);
+                logger.warn(`实时事件 ${evt.id?.slice(0,8)} NIP-04解密失败，尝试备用方案`, e);
                 if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
                   symHex = myEntry.enc;
                 } else {
@@ -445,7 +487,7 @@ export default defineComponent({
                 const plain = await symDecryptPackage(symHex, payload.pkg);
                 addMessageIfNew(evt, plain);
               } catch (e) {
-                logger.warn("symDecryptPackage failed", e);
+                logger.warn(`实时事件 ${evt.id?.slice(0,8)} 对称解密失败`, e);
               }
             } catch (e) {
               logger.warn("handle event fail", e);
