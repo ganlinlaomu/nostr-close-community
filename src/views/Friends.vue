@@ -1,8 +1,29 @@
 <template>
   <div class="friends-container">
+    <!-- Sync Status Bar -->
+    <div v-if="friends.syncing" class="sync-status syncing">
+      <span class="sync-icon">⟳</span> 同步中...
+    </div>
+    <div v-else-if="friends.syncError" class="sync-status error">
+      <span class="sync-icon">⚠</span> 同步失败: {{ friends.syncError }}
+    </div>
+    <div v-else-if="friends.lastSyncTimestamp > 0" class="sync-status success">
+      <span class="sync-icon">✓</span> 已同步
+    </div>
+
     <!-- Friend List -->
     <div class="card">
-      <h3>好友列表（{{ friends.sortedList.length }}）</h3>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h3 style="margin: 0;">好友列表（{{ friends.sortedList.length }}）</h3>
+        <button 
+          class="btn btn-sync" 
+          @click="manualSync"
+          :disabled="friends.syncing"
+          title="手动同步到中继服务器"
+        >
+          <span :class="{ 'spin': friends.syncing }">⟳</span> 同步
+        </button>
+      </div>
       <div v-if="friends.sortedList.length === 0" class="small">还没有好友</div>
       <div class="list" v-else>
         <div v-for="f in friends.sortedList" :key="f.pubkey" class="friend-item">
@@ -226,6 +247,25 @@ export default defineComponent({
       }
     };
 
+    const manualSync = async () => {
+      if (!keys.isLoggedIn) {
+        ui.addToast("请先登录", 2000, "error");
+        return;
+      }
+      
+      try {
+        const success = await friends.publishToRelays();
+        if (success) {
+          ui.addToast("同步成功", 2000, "success");
+        } else {
+          ui.addToast("同步失败，请检查网络和中继设置", 3000, "error");
+        }
+      } catch (e) {
+        console.error("Manual sync error:", e);
+        ui.addToast("同步出错", 2000, "error");
+      }
+    };
+
     return {
       friends,
       showModal,
@@ -236,7 +276,8 @@ export default defineComponent({
       startEdit,
       closeModal,
       saveForm,
-      confirmDelete
+      confirmDelete,
+      manualSync
     };
   }
 });
@@ -246,6 +287,46 @@ export default defineComponent({
 .friends-container {
   position: relative;
   padding-bottom: 80px;
+}
+
+.sync-status {
+  padding: 10px 16px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sync-status.syncing {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.sync-status.success {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.sync-status.error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.sync-icon {
+  font-size: 16px;
+  font-weight: bold;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  display: inline-block;
+  animation: spin 1s linear infinite;
 }
 
 .friend-item {
@@ -292,6 +373,17 @@ export default defineComponent({
 
 .btn-cancel {
   background: #6b7280;
+}
+
+.btn-sync {
+  background: #10b981;
+  font-size: 13px;
+  padding: 6px 12px;
+}
+
+.btn-sync:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* Floating Action Button */
