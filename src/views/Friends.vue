@@ -254,11 +254,11 @@ export default defineComponent({
       }
       
       try {
-        const success = await friends.publishToRelays();
-        if (success) {
-          ui.addToast("同步成功", 2000, "success");
+        await friends.syncWithRelays();
+        if (friends.syncError) {
+          ui.addToast(`同步失败: ${friends.syncError}`, 3000, "error");
         } else {
-          ui.addToast("同步失败，请检查网络和中继设置", 3000, "error");
+          ui.addToast("同步成功", 2000, "success");
         }
       } catch (e) {
         console.error("Manual sync error:", e);
