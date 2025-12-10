@@ -650,8 +650,6 @@ export default defineComponent({
   flex-direction: column;
   gap: 8px;
   margin-bottom: 12px;
-  max-height: 300px;
-  overflow-y: auto;
 }
 
 .comment-item {
