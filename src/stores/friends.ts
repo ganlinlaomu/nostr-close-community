@@ -85,6 +85,7 @@ export const useFriendsStore = defineStore("friends", {
         // If NIP-04 is supported, fetch from relays to compare with local data
         if (ks.isLoggedIn && ks.supportsNip04) {
           const relayFetched = await this.fetchFromRelays();
+          const relayTimestamp = this.lastSyncTimestamp; // Store relay timestamp after fetch
           
           if (relayFetched) {
             // We got data from relay
@@ -92,13 +93,13 @@ export const useFriendsStore = defineStore("friends", {
               // No local data or empty local data, use relay data
               logger.info("Using relay data (no local data)");
               return;
-            } else if (this.lastSyncTimestamp > localData.lastSyncTimestamp) {
+            } else if (relayTimestamp > localData.lastSyncTimestamp) {
               // Relay data is newer, already loaded by fetchFromRelays
-              logger.info(`Using relay data (newer: ${this.lastSyncTimestamp} > ${localData.lastSyncTimestamp})`);
+              logger.info(`Using relay data (newer: ${relayTimestamp} > ${localData.lastSyncTimestamp})`);
               return;
-            } else if (this.lastSyncTimestamp < localData.lastSyncTimestamp) {
+            } else if (relayTimestamp < localData.lastSyncTimestamp) {
               // Local data is newer, restore local and publish to relay
-              logger.info(`Using local data (newer: ${localData.lastSyncTimestamp} > ${this.lastSyncTimestamp})`);
+              logger.info(`Using local data (newer: ${localData.lastSyncTimestamp} > ${relayTimestamp})`);
               this.list = localData.list;
               this.lastSyncTimestamp = localData.lastSyncTimestamp;
               // Publish local data to relay since it's newer
@@ -440,15 +441,16 @@ export const useFriendsStore = defineStore("friends", {
         
         // Fetch from relays
         const relayFetched = await this.fetchFromRelays();
+        const relayTimestamp = this.lastSyncTimestamp; // Store relay timestamp after fetch
         
         if (relayFetched) {
           // Got data from relay, compare timestamps
-          if (this.lastSyncTimestamp >= localTimestamp) {
+          if (relayTimestamp >= localTimestamp) {
             // Relay data is newer or equal, already loaded by fetchFromRelays
             logger.info("Sync: Using relay data (newer or equal)");
             this.save();
-          } else if (localList.length > 0) {
-            // Local data is newer, restore and publish
+          } else if (localTimestamp > 0 && localList.length > 0) {
+            // Local data is newer and valid, restore and publish
             logger.info("Sync: Local data is newer, publishing to relay");
             this.list = localList;
             this.lastSyncTimestamp = localTimestamp;
