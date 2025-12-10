@@ -10,20 +10,16 @@
     </div>
 
     <div class="card">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-        <h4 style="margin: 0;">消息</h4>
-        <button 
-          v-if="canLoadMore" 
-          class="load-more-btn" 
-          @click="loadMoreMessages"
-          :disabled="isLoadingMore"
-        >
-          {{ isLoadingMore ? '加载中...' : '加载更早的消息' }}
-        </button>
+      <!-- New message notification banner -->
+      <div v-if="newMessageCount > 0" class="new-message-banner" @click="showNewMessages">
+        <span class="new-message-text">{{ newMessageCount }} 条新消息</span>
+        <span class="new-message-icon">↓</span>
       </div>
-      <div v-if="messages.length === 0" class="small">还没有消息</div>
+      
+      <h4 style="margin: 0 0 12px 0;">消息</h4>
+      <div v-if="displayedMessages.length === 0" class="small">还没有消息</div>
       <div class="list">
-        <div v-for="m in messages" :key="m.id" class="card">
+        <div v-for="m in displayedMessages" :key="m.id" class="card">
           <div class="small">
             {{ displayName(m.pubkey) }}
             <span class="muted"> · {{ toLocalTime(m.created_at) }}</span>
@@ -123,14 +119,9 @@ import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "
 const mdImageRE = /!\[[^\]]*?\]\(\s*(https?:\/\/[^\s)]+)\s*\)/gi;
 const plainImgUrlRE = /(https?:\/\/[^\s)]+?\.(?:png|jpe?g|gif|webp|avif|svg)(?:\?[^\s)]*)?)/gi;
 
-// Constants for time calculations and pagination
+// Constants for time calculations
 const SECONDS_PER_DAY = 24 * 60 * 60;
-const SEVEN_DAYS_IN_SECONDS = 7 * SECONDS_PER_DAY;
-const THIRTY_DAYS_IN_SECONDS = 30 * SECONDS_PER_DAY;
-const SIXTY_DAYS_IN_SECONDS = 60 * SECONDS_PER_DAY;
-const MIN_MESSAGES_FOR_LOAD_MORE = 10;
-const MAX_BATCHES_LOAD_MORE = 10;
-const MAX_BATCHES_INITIAL = 20;
+const THREE_DAYS_IN_SECONDS = 3 * SECONDS_PER_DAY;
 
 export default defineComponent({
   name: "Home",
@@ -146,6 +137,9 @@ export default defineComponent({
     let interactionsSub: any = null;
 
     const messagesRef = ref([] as any[]);
+    const displayedMessages = ref([] as any[]);
+    const newMessageCount = ref(0);
+    const initialLoadComplete = ref(false);
     
     // State for comments UI
     const showingComments = ref<Set<string>>(new Set());
@@ -153,28 +147,40 @@ export default defineComponent({
     const replyingTo = ref<Record<string, string>>({}); // messageId -> commentId being replied to
     const replyingToAuthor = ref<Record<string, string>>({}); // messageId -> author pubkey of comment being replied to
     
-    // State for pagination
-    const canLoadMore = ref(false);
-    const isLoadingMore = ref(false);
-    const oldestLoadedTimestamp = ref<number>(0);
-    const newestLoadedTimestamp = ref<number>(0);
+    // State for message time range display
     const messageTimeRange = ref<string>("");
+    
+    function showNewMessages() {
+      // Move all messages to displayed messages
+      displayedMessages.value = [...messagesRef.value];
+      newMessageCount.value = 0;
+    }
 
     function updateLocalRefs() {
       messagesRef.value = msgs.inbox;
+      
+      if (!initialLoadComplete.value) {
+        // Initial load - show all messages
+        displayedMessages.value = [...msgs.inbox];
+        initialLoadComplete.value = true;
+      } else {
+        // After initial load - count new messages but don't display
+        const currentDisplayedIds = new Set(displayedMessages.value.map(m => m.id));
+        const newMessages = msgs.inbox.filter(m => !currentDisplayedIds.has(m.id));
+        newMessageCount.value = newMessages.length;
+      }
+      
       updateMessageTimeRange();
     }
     
     function updateMessageTimeRange() {
-      if (msgs.inbox.length === 0) {
+      if (displayedMessages.value.length === 0) {
         messageTimeRange.value = "";
-        oldestLoadedTimestamp.value = 0;
-        newestLoadedTimestamp.value = 0;
         return;
       }
       
-      // Calculate oldest and newest in a single pass for better performance
-      const { oldest, newest } = msgs.inbox.reduce((acc, msg) => {
+      // Calculate oldest and newest in displayed messages
+      const { oldest, newest } = displayedMessages.value.reduce((acc, msg) => {
         const ts = msg?.created_at || 0;
         if (ts > 0) {
           if (acc.oldest === 0 || ts < acc.oldest) {
@@ -187,21 +193,11 @@ export default defineComponent({
         return acc;
       }, { oldest: 0, newest: 0 });
       
-      oldestLoadedTimestamp.value = oldest;
-      newestLoadedTimestamp.value = newest;
-      
       if (oldest > 0 && newest > 0) {
         const oldestDate = new Date(oldest * 1000);
         const newestDate = new Date(newest * 1000);
         messageTimeRange.value = `${oldestDate.toLocaleDateString('zh-CN')} - ${newestDate.toLocaleDateString('zh-CN')}`;
       }
-      
-      // Update canLoadMore based on whether we might have more history
-      // If the oldest message is less than 60 days old and we have enough messages, suggest there might be more
-      const now = Math.floor(Date.now() / 1000);
-      const sixtyDaysAgo = now - SIXTY_DAYS_IN_SECONDS;
-      // Only show load more if we have valid timestamps and meet the criteria
-      canLoadMore.value = oldest > 0 && oldest > sixtyDaysAgo && msgs.inbox.length >= MIN_MESSAGES_FOR_LOAD_MORE;
     }
 
     const toLocalTime = (ts: number) => formatRelativeTime(ts);
@@ -338,90 +334,37 @@ export default defineComponent({
       return interactions.getCommentCount(messageId);
     }
     
-    async function loadMoreMessages() {
-      if (isLoadingMore.value || !canLoadMore.value) return;
-      
-      isLoadingMore.value = true;
-      try {
-        const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
-        if (keys.pkHex) friendSet.add(keys.pkHex);
-        
-        if (friendSet.size === 0) {
-          logger.warn("无法加载更多: 好友列表为空");
-          return;
-        }
-        
-        const relays = getRelaysFromStorage();
-        await backfillMessages(friendSet, relays, true);
-      } catch (e) {
-        logger.error("加载更多消息失败", e);
-        status.value = "加载失败";
-      } finally {
-        isLoadingMore.value = false;
-      }
-    }
-
-    async function backfillMessages(friendSet: Set<string>, relays: string[], isLoadMore: boolean = false) {
+    async function backfillMessages(friendSet: Set<string>, relays: string[]) {
       try {
         const now = Math.floor(Date.now() / 1000);
         
-        // Determine time range for backfill
+        // Determine time range for backfill - always use 3-day window
         let since: number;
-        let until: number;
+        let until: number = now;
         
-        if (isLoadMore) {
-          // For "Load More", fetch older messages
-          if (oldestLoadedTimestamp.value === 0) {
-            logger.warn("无法加载更多: 没有最早消息时间戳");
-            status.value = "无法加载更多消息";
-            return;
-          }
-          // Use the same timestamp to ensure no gaps (relay will return messages <= until)
-          until = oldestLoadedTimestamp.value;
-          // Fetch 30 days backward from oldest loaded message
-          since = Math.max(until - THIRTY_DAYS_IN_SECONDS, 0);
-          logger.info(`加载更多消息: ${new Date(since * 1000).toLocaleString()} 到 ${new Date(until * 1000).toLocaleString()}`);
-        } else {
-          // Normal initial backfill
-          until = now;
-          
-          // Check for existing breakpoint
-          const breakpointKey = `messages_${keys.pkHex}`;
-          const savedBreakpoint = loadBackfillBreakpoint(breakpointKey);
-          
-          // Find the newest message timestamp from inbox
-          let lastMessageTime = 0;
-          if (msgs.inbox.length > 0) {
-            lastMessageTime = msgs.inbox.reduce((max, msg) => {
-              const timestamp = msg?.created_at || 0;
-              return Math.max(max, timestamp);
-            }, 0);
-          }
-          
-          // Determine since time based on available information
-          if (savedBreakpoint && savedBreakpoint > 0) {
-            // Use saved breakpoint for incremental fetch
-            since = savedBreakpoint;
-            logger.info(`使用保存的断点: ${new Date(since * 1000).toLocaleString()}`);
-          } else if (lastMessageTime > 0) {
-            // Start from last message but limit to 7 days max
-            since = Math.max(lastMessageTime, now - SEVEN_DAYS_IN_SECONDS);
-            logger.info(`从最后消息时间开始: ${new Date(since * 1000).toLocaleString()}`);
-          } else if (keys.loginTimestamp && keys.loginTimestamp > 0 && !isNaN(keys.loginTimestamp)) {
-            // No messages and no breakpoint - this could be:
-            // 1. First time login (loginTimestamp is close to now)
-            // 2. Returning user with cleared cache (loginTimestamp is close to now but user has history)
-            // In both cases, fetch last 30 days to ensure we get history for returning users
-            since = Math.max(Math.floor(keys.loginTimestamp) - THIRTY_DAYS_IN_SECONDS, 0);
-            logger.info(`完全无缓存，获取登录时间前30天的消息: ${new Date(since * 1000).toLocaleString()}`);
-          } else {
-            // Fallback: 30 days from now
-            since = now - THIRTY_DAYS_IN_SECONDS;
-            logger.info(`使用当前时间前30天: ${new Date(since * 1000).toLocaleString()}`);
-          }
+        // Find the newest message timestamp from inbox
+        let lastMessageTime = 0;
+        if (msgs.inbox.length > 0) {
+          lastMessageTime = msgs.inbox.reduce((max, msg) => {
+            const timestamp = msg?.created_at || 0;
+            return Math.max(max, timestamp);
+          }, 0);
         }
         
-        status.value = isLoadMore ? "加载更早的消息..." : "获取历史消息中...";
+        // Check if we have messages and if the last message is within 3 days
+        const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
+        
+        if (lastMessageTime > 0 && lastMessageTime >= threeDaysAgo) {
+          // Have messages within 3 days - fetch messages newer than last message, within 3 days
+          since = lastMessageTime;
+          logger.info(`有三天内的消息，拉取晚于最后一条消息的三天内信息: ${new Date(since * 1000).toLocaleString()}`);
+        } else {
+          // No messages or last message is older than 3 days - fetch last 3 days
+          since = threeDaysAgo;
+          logger.info(`无三天内消息，拉取最近三天的事件: ${new Date(since * 1000).toLocaleString()}`);
+        }
+        
+        status.value = "获取历史消息中...";
         
         // Track decryption statistics
         let fetchedEvents = 0;
@@ -522,33 +465,28 @@ export default defineComponent({
             logger.info(`回填完成: ${summaryText}`);
             
             if (decryptedEvents > 0) {
-              status.value = isLoadMore 
-                ? `加载了 ${decryptedEvents} 条历史消息`
-                : `获取成功 ${decryptedEvents} 条消息`;
+              status.value = `获取成功 ${decryptedEvents} 条消息`;
             } else if (fetchedEvents > 0) {
               status.value = `获取了 ${fetchedEvents} 条事件但无法解密`;
               logger.warn(`回填获取了事件但全部解密失败。可能原因: 1) 事件不是发给自己的 2) 密钥不匹配 3) 数据格式错误`);
             } else {
-              status.value = isLoadMore ? "没有更早的消息" : "已是最新";
+              status.value = "已是最新";
             }
             
             // Save breakpoint for next time
-            // Use the newest message timestamp we received, or keep the old breakpoint
-            if (!isLoadMore) {
-              const breakpointKey = `messages_${keys.pkHex}`;
-              if (newestTimestamp > 0) {
-                // Save the timestamp of the newest message we received
-                saveBackfillBreakpoint(breakpointKey, newestTimestamp);
-                logger.info(`保存新断点: ${new Date(newestTimestamp * 1000).toLocaleString()}`);
-              } else {
-                // No new messages, save current time as breakpoint
-                saveBackfillBreakpoint(breakpointKey, now);
-              }
+            const breakpointKey = `messages_${keys.pkHex}`;
+            if (newestTimestamp > 0) {
+              // Save the timestamp of the newest message we received
+              saveBackfillBreakpoint(breakpointKey, newestTimestamp);
+              logger.info(`保存新断点: ${new Date(newestTimestamp * 1000).toLocaleString()}`);
+            } else {
+              // No new messages, save current time as breakpoint
+              saveBackfillBreakpoint(breakpointKey, now);
             }
           },
           batchSize: 1000, // Increased batch size for more efficient fetching
           authorBatchSize: 50,
-          maxBatches: isLoadMore ? MAX_BATCHES_LOAD_MORE : MAX_BATCHES_INITIAL,
+          maxBatches: 20,
           timeoutMs: 10000
         });
         
@@ -683,7 +621,9 @@ export default defineComponent({
     });
 
     return { 
-      messages: messagesRef, 
+      displayedMessages,
+      newMessageCount,
+      showNewMessages,
       toLocalTime, 
       shortPub, 
       status, 
@@ -706,10 +646,6 @@ export default defineComponent({
       getReplies,
       replyingTo,
       replyingToAuthor,
-      // Pagination
-      canLoadMore,
-      isLoadingMore,
-      loadMoreMessages,
       messageTimeRange
     };
   }
@@ -730,26 +666,44 @@ export default defineComponent({
   max-width: 100%;
 }
 
-.load-more-btn {
-  background: #f8fafc;
+.new-message-banner {
+  background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%);
   color: #1976d2;
-  border: 1px solid #e2e8f0;
-  padding: 6px 12px;
-  border-radius: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  margin-bottom: 12px;
   cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   font-size: 13px;
+  font-weight: 500;
   transition: all 0.2s;
-  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(25, 118, 210, 0.1);
 }
 
-.load-more-btn:hover:not(:disabled) {
-  background: #e0f2fe;
-  border-color: #1976d2;
+.new-message-banner:hover {
+  background: linear-gradient(135deg, #bae6fd 0%, #bfdbfe 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(25, 118, 210, 0.15);
 }
 
-.load-more-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.new-message-text {
+  flex: 1;
+}
+
+.new-message-icon {
+  font-size: 16px;
+  animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
 }
 
 .message-actions {
