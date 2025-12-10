@@ -122,8 +122,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from "vue";
-import { useRouter } from "vue-router";
+import { defineComponent, ref, onBeforeUnmount, watch, nextTick, computed } from "vue";
 import { useKeyStore } from "@/stores/keys";
 import { useFriendsStore } from "@/stores/friends";
 import { usePostsStore } from "@/stores/posts";
@@ -369,9 +368,15 @@ export default defineComponent({
       selectedGroups.value = [];
     }
 
+    // Store the element that triggered the modal for focus return
+    let triggerElement: HTMLElement | null = null;
+
     // Initialize when modal opens
     watch(() => ui.showPostEditor, async (show) => {
       if (show) {
+        // Store currently focused element to return focus later
+        triggerElement = document.activeElement as HTMLElement;
+        
         await checkBlossom();
         if (!keys.pkHex) {
           ui.closePostEditor();
@@ -383,9 +388,20 @@ export default defineComponent({
         allFriends.value = true;
         selectedGroups.value = [];
         await nextTick();
-        // Focus textarea when modal opens
+        // Focus overlay to enable keyboard events (ESC key)
+        if (overlay.value) {
+          overlay.value.focus();
+        }
+        // Then focus textarea for immediate typing
         if (textarea.value) {
           textarea.value.focus();
+        }
+      } else {
+        // Return focus to trigger element when modal closes
+        if (triggerElement && typeof triggerElement.focus === 'function') {
+          setTimeout(() => {
+            triggerElement?.focus();
+          }, 100);
         }
       }
     });
