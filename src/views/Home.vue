@@ -274,6 +274,8 @@ export default defineComponent({
           // If there's a last message, fetch from that timestamp forward
           since = lastMessageTime;
           // Limit backfill to maximum 7 days of history
+          // Note: If last message is older than 7 days, we intentionally skip messages
+          // between lastMessageTime and 7 days ago to avoid fetching too much history
           since = Math.max(since, now - sevenDaysInSeconds);
           logger.info(`找到最后一条消息时间: ${new Date(lastMessageTime * 1000).toLocaleString()}`);
           if (since > lastMessageTime) {
@@ -283,6 +285,8 @@ export default defineComponent({
           }
         } else if (keys.loginTimestamp && keys.loginTimestamp > 0 && !isNaN(keys.loginTimestamp)) {
           // No last message, fetch 7 days from login timestamp
+          // This fetches recent community activity from before the user logged in
+          // Note: For brand new accounts, there may be no relevant messages, but this is expected
           since = Math.max(keys.loginTimestamp - sevenDaysInSeconds, 0);
           logger.info(`未找到历史消息，使用登录时间点: ${new Date(keys.loginTimestamp * 1000).toLocaleString()}`);
           logger.info(`获取登录前7天的消息，从 ${new Date(since * 1000).toLocaleString()} 开始`);
