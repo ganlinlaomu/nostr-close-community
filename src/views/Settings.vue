@@ -201,7 +201,6 @@ export default defineComponent({
     }
 
     function saveRelaysToStorage() {
-      settings.updateRelays(settings.relayList);
       // Also update localStorage for backward compatibility with relay module
       localStorage.setItem("custom-relays", settings.relayList.join("\n"));
     }
@@ -295,7 +294,6 @@ export default defineComponent({
     }
 
     function saveBlossomsToStorage() {
-      settings.updateBlossomServers(settings.blossomList);
       // Keep compatibility with PostEditor
       localStorage.setItem("blossom_servers", JSON.stringify(settings.blossomList));
       if (settings.blossomList.length > 0) {
@@ -396,7 +394,11 @@ export default defineComponent({
           ui.addToast("同步成功", 2000, "success");
           // Update backward compatibility localStorage after sync
           localStorage.setItem("custom-relays", settings.relayList.join("\n"));
-          saveBlossomsToStorage();
+          localStorage.setItem("blossom_servers", JSON.stringify(settings.blossomList));
+          if (settings.blossomList.length > 0) {
+            localStorage.setItem("blossom_upload_url", settings.blossomList[0].url);
+            localStorage.setItem("blossom_token", settings.blossomList[0].token);
+          }
         }
       } catch (e) {
         console.error("Manual sync error:", e);

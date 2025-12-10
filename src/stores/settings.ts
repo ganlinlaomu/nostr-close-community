@@ -239,7 +239,7 @@ export const useSettingsStore = defineStore("settings", {
 
         // Create the event
         const eventTemplate = {
-          kind: 30000, // NIP-51 People List (using same kind for user data lists)
+          kind: 30000, // Parameterized Replaceable Event (NIP-01) for user settings
           created_at: Math.floor(Date.now() / 1000),
           tags,
           content: encryptedContent
@@ -303,7 +303,7 @@ export const useSettingsStore = defineStore("settings", {
           kinds: [30000],
           authors: [ks.pkHex],
           "#d": ["close-settings"],
-          limit: 1 // Only get the latest one (replaceable event)
+          limit: 1 // Only get the latest one (parameterized replaceable event)
         };
 
         let latestEvent: any = null;
