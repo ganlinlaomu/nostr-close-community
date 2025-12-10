@@ -129,6 +129,8 @@ const SEVEN_DAYS_IN_SECONDS = 7 * SECONDS_PER_DAY;
 const THIRTY_DAYS_IN_SECONDS = 30 * SECONDS_PER_DAY;
 const SIXTY_DAYS_IN_SECONDS = 60 * SECONDS_PER_DAY;
 const MIN_MESSAGES_FOR_LOAD_MORE = 10;
+const MAX_BATCHES_LOAD_MORE = 10;
+const MAX_BATCHES_INITIAL = 20;
 
 export default defineComponent({
   name: "Home",
@@ -187,14 +189,15 @@ export default defineComponent({
       if (oldest > 0 && newest > 0) {
         const oldestDate = new Date(oldest * 1000);
         const newestDate = new Date(newest * 1000);
-        messageTimeRange.value = `${oldestDate.toLocaleDateString()} - ${newestDate.toLocaleDateString()}`;
+        messageTimeRange.value = `${oldestDate.toLocaleDateString('zh-CN')} - ${newestDate.toLocaleDateString('zh-CN')}`;
       }
       
       // Update canLoadMore based on whether we might have more history
-      // If the oldest message is less than 60 days old, suggest there might be more
+      // If the oldest message is less than 60 days old and we have enough messages, suggest there might be more
       const now = Math.floor(Date.now() / 1000);
       const sixtyDaysAgo = now - SIXTY_DAYS_IN_SECONDS;
-      canLoadMore.value = oldest > sixtyDaysAgo && msgs.inbox.length >= MIN_MESSAGES_FOR_LOAD_MORE;
+      // Only show load more if we have valid timestamps and meet the criteria
+      canLoadMore.value = oldest > 0 && oldest > sixtyDaysAgo && msgs.inbox.length >= MIN_MESSAGES_FOR_LOAD_MORE;
     }
 
     const toLocalTime = (ts: number) => formatRelativeTime(ts);
@@ -366,6 +369,7 @@ export default defineComponent({
           // For "Load More", fetch older messages
           if (oldestLoadedTimestamp.value === 0) {
             logger.warn("无法加载更多: 没有最早消息时间戳");
+            status.value = "无法加载更多消息";
             return;
           }
           until = oldestLoadedTimestamp.value - 1;
@@ -539,7 +543,7 @@ export default defineComponent({
           },
           batchSize: 1000, // Increased batch size for more efficient fetching
           authorBatchSize: 50,
-          maxBatches: isLoadMore ? 10 : 20, // Fewer batches for "Load More"
+          maxBatches: isLoadMore ? MAX_BATCHES_LOAD_MORE : MAX_BATCHES_INITIAL,
           timeoutMs: 10000
         });
         
