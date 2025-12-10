@@ -76,7 +76,7 @@ export async function backfillEvents(options: BackfillOptions): Promise<Backfill
   const stats: BackfillStats = {
     totalEvents: 0,
     batchesFetched: 0,
-    oldestTimestamp: Infinity,
+    oldestTimestamp: 0, // Changed from Infinity to 0
     latestTimestamp: 0,
     completed: false
   };
@@ -86,7 +86,7 @@ export async function backfillEvents(options: BackfillOptions): Promise<Backfill
     ? batchAuthors(filters.authors, authorBatchSize)
     : [undefined];
 
-  logger.info(`开始回填: ${filters.kinds.join(',')} kinds, ${authorBatches.length} 个作者批次, ${authorBatches[0] ? authorBatches[0].length : 0} 个作者/批次`);
+  logger.info(`开始回填: ${filters.kinds.join(',')} kinds, ${authorBatches.length} 个作者批次, ${authorBatches.length > 0 && authorBatches[0] ? authorBatches[0].length : 0} 个作者/批次`);
 
   // Process each author batch
   for (let authorBatchIdx = 0; authorBatchIdx < authorBatches.length; authorBatchIdx++) {
@@ -126,9 +126,14 @@ export async function backfillEvents(options: BackfillOptions): Promise<Backfill
         const eventsReceived = await new Promise<boolean>((resolve) => {
           const sub = subscribe(relays, [batchFilter]);
           let hasEvents = false;
+          let resolved = false; // Flag to prevent double resolution
+          
           const timeoutId = setTimeout(() => {
-            sub.unsub();
-            resolve(hasEvents);
+            if (!resolved) {
+              resolved = true;
+              sub.unsub();
+              resolve(hasEvents);
+            }
           }, timeoutMs);
 
           sub.on("event", (evt: any) => {
@@ -140,9 +145,12 @@ export async function backfillEvents(options: BackfillOptions): Promise<Backfill
           });
 
           sub.on("eose", () => {
-            clearTimeout(timeoutId);
-            sub.unsub();
-            resolve(hasEvents);
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeoutId);
+              sub.unsub();
+              resolve(hasEvents);
+            }
           });
         });
 
@@ -152,12 +160,14 @@ export async function backfillEvents(options: BackfillOptions): Promise<Backfill
             await onEvent(evt);
             stats.totalEvents++;
             
-            // Track timestamp range
-            if (evt.created_at < stats.oldestTimestamp) {
-              stats.oldestTimestamp = evt.created_at;
-            }
-            if (evt.created_at > stats.latestTimestamp) {
-              stats.latestTimestamp = evt.created_at;
+            // Track timestamp range (only update if we have valid events)
+            if (evt.created_at && typeof evt.created_at === 'number') {
+              if (stats.oldestTimestamp === 0 || evt.created_at < stats.oldestTimestamp) {
+                stats.oldestTimestamp = evt.created_at;
+              }
+              if (evt.created_at > stats.latestTimestamp) {
+                stats.latestTimestamp = evt.created_at;
+              }
             }
           } catch (e) {
             logger.warn("处理事件失败", evt.id, e);

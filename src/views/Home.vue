@@ -290,7 +290,7 @@ export default defineComponent({
           // 2. Returning user with cleared cache (loginTimestamp is close to now but user has history)
           // In both cases, fetch last 30 days to ensure we get history for returning users
           const thirtyDaysInSeconds = 30 * 24 * 60 * 60;
-          since = Math.max(keys.loginTimestamp - thirtyDaysInSeconds, 0);
+          since = Math.max(Math.floor(keys.loginTimestamp) - thirtyDaysInSeconds, 0);
           logger.info(`完全无缓存，获取登录时间前30天的消息: ${new Date(since * 1000).toLocaleString()}`);
         } else {
           // Fallback: 30 days from now
