@@ -523,7 +523,7 @@ export default defineComponent({
         };
         
         // Use backfill utility for interactions
-        const stats = await backfillEvents({
+        await backfillEvents({
           relays,
           filters: {
             kinds: [24243],
