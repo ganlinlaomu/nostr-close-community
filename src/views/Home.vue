@@ -58,7 +58,7 @@
                       <span class="muted"> · {{ toLocalTime(reply.timestamp) }}</span>
                     </div>
                     <div class="comment-text">{{ reply.text }}</div>
-                    <button class="reply-btn small" @click="startReply(m.id, comment.id, displayName(reply.author))">
+                    <button class="reply-btn small" @click="startReply(m.id, reply.id, displayName(reply.author))">
                       回复
                     </button>
                   </div>
