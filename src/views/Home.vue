@@ -263,13 +263,15 @@ export default defineComponent({
         let lastMessageTime = 0;
         if (msgs.inbox.length > 0) {
           // Find the newest message by checking all timestamps
-          lastMessageTime = Math.max(...msgs.inbox.map(msg => msg.created_at));
+          // Use reduce instead of spread operator to avoid stack overflow with large arrays
+          lastMessageTime = msgs.inbox.reduce((max, msg) => Math.max(max, msg.created_at), 0);
         }
         
         if (lastMessageTime > 0) {
           // If there's a last message, fetch from that timestamp forward
           since = lastMessageTime;
           // Ensure we don't fetch more than 7 days of data
+          // Math.max ensures we use the more recent timestamp (don't go back more than 7 days)
           since = Math.max(since, now - sevenDaysInSeconds);
           logger.info(`找到最后一条消息时间: ${new Date(lastMessageTime * 1000).toLocaleString()}`);
           logger.info(`从该时间点开始获取最多7天的数据，从 ${new Date(since * 1000).toLocaleString()} 开始`);
