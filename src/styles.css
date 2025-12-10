@@ -4,6 +4,7 @@
   --primary: #0f172a;
   --accent: #1976d2;
   --z-bottom-nav: 99999;
+  --bottom-nav-height: 72px;
 }
 
 /* 基础盒模型 */
@@ -27,7 +28,7 @@ body {
   background: var(--bg);
   color: var(--primary);
 
-  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
 
   -webkit-overflow-scrolling: touch;
   touch-action: manipulation;
@@ -114,7 +115,7 @@ textarea {
   right: 0;
   bottom: 0;
 
-  height: 72px;
+  height: var(--bottom-nav-height);
   background: #ffffff;
   border-top: 1px solid #e2e8f0;
   padding-bottom: env(safe-area-inset-bottom);
