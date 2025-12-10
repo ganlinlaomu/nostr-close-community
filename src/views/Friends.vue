@@ -335,7 +335,7 @@ export default defineComponent({
 <style scoped>
 .friends-container {
   position: relative;
-  padding-bottom: 80px;
+  padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
 }
 
 .sync-status {
