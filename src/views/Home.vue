@@ -572,7 +572,9 @@ export default defineComponent({
         const relays = getRelaysFromStorage();
         
         // Start backfill in background (don't await) - let cached content display first
-        backfillMessages(friendSet, relays);
+        backfillMessages(friendSet, relays).catch((e) => {
+          logger.error("Background backfill messages failed", e);
+        });
 
         const filters = { kinds: [8964], authors: Array.from(friendSet) };
         status.value = "连接中";
@@ -635,7 +637,9 @@ export default defineComponent({
         }
         
         // Backfill historical interactions in background (don't await)
-        backfillInteractions(relays);
+        backfillInteractions(relays).catch((e) => {
+          logger.error("Background backfill interactions failed", e);
+        });
         
         // Subscribe to interactions (kind 24243)
         try {
