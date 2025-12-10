@@ -4,7 +4,7 @@
       <h3>信息流（时间线）</h3>
       <div class="small">已自动订阅你添加的好友，实时解密可读消息</div>
       <div class="small" style="margin-top:6px;">订阅状态: {{ status }}</div>
-      <div v-if="messageTimeRange" class="small muted" style="margin-top:4px;">
+      <div v-if="messageTimeRange" class="small" style="margin-top:4px; color: #94a3b8;">
         消息时间范围: {{ messageTimeRange }}
       </div>
     </div>
@@ -173,15 +173,19 @@ export default defineComponent({
         return;
       }
       
-      const oldest = msgs.inbox.reduce((min, msg) => {
+      // Calculate oldest and newest in a single pass for better performance
+      const { oldest, newest } = msgs.inbox.reduce((acc, msg) => {
         const ts = msg?.created_at || 0;
-        return ts > 0 && (min === 0 || ts < min) ? ts : min;
-      }, 0);
-      
-      const newest = msgs.inbox.reduce((max, msg) => {
-        const ts = msg?.created_at || 0;
-        return ts > max ? ts : max;
-      }, 0);
+        if (ts > 0) {
+          if (acc.oldest === 0 || ts < acc.oldest) {
+            acc.oldest = ts;
+          }
+          if (ts > acc.newest) {
+            acc.newest = ts;
+          }
+        }
+        return acc;
+      }, { oldest: 0, newest: 0 });
       
       oldestLoadedTimestamp.value = oldest;
       newestLoadedTimestamp.value = newest;
@@ -372,7 +376,8 @@ export default defineComponent({
             status.value = "无法加载更多消息";
             return;
           }
-          until = oldestLoadedTimestamp.value - 1;
+          // Use the same timestamp to ensure no gaps (relay will return messages <= until)
+          until = oldestLoadedTimestamp.value;
           // Fetch 30 days backward from oldest loaded message
           since = Math.max(until - THIRTY_DAYS_IN_SECONDS, 0);
           logger.info(`加载更多消息: ${new Date(since * 1000).toLocaleString()} 到 ${new Date(until * 1000).toLocaleString()}`);
