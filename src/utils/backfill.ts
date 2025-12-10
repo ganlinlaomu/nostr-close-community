@@ -86,10 +86,12 @@ export async function backfillEvents(options: BackfillOptions): Promise<Backfill
     ? batchAuthors(filters.authors, authorBatchSize)
     : [undefined];
 
-  logger.info(`开始回填: ${filters.kinds.join(',')} kinds, ${authorBatches.length} 个作者批次`);
+  logger.info(`开始回填: ${filters.kinds.join(',')} kinds, ${authorBatches.length} 个作者批次, ${authorBatches[0] ? authorBatches[0].length : 0} 个作者/批次`);
 
   // Process each author batch
-  for (const authorBatch of authorBatches) {
+  for (let authorBatchIdx = 0; authorBatchIdx < authorBatches.length; authorBatchIdx++) {
+    const authorBatch = authorBatches[authorBatchIdx];
+    logger.info(`处理作者批次 ${authorBatchIdx + 1}/${authorBatches.length}`);
     let currentUntil = filters.until || Math.floor(Date.now() / 1000);
     const targetSince = filters.since || 0;
     let batchCount = 0;

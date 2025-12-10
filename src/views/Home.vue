@@ -378,7 +378,10 @@ export default defineComponent({
 
     async function startSub() {
       try {
+        logger.info("开始订阅流程");
         await friends.load();
+        logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
+        
         if (!keys.isLoggedIn) {
           status.value = "未登录";
           return;
@@ -389,6 +392,8 @@ export default defineComponent({
 
         const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
         if (keys.pkHex) friendSet.add(keys.pkHex);
+        logger.info(`准备订阅 ${friendSet.size} 个作者（包括自己）`);
+        
         if (friendSet.size === 0) {
           status.value = "好友为空";
           return;
