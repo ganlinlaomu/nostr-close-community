@@ -153,7 +153,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, reactive, onMounted, computed, watch } from "vue";
+import { defineComponent, ref, reactive, onMounted, onBeforeUnmount, computed, watch } from "vue";
 import { DEFAULT_RELAYS, getRelaysFromStorage, inspectRelays, reconnectRelay } from "@/nostr/relays";
 import { useKeyStore } from "@/stores/keys";
 import { useSettingsStore, type BlossomServer } from "@/stores/settings";
@@ -171,6 +171,7 @@ export default defineComponent({
     const showSyncSuccess = ref(false);
     const isFadingOut = ref(false);
     let hideTimeout: ReturnType<typeof setTimeout> | null = null;
+    let fadeTimeout: ReturnType<typeof setTimeout> | null = null;
 
     // Relay management
     const newRelay = ref("");
@@ -187,9 +188,14 @@ export default defineComponent({
     // Watch for sync completion to show/hide success message
     watch(() => settings.lastSyncTimestamp, (newVal, oldVal) => {
       if (newVal > 0 && newVal !== oldVal && !settings.syncing && !settings.syncError) {
-        // Clear any existing timeout
+        // Clear any existing timeouts
         if (hideTimeout) {
           clearTimeout(hideTimeout);
+          hideTimeout = null;
+        }
+        if (fadeTimeout) {
+          clearTimeout(fadeTimeout);
+          fadeTimeout = null;
         }
         
         // Show the success message
@@ -200,10 +206,12 @@ export default defineComponent({
         hideTimeout = setTimeout(() => {
           isFadingOut.value = true;
           // Hide completely after fade-out animation (0.5s)
-          setTimeout(() => {
+          fadeTimeout = setTimeout(() => {
             showSyncSuccess.value = false;
             isFadingOut.value = false;
+            fadeTimeout = null;
           }, 500);
+          hideTimeout = null;
         }, 3000);
       }
     });
@@ -446,6 +454,18 @@ export default defineComponent({
       return () => {
         clearInterval(intervalId);
       };
+    });
+
+    onBeforeUnmount(() => {
+      // Clean up timeouts to prevent memory leaks
+      if (hideTimeout) {
+        clearTimeout(hideTimeout);
+        hideTimeout = null;
+      }
+      if (fadeTimeout) {
+        clearTimeout(fadeTimeout);
+        fadeTimeout = null;
+      }
     });
 
     return {
