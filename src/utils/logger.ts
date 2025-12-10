@@ -17,9 +17,8 @@ export const logger = {
     console.info("[info]", ...args);
   },
   warn: (...args: any[]) => {
-    if (isDebugEnabled()) {
-      console.warn("[warn]", ...args);
-    }
+    // Always show warnings - they indicate potential issues
+    console.warn("[warn]", ...args);
   },
   error: (...args: any[]) => {
     console.error("[error]", ...args);
