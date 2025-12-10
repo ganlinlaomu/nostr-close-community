@@ -276,7 +276,11 @@ export default defineComponent({
           // Limit backfill to maximum 7 days of history
           since = Math.max(since, now - sevenDaysInSeconds);
           logger.info(`找到最后一条消息时间: ${new Date(lastMessageTime * 1000).toLocaleString()}`);
-          logger.info(`从该时间点开始获取最多7天的数据，从 ${new Date(since * 1000).toLocaleString()} 开始`);
+          if (since > lastMessageTime) {
+            logger.info(`最后消息超过7天，限制从7天前开始获取: ${new Date(since * 1000).toLocaleString()}`);
+          } else {
+            logger.info(`从最后消息时间点开始获取: ${new Date(since * 1000).toLocaleString()}`);
+          }
         } else if (keys.loginTimestamp && keys.loginTimestamp > 0 && !isNaN(keys.loginTimestamp)) {
           // No last message, fetch 7 days from login timestamp
           since = Math.max(keys.loginTimestamp - sevenDaysInSeconds, 0);
