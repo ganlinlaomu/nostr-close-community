@@ -234,6 +234,7 @@ export default defineComponent({
       commentInputs.value[messageId] = `@${authorName} `;
       
       // Find the comment to get its author pubkey
+      // Note: interactions.getComments() returns ALL comments (including nested replies)
       const allComments = interactions.getComments(messageId);
       const comment = allComments.find((c: any) => c.id === commentId);
       if (comment) {
