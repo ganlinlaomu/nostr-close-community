@@ -60,6 +60,23 @@ export const useKeyStore = defineStore("keys", {
      */
     isLoggedIn(): boolean {
       return !!this.pkHex && !!this.loginMethod;
+    },
+    /**
+     * Check if the current login method supports NIP-04 encryption/decryption
+     */
+    supportsNip04(): boolean {
+      if (!this.isLoggedIn) return false;
+      
+      switch (this.loginMethod) {
+        case "sk":
+          return !!this.skHex;
+        case "nip07":
+          return !!(window.nostr?.nip04?.encrypt && window.nostr?.nip04?.decrypt);
+        case "nip46":
+          return !!this.bunkerSigner;
+        default:
+          return false;
+      }
     }
   },
   actions: {

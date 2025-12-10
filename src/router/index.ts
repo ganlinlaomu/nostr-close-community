@@ -84,15 +84,17 @@ router.beforeEach(async (to, from, next) => {
           keyStore.loginTimestamp = parseInt(loginTimestamp, 10) || 0;
         }
         
-        // Restore bunker signer if needed (non-blocking, runs in background)
+        // Restore bunker signer if needed (blocking for proper initialization)
         if (loginMethod === "nip46" && bunkerInput && !keyStore.bunkerSigner) {
-          // Try to restore bunker connection asynchronously
-          // Don't block navigation on bunker restoration
-          keyStore.loginWithBunker(bunkerInput).catch((e) => {
+          // Try to restore bunker connection and wait for it
+          // This is necessary to ensure bunker is ready for NIP-04 operations
+          try {
+            await keyStore.loginWithBunker(bunkerInput);
+          } catch (e) {
             // If bunker restore fails, clear the login state
             console.warn("Failed to restore bunker connection:", e);
             keyStore.logout();
-          });
+          }
         }
       } catch {
         // ignore storage errors

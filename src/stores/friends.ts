@@ -57,8 +57,8 @@ export const useFriendsStore = defineStore("friends", {
         const raw = localStorage.getItem(key);
         if (!raw) {
           this.list = [];
-          // If no local data, try to fetch from relays
-          if (ks.isLoggedIn) {
+          // If no local data, try to fetch from relays (only if NIP-04 is supported)
+          if (ks.isLoggedIn && ks.supportsNip04) {
             await this.fetchFromRelays();
           }
           return;
@@ -66,8 +66,8 @@ export const useFriendsStore = defineStore("friends", {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
           this.list = parsed;
-          // If we have local data, sync in background to ensure relays are updated
-          if (ks.isLoggedIn && this.list.length > 0) {
+          // If we have local data, sync in background to ensure relays are updated (only if NIP-04 is supported)
+          if (ks.isLoggedIn && this.list.length > 0 && ks.supportsNip04) {
             this.publishToRelays().catch(e => logger.warn("Background sync failed", e));
           }
         } else {
@@ -96,8 +96,11 @@ export const useFriendsStore = defineStore("friends", {
       if (this.list.find((f) => f.pubkey === friend.pubkey)) return false;
       this.list.push({ ...friend });
       this.save();
-      // Sync to relays in background (don't wait)
-      this.publishToRelays().catch(e => logger.warn("Failed to sync friend list after add", e));
+      // Sync to relays in background (don't wait) - only if NIP-04 is supported
+      const ks = useKeyStore();
+      if (ks.supportsNip04) {
+        this.publishToRelays().catch(e => logger.warn("Failed to sync friend list after add", e));
+      }
       return true;
     },
 
@@ -106,8 +109,11 @@ export const useFriendsStore = defineStore("friends", {
       if (idx === -1) return false;
       this.list.splice(idx, 1);
       this.save();
-      // Sync to relays in background (don't wait)
-      this.publishToRelays().catch(e => logger.warn("Failed to sync friend list after remove", e));
+      // Sync to relays in background (don't wait) - only if NIP-04 is supported
+      const ks = useKeyStore();
+      if (ks.supportsNip04) {
+        this.publishToRelays().catch(e => logger.warn("Failed to sync friend list after remove", e));
+      }
       return true;
     },
 
@@ -118,8 +124,11 @@ export const useFriendsStore = defineStore("friends", {
       if (patch.name !== undefined && !patch.name.trim()) return false;
       Object.assign(f, patch);
       this.save();
-      // Sync to relays in background (don't wait)
-      this.publishToRelays().catch(e => logger.warn("Failed to sync friend list after update", e));
+      // Sync to relays in background (don't wait) - only if NIP-04 is supported
+      const ks = useKeyStore();
+      if (ks.supportsNip04) {
+        this.publishToRelays().catch(e => logger.warn("Failed to sync friend list after update", e));
+      }
       return true;
     },
 
@@ -161,6 +170,13 @@ export const useFriendsStore = defineStore("friends", {
       if (!ks.isLoggedIn || !ks.pkHex) {
         logger.warn("Cannot publish friend list: user not logged in");
         this.syncError = "未登录";
+        return false;
+      }
+
+      // Check if current login method supports NIP-04
+      if (!ks.supportsNip04) {
+        logger.warn("Cannot publish friend list: NIP-04 not supported by current login method");
+        this.syncError = "当前登录方式不支持 NIP-04 加密";
         return false;
       }
 
@@ -239,6 +255,13 @@ export const useFriendsStore = defineStore("friends", {
       if (!ks.isLoggedIn || !ks.pkHex) {
         logger.warn("Cannot fetch friend list: user not logged in");
         this.syncError = "未登录";
+        return false;
+      }
+
+      // Check if current login method supports NIP-04
+      if (!ks.supportsNip04) {
+        logger.warn("Cannot fetch friend list: NIP-04 not supported by current login method");
+        this.syncError = "当前登录方式不支持 NIP-04 解密";
         return false;
       }
 
