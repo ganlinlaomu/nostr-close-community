@@ -151,22 +151,23 @@ export default defineComponent({
     const messageTimeRange = ref<string>("");
     
     function showNewMessages() {
-      // Move all messages to displayed messages
+      // Move all messages to displayed messages, sorted by timestamp
       displayedMessages.value = [...messagesRef.value];
       newMessageCount.value = 0;
     }
 
     function updateLocalRefs() {
-      messagesRef.value = msgs.inbox;
+      // Sort messages by timestamp descending (newest first)
+      messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
       
       if (!initialLoadComplete.value) {
-        // Initial load - show all messages
-        displayedMessages.value = [...msgs.inbox];
+        // Initial load - show all messages sorted
+        displayedMessages.value = [...messagesRef.value];
         initialLoadComplete.value = true;
       } else {
         // After initial load - count new messages but don't display
         const currentDisplayedIds = new Set(displayedMessages.value.map(m => m.id));
-        const newMessages = msgs.inbox.filter(m => !currentDisplayedIds.has(m.id));
+        const newMessages = messagesRef.value.filter(m => !currentDisplayedIds.has(m.id));
         newMessageCount.value = newMessages.length;
       }
       
@@ -342,13 +343,11 @@ export default defineComponent({
         let since: number;
         let until: number = now;
         
-        // Find the newest message timestamp from inbox
+        // Get the newest message timestamp from the already sorted messagesRef
+        // (messagesRef is sorted descending in updateLocalRefs, so first element is newest)
         let lastMessageTime = 0;
-        if (msgs.inbox.length > 0) {
-          lastMessageTime = msgs.inbox.reduce((max, msg) => {
-            const timestamp = msg?.created_at || 0;
-            return Math.max(max, timestamp);
-          }, 0);
+        if (messagesRef.value.length > 0) {
+          lastMessageTime = messagesRef.value[0]?.created_at || 0;
         }
         
         // Check if we have messages and if the last message is within 3 days
@@ -356,6 +355,7 @@ export default defineComponent({
         
         if (lastMessageTime > 0 && lastMessageTime >= threeDaysAgo) {
           // Have messages within 3 days - fetch messages newer than last message, within 3 days
+          // Use lastMessageTime directly as relay will return messages with created_at >= since
           since = lastMessageTime;
           logger.info(`有三天内的消息，拉取晚于最后一条消息的三天内信息: ${new Date(since * 1000).toLocaleString()}`);
         } else {
@@ -473,14 +473,14 @@ export default defineComponent({
               status.value = "已是最新";
             }
             
-            // Save breakpoint for next time
+            // Save the timestamp of the newest message for future reference
+            // This helps track the last time we successfully fetched messages
             const breakpointKey = `messages_${keys.pkHex}`;
             if (newestTimestamp > 0) {
-              // Save the timestamp of the newest message we received
               saveBackfillBreakpoint(breakpointKey, newestTimestamp);
-              logger.info(`保存新断点: ${new Date(newestTimestamp * 1000).toLocaleString()}`);
+              logger.info(`保存最新消息时间戳: ${new Date(newestTimestamp * 1000).toLocaleString()}`);
             } else {
-              // No new messages, save current time as breakpoint
+              // No new messages, save current time
               saveBackfillBreakpoint(breakpointKey, now);
             }
           },
