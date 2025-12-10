@@ -571,8 +571,8 @@ export default defineComponent({
 
         const relays = getRelaysFromStorage();
         
-        // First, backfill historical messages
-        await backfillMessages(friendSet, relays);
+        // Start backfill in background (don't await) - let cached content display first
+        backfillMessages(friendSet, relays);
 
         const filters = { kinds: [8964], authors: Array.from(friendSet) };
         status.value = "连接中";
@@ -634,8 +634,8 @@ export default defineComponent({
           status.value = "订阅失败";
         }
         
-        // Backfill historical interactions before subscribing to real-time events
-        await backfillInteractions(relays);
+        // Backfill historical interactions in background (don't await)
+        backfillInteractions(relays);
         
         // Subscribe to interactions (kind 24243)
         try {
