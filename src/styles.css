@@ -38,10 +38,17 @@ body {
 #app {
   max-width: 720px;
   margin: 0 auto;
-  padding: 12px;
+  padding: 4px;
   width: 100%;
   min-height: 100svh;           /* 🔧 从 100dvh 改为 100svh */
   overflow-x: hidden;
+}
+
+/* 桌面端保持合适的内边距 */
+@media (min-width: 640px) {
+  #app {
+    padding: 12px;
+  }
 }
 
 /* 头部栏 */
