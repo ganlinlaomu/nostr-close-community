@@ -12,6 +12,11 @@ export type Friend = {
   note?: string;
 };
 
+type StoredFriendData = {
+  list: Friend[];
+  lastSyncTimestamp: number;
+};
+
 function storageKeyFor(pkHex: string | null | undefined) {
   if (!pkHex) return null;
   return `nostr_friends_${pkHex}`;
@@ -55,26 +60,88 @@ export const useFriendsStore = defineStore("friends", {
       }
       try {
         const raw = localStorage.getItem(key);
-        if (!raw) {
-          this.list = [];
-          // If no local data, try to fetch from relays (only if NIP-04 is supported)
-          if (ks.isLoggedIn && ks.supportsNip04) {
-            await this.fetchFromRelays();
+        let localData: StoredFriendData | null = null;
+        
+        // Parse local storage data
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            // Handle both old format (array) and new format (object with timestamp)
+            if (Array.isArray(parsed)) {
+              // Old format: just an array of friends, no timestamp
+              localData = {
+                list: parsed,
+                lastSyncTimestamp: 0 // Unknown timestamp for old data
+              };
+            } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.list)) {
+              // New format: object with list and timestamp
+              localData = parsed;
+            }
+          } catch (e) {
+            logger.warn("Failed to parse local friend data", e);
           }
-          return;
         }
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          this.list = parsed;
-          // If we have local data, sync in background to ensure relays are updated (only if NIP-04 is supported)
-          if (ks.isLoggedIn && this.list.length > 0 && ks.supportsNip04) {
-            this.publishToRelays().catch(e => logger.warn("Background sync failed", e));
+
+        // If NIP-04 is supported, fetch from relays to compare with local data
+        if (ks.isLoggedIn && ks.supportsNip04) {
+          const relayFetched = await this.fetchFromRelays();
+          // Note: fetchFromRelays() updates this.lastSyncTimestamp if data is found
+          const fetchedTimestamp = this.lastSyncTimestamp;
+          
+          if (relayFetched) {
+            // We got data from relay
+            if (!localData || localData.list.length === 0) {
+              // No local data or empty local data, use relay data
+              logger.info("Using relay data (no local data)");
+              return;
+            } else if (fetchedTimestamp > localData.lastSyncTimestamp) {
+              // Relay data is newer, already loaded by fetchFromRelays
+              logger.info(`Using relay data (newer: ${fetchedTimestamp} > ${localData.lastSyncTimestamp})`);
+              return;
+            } else if (fetchedTimestamp < localData.lastSyncTimestamp) {
+              // Local data is newer, restore local and publish to relay
+              logger.info(`Using local data (newer: ${localData.lastSyncTimestamp} > ${fetchedTimestamp})`);
+              this.list = localData.list;
+              this.lastSyncTimestamp = localData.lastSyncTimestamp;
+              // Publish local data to relay since it's newer
+              this.publishToRelays().catch(e => logger.warn("Failed to publish newer local data", e));
+              return;
+            } else {
+              // Timestamps are equal, use relay data (it's already loaded)
+              logger.info("Local and relay data have same timestamp, using relay data");
+              return;
+            }
+          } else {
+            // No data from relay (or fetch failed)
+            if (localData && localData.list.length > 0) {
+              // Use local data and publish to relay
+              logger.info("Using local data (relay has no data or fetch failed)");
+              this.list = localData.list;
+              this.lastSyncTimestamp = localData.lastSyncTimestamp;
+              // Publish to relay to ensure sync
+              this.publishToRelays().catch(e => logger.warn("Failed to publish local data to relay", e));
+              return;
+            } else {
+              // No data anywhere
+              this.list = [];
+              this.lastSyncTimestamp = 0;
+              return;
+            }
           }
         } else {
-          this.list = [];
+          // NIP-04 not supported, just use local data
+          if (localData) {
+            this.list = localData.list;
+            this.lastSyncTimestamp = localData.lastSyncTimestamp;
+          } else {
+            this.list = [];
+            this.lastSyncTimestamp = 0;
+          }
         }
-      } catch {
+      } catch (e) {
+        logger.error("Error loading friend list", e);
         this.list = [];
+        this.lastSyncTimestamp = 0;
       }
     },
 
@@ -83,7 +150,11 @@ export const useFriendsStore = defineStore("friends", {
       const key = storageKeyFor(this.loadedFor || "");
       if (!key) return;
       try {
-        localStorage.setItem(key, JSON.stringify(this.list));
+        const data: StoredFriendData = {
+          list: this.list,
+          lastSyncTimestamp: this.lastSyncTimestamp
+        };
+        localStorage.setItem(key, JSON.stringify(data));
       } catch {
         // ignore storage errors
       }
@@ -236,6 +307,7 @@ export const useFriendsStore = defineStore("friends", {
 
         logger.info(`Friend list published to ${successCount}/${relays.length} relays`);
         this.lastSyncTimestamp = Math.floor(Date.now() / 1000);
+        this.save(); // Save the updated timestamp to localStorage
         return true;
       } catch (e: any) {
         logger.error("Failed to publish friend list", e);
@@ -349,20 +421,61 @@ export const useFriendsStore = defineStore("friends", {
     },
 
     /**
-     * Sync friend list: fetch from relays if local is empty, then publish current state
-     * This should be called on login to ensure sync across devices
+     * Sync friend list: fetch from relays, compare timestamps, and sync accordingly
+     * This should be called for manual sync to ensure bidirectional synchronization
      */
     async syncWithRelays(): Promise<void> {
       const ks = useKeyStore();
       if (!ks.isLoggedIn) return;
-
-      // If local list is empty, try to fetch from relays first
-      if (this.list.length === 0) {
-        await this.fetchFromRelays();
+      if (!ks.supportsNip04) {
+        this.syncError = "当前登录方式不支持同步";
+        return;
       }
 
-      // Always publish current state to keep relays updated
-      await this.publishToRelays();
+      this.syncing = true;
+      this.syncError = "";
+      
+      try {
+        // Store current local state before fetching
+        const localList = [...this.list];
+        const localTimestamp = this.lastSyncTimestamp;
+        
+        // Fetch from relays
+        const relayFetched = await this.fetchFromRelays();
+        // Note: fetchFromRelays() updates this.lastSyncTimestamp if data is found
+        const fetchedTimestamp = this.lastSyncTimestamp;
+        
+        if (relayFetched) {
+          // Got data from relay, compare timestamps
+          if (fetchedTimestamp >= localTimestamp) {
+            // Relay data is newer or equal, already loaded by fetchFromRelays
+            logger.info("Sync: Using relay data (newer or equal)");
+            this.save();
+          } else if (localList.length > 0) {
+            // Local data is newer, restore and publish
+            logger.info("Sync: Local data is newer, publishing to relay");
+            this.list = localList;
+            this.lastSyncTimestamp = localTimestamp;
+            await this.publishToRelays();
+          }
+        } else {
+          // No data from relay or fetch failed
+          if (localList.length > 0) {
+            // Restore local data and publish
+            logger.info("Sync: No relay data, publishing local data");
+            this.list = localList;
+            this.lastSyncTimestamp = localTimestamp;
+            await this.publishToRelays();
+          } else {
+            logger.info("Sync: No data to sync");
+          }
+        }
+      } catch (e: any) {
+        logger.error("Sync failed", e);
+        this.syncError = e.message || "同步失败";
+      } finally {
+        this.syncing = false;
+      }
     }
   }
 });
