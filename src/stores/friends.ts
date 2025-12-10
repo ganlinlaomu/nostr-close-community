@@ -359,7 +359,33 @@ export const useFriendsStore = defineStore("friends", {
           
           const timeoutId = setTimeout(() => {
             sub.unsub();
-            if (!latestEvent) {
+            // Process event even if we timeout (might have received it but not EOSE)
+            if (latestEvent) {
+              (async () => {
+                try {
+                  const decryptedContent = await ks.nip04Decrypt(ks.pkHex, latestEvent.content);
+                  const friendsData = JSON.parse(decryptedContent);
+                  if (Array.isArray(friendsData)) {
+                    this.list = friendsData;
+                    this.save();
+                    this.lastSyncTimestamp = latestEvent.created_at;
+                    logger.info(`Fetched ${friendsData.length} friends from relays (timeout)`);
+                    this.syncing = false;
+                    resolve(true);
+                  } else {
+                    logger.warn("Invalid friend list format from relay");
+                    this.syncError = "数据格式无效";
+                    this.syncing = false;
+                    resolve(false);
+                  }
+                } catch (e: any) {
+                  logger.error("Failed to decrypt friend list on timeout", e);
+                  this.syncError = e.message || "解密失败";
+                  this.syncing = false;
+                  resolve(false);
+                }
+              })();
+            } else {
               logger.info("No friend list found on relays (timeout)");
               this.syncing = false;
               resolve(false);

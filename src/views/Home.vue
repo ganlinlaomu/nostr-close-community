@@ -104,6 +104,7 @@ import { useInteractionsStore } from "@/stores/interactions";
 import { logger } from "@/utils/logger";
 import { formatRelativeTime } from "@/utils/format";
 import PostImagePreview from "@/components/PostImagePreview.vue";
+import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
 
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
 const mdImageRE = /!\[[^\]]*?\]\(\s*(https?:\/\/[^\s)]+)\s*\)/gi;
@@ -256,109 +257,131 @@ export default defineComponent({
       try {
         const now = Math.floor(Date.now() / 1000);
         const sevenDaysInSeconds = 7 * 24 * 60 * 60;
-        let since: number;
         
-        // Find the last (newest) message timestamp from inbox
-        // Note: Messages may not be perfectly sorted as they can arrive out of order during backfill
+        // Determine time range for backfill
+        let since: number;
+        let until: number = now;
+        
+        // Check for existing breakpoint
+        const breakpointKey = `messages_${keys.pkHex}`;
+        const savedBreakpoint = loadBackfillBreakpoint(breakpointKey);
+        
+        // Find the newest message timestamp from inbox
         let lastMessageTime = 0;
         if (msgs.inbox.length > 0) {
-          // Find the newest message by checking all timestamps
-          // Use reduce instead of spread operator to avoid stack overflow with large arrays
           lastMessageTime = msgs.inbox.reduce((max, msg) => {
             const timestamp = msg?.created_at || 0;
             return Math.max(max, timestamp);
           }, 0);
         }
         
-        if (lastMessageTime > 0) {
-          // If there's a last message, fetch from that timestamp forward
-          since = lastMessageTime;
-          // Limit backfill to maximum 7 days of history
-          // Note: If last message is older than 7 days, we intentionally skip messages
-          // between lastMessageTime and 7 days ago to avoid fetching too much history
-          since = Math.max(since, now - sevenDaysInSeconds);
-          logger.info(`找到最后一条消息时间: ${new Date(lastMessageTime * 1000).toLocaleString()}`);
-          if (since > lastMessageTime) {
-            logger.info(`最后消息超过7天，限制从7天前开始获取: ${new Date(since * 1000).toLocaleString()}`);
-          } else {
-            logger.info(`从最后消息时间点开始获取: ${new Date(since * 1000).toLocaleString()}`);
-          }
+        // Determine since time based on available information
+        if (savedBreakpoint && savedBreakpoint > 0) {
+          // Use saved breakpoint for incremental fetch
+          since = savedBreakpoint;
+          logger.info(`使用保存的断点: ${new Date(since * 1000).toLocaleString()}`);
+        } else if (lastMessageTime > 0) {
+          // Start from last message but limit to 7 days max
+          since = Math.max(lastMessageTime, now - sevenDaysInSeconds);
+          logger.info(`从最后消息时间开始: ${new Date(since * 1000).toLocaleString()}`);
         } else if (keys.loginTimestamp && keys.loginTimestamp > 0 && !isNaN(keys.loginTimestamp)) {
-          // No last message, fetch 7 days from login timestamp
-          // This fetches recent community activity from before the user logged in
-          // Note: For brand new accounts, there may be no relevant messages, but this is expected
-          since = Math.max(keys.loginTimestamp - sevenDaysInSeconds, 0);
-          logger.info(`未找到历史消息，使用登录时间点: ${new Date(keys.loginTimestamp * 1000).toLocaleString()}`);
-          logger.info(`获取登录前7天的消息，从 ${new Date(since * 1000).toLocaleString()} 开始`);
+          // No messages and no breakpoint - this could be:
+          // 1. First time login (loginTimestamp is close to now)
+          // 2. Returning user with cleared cache (loginTimestamp is close to now but user has history)
+          // In both cases, fetch last 30 days to ensure we get history for returning users
+          const thirtyDaysInSeconds = 30 * 24 * 60 * 60;
+          since = Math.max(Math.floor(keys.loginTimestamp) - thirtyDaysInSeconds, 0);
+          logger.info(`完全无缓存，获取登录时间前30天的消息: ${new Date(since * 1000).toLocaleString()}`);
         } else {
-          // Fallback: if no login timestamp and no last message, fetch from 7 days ago from now
-          since = now - sevenDaysInSeconds;
-          logger.info(`未找到登录时间戳和历史消息，从当前时间7天前开始获取: ${new Date(since * 1000).toLocaleString()}`);
+          // Fallback: 30 days from now
+          const thirtyDaysInSeconds = 30 * 24 * 60 * 60;
+          since = now - thirtyDaysInSeconds;
+          logger.info(`使用当前时间前30天: ${new Date(since * 1000).toLocaleString()}`);
         }
         
-        // Create a filter with time range - fetch from calculated since time to now
-        const backfillFilter = {
-          kinds: [24242],
-          authors: Array.from(friendSet),
-          since: since
-          // No 'until' - fetch up to current time
-        };
+        status.value = "获取历史消息中...";
         
-        status.value = "获取最新消息中";
-        
-        // Subscribe to historical events
-        const backfillSub = subscribe(relays, [backfillFilter]);
-        let backfillCount = 0;
-        
-        backfillSub.on("event", async (evt: any) => {
+        // Process event and decrypt
+        const processEvent = async (evt: any) => {
           try {
             if (!friendSet.has(evt.pubkey)) return;
+            
             let payload: any;
-            try { payload = JSON.parse(evt.content); } catch { return; }
+            try { 
+              payload = JSON.parse(evt.content); 
+            } catch { 
+              return; 
+            }
+            
             if (!payload?.keys || !payload?.pkg) return;
+            
             const myEntry = payload.keys.find((k: any) => k.to === keys.pkHex);
             if (!myEntry) return;
+            
             let symHex: string | null = null;
             try {
               symHex = await keys.nip04Decrypt(evt.pubkey, myEntry.enc);
             } catch (e) {
               logger.warn("nip04.decrypt failed", e);
+              // Fallback: check if enc is already a hex key
               if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
                 symHex = myEntry.enc;
               } else {
                 return;
               }
             }
+            
             try {
               const plain = await symDecryptPackage(symHex, payload.pkg);
-              const added = addMessageIfNew(evt, plain);
-              if (added) backfillCount++;
+              addMessageIfNew(evt, plain);
             } catch (e) {
               logger.warn("symDecryptPackage failed", e);
             }
           } catch (e) {
-            logger.warn("handle backfill event fail", e);
+            logger.warn("处理回填事件失败", e);
           }
+        };
+        
+        // Use backfill utility with batching and pagination
+        const stats = await backfillEvents({
+          relays,
+          filters: {
+            kinds: [24242],
+            authors: Array.from(friendSet),
+            since,
+            until
+          },
+          onEvent: processEvent,
+          onProgress: (stats) => {
+            status.value = `获取中: ${stats.totalEvents} 条消息`;
+          },
+          onComplete: (stats) => {
+            logger.info(`回填完成: ${stats.totalEvents} 条消息`);
+            status.value = stats.totalEvents > 0 
+              ? `获取到 ${stats.totalEvents} 条消息` 
+              : "已是最新";
+            
+            // Save breakpoint for next time (use current time)
+            saveBackfillBreakpoint(breakpointKey, now);
+          },
+          batchSize: 1000, // Increased batch size for more efficient fetching
+          authorBatchSize: 50,
+          maxBatches: 20, // Allow more batches to fetch more history
+          timeoutMs: 10000
         });
         
-        backfillSub.on("eose", () => {
-          logger.info(`获取完成: ${backfillCount} 条新消息`);
-          status.value = backfillCount > 0 ? `获取到 ${backfillCount} 条新消息` : "已是最新";
-          // Close the backfill subscription
-          try {
-            if (typeof backfillSub.unsub === "function") backfillSub.unsub();
-          } catch (e) {
-            logger.warn("close backfill sub error", e);
-          }
-        });
       } catch (e) {
-        logger.error("backfill failed", e);
+        logger.error("回填失败", e);
+        status.value = "获取消息失败";
       }
     }
 
     async function startSub() {
       try {
+        logger.info("开始订阅流程");
         await friends.load();
+        logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
+        
         if (!keys.isLoggedIn) {
           status.value = "未登录";
           return;
@@ -369,6 +392,8 @@ export default defineComponent({
 
         const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
         if (keys.pkHex) friendSet.add(keys.pkHex);
+        logger.info(`准备订阅 ${friendSet.size} 个作者（包括自己）`);
+        
         if (friendSet.size === 0) {
           status.value = "好友为空";
           return;
