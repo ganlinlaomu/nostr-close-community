@@ -495,6 +495,58 @@ export default defineComponent({
         status.value = "获取消息失败";
       }
     }
+    
+    async function backfillInteractions(relays: string[]) {
+      try {
+        const now = Math.floor(Date.now() / 1000);
+        const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
+        
+        // Determine time range for backfill - use 3-day window
+        const since = threeDaysAgo;
+        const until = now;
+        
+        logger.info(`开始回填互动事件: ${new Date(since * 1000).toLocaleString()} 到 ${new Date(until * 1000).toLocaleString()}`);
+        
+        // Track statistics
+        let fetchedEvents = 0;
+        let processedEvents = 0;
+        
+        // Process interaction event
+        const processEvent = async (evt: any) => {
+          fetchedEvents++;
+          try {
+            await interactions.processInteractionEvent(evt, keys.pkHex);
+            processedEvents++;
+          } catch (e) {
+            logger.warn("处理回填互动事件失败", e);
+          }
+        };
+        
+        // Use backfill utility for interactions
+        const stats = await backfillEvents({
+          relays,
+          filters: {
+            kinds: [24243],
+            "#p": [keys.pkHex], // Only get interactions targeted at us
+            since,
+            until
+          },
+          onEvent: processEvent,
+          onProgress: (stats) => {
+            logger.debug(`回填互动中: ${stats.totalEvents} 条事件`);
+          },
+          onComplete: (stats) => {
+            logger.info(`互动事件回填完成: 获取 ${fetchedEvents} 条, 处理 ${processedEvents} 条`);
+          },
+          batchSize: 500,
+          maxBatches: 10,
+          timeoutMs: 10000
+        });
+        
+      } catch (e) {
+        logger.error("回填互动事件失败", e);
+      }
+    }
 
     async function startSub() {
       try {
@@ -583,6 +635,9 @@ export default defineComponent({
           logger.warn("subscribe adapter failed", e);
           status.value = "订阅失败";
         }
+        
+        // Backfill historical interactions before subscribing to real-time events
+        await backfillInteractions(relays);
         
         // Subscribe to interactions (kind 24243)
         try {
