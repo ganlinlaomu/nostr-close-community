@@ -570,6 +570,7 @@ export default defineComponent({
 
 .settings-container {
   max-width: 100%;
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
 }
 
 .section {
