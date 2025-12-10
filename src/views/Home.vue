@@ -255,24 +255,48 @@ export default defineComponent({
     async function backfillMessages(friendSet: Set<string>, relays: string[]) {
       try {
         const now = Math.floor(Date.now() / 1000);
-        
-        // Use login timestamp to determine the fetch window
-        // Fetch messages from 3 days before login time
-        const threeDaysInSeconds = 3 * 24 * 60 * 60;
+        const sevenDaysInSeconds = 7 * 24 * 60 * 60;
         let since: number;
         
-        if (keys.loginTimestamp && keys.loginTimestamp > 0) {
-          // Fetch from 3 days before login timestamp
-          since = Math.max(keys.loginTimestamp - threeDaysInSeconds, 0);
-          logger.info(`使用登录时间点: ${new Date(keys.loginTimestamp * 1000).toLocaleString()}`);
-          logger.info(`获取最近3天的消息，从 ${new Date(since * 1000).toLocaleString()} 开始`);
-        } else {
-          // Fallback: if no login timestamp, fetch from 3 days ago from now
-          since = now - threeDaysInSeconds;
-          logger.info(`未找到登录时间戳，从当前时间3天前开始获取: ${new Date(since * 1000).toLocaleString()}`);
+        // Find the last (newest) message timestamp from inbox
+        // Note: Messages may not be perfectly sorted as they can arrive out of order during backfill
+        let lastMessageTime = 0;
+        if (msgs.inbox.length > 0) {
+          // Find the newest message by checking all timestamps
+          // Use reduce instead of spread operator to avoid stack overflow with large arrays
+          lastMessageTime = msgs.inbox.reduce((max, msg) => {
+            const timestamp = msg?.created_at || 0;
+            return Math.max(max, timestamp);
+          }, 0);
         }
         
-        // Create a filter with time range - fetch from 3 days before login to now
+        if (lastMessageTime > 0) {
+          // If there's a last message, fetch from that timestamp forward
+          since = lastMessageTime;
+          // Limit backfill to maximum 7 days of history
+          // Note: If last message is older than 7 days, we intentionally skip messages
+          // between lastMessageTime and 7 days ago to avoid fetching too much history
+          since = Math.max(since, now - sevenDaysInSeconds);
+          logger.info(`找到最后一条消息时间: ${new Date(lastMessageTime * 1000).toLocaleString()}`);
+          if (since > lastMessageTime) {
+            logger.info(`最后消息超过7天，限制从7天前开始获取: ${new Date(since * 1000).toLocaleString()}`);
+          } else {
+            logger.info(`从最后消息时间点开始获取: ${new Date(since * 1000).toLocaleString()}`);
+          }
+        } else if (keys.loginTimestamp && keys.loginTimestamp > 0 && !isNaN(keys.loginTimestamp)) {
+          // No last message, fetch 7 days from login timestamp
+          // This fetches recent community activity from before the user logged in
+          // Note: For brand new accounts, there may be no relevant messages, but this is expected
+          since = Math.max(keys.loginTimestamp - sevenDaysInSeconds, 0);
+          logger.info(`未找到历史消息，使用登录时间点: ${new Date(keys.loginTimestamp * 1000).toLocaleString()}`);
+          logger.info(`获取登录前7天的消息，从 ${new Date(since * 1000).toLocaleString()} 开始`);
+        } else {
+          // Fallback: if no login timestamp and no last message, fetch from 7 days ago from now
+          since = now - sevenDaysInSeconds;
+          logger.info(`未找到登录时间戳和历史消息，从当前时间7天前开始获取: ${new Date(since * 1000).toLocaleString()}`);
+        }
+        
+        // Create a filter with time range - fetch from calculated since time to now
         const backfillFilter = {
           kinds: [24242],
           authors: Array.from(friendSet),
