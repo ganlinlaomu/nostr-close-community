@@ -69,7 +69,87 @@
                 <template v-if="editingRelay !== relay">
                   <button class="btn-icon btn-edit" @click="startEditRelay(relay)" title="编辑">✎</button>
                   <button class="btn-icon btn-delete" @click="deleteRelay(relay)" title="删除">🗑</button>
-                
+                </template>
+                <template v-else>
+                  <button class="btn-icon btn-save" @click="saveEditRelay(relay)" title="保存">✓</button>
+                  <button class="btn-icon btn-cancel" @click="cancelEditRelay" title="取消">✗</button>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div v-if="relayList.length > 0" class="section-note">
+          <span class="small">注意：修改 relay 后需刷新页面以应用更改</span>
+        </div>
+      </div>
+
+      <!-- Blossom Management Section -->
+      <div class="section">
+        <h4>Blossom 图床管理</h4>
+        <div class="add-form">
+          <input 
+            v-model="newBlossomUrl" 
+            class="input" 
+            placeholder="输入 Blossom 图床地址（例如：https://blossom.example/upload）"
+            @keyup.enter="addBlossom"
+          />
+          <button class="btn btn-primary" @click="addBlossom">添加</button>
+        </div>
+        
+        <div v-if="blossomList.length === 0" class="empty-message">
+          <span class="small">暂无 Blossom 图床，请添加</span>
+        </div>
+        
+        <div class="item-list" v-else>
+          <div v-for="(blossom, index) in blossomList" :key="index" class="item-card">
+            <div class="item-content">
+              <div class="item-main">
+                <div v-if="editingBlossom !== index" class="item-info">
+                  <div class="item-url">{{ blossom.url }}</div>
+                  <div class="item-status">
+                    <span class="status-icon status-default">✓</span>
+                    <span class="status-text">{{ blossom.token ? '已配置 Token' : '无 Token' }}</span>
+                  </div>
+                </div>
+                <div v-else class="edit-form">
+                  <input 
+                    v-model="editedBlossomUrl"
+                    class="input input-inline"
+                    placeholder="图床地址"
+                  />
+                  <input 
+                    v-model="editedBlossomToken"
+                    class="input input-inline"
+                    placeholder="Token（可选）"
+                  />
+                </div>
+              </div>
+              <div class="item-actions">
+                <template v-if="editingBlossom !== index">
+                  <button class="btn-icon btn-edit" @click="startEditBlossom(index)" title="编辑">✎</button>
+                  <button class="btn-icon btn-delete" @click="deleteBlossom(index)" title="删除">🗑</button>
+                </template>
+                <template v-else>
+                  <button class="btn-icon btn-save" @click="saveEditBlossom(index)" title="保存">✓</button>
+                  <button class="btn-icon btn-cancel" @click="cancelEditBlossom" title="取消">✗</button>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Account Section -->
+      <div class="section">
+        <h4>账户</h4>
+        <div class="account-info">
+          <div class="small">已登录：{{ shortPk }}</div>
+          <button class="btn btn-danger" @click="doLogout">退出登录</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script lang="ts">
@@ -370,7 +450,6 @@ export default defineComponent({
 });
 </script>
 
-
 <style scoped>
 .sync-status {
   padding: 10px 16px;
@@ -430,6 +509,7 @@ export default defineComponent({
   opacity: 0.6;
   cursor: not-allowed;
 }
+
 .settings-container {
   max-width: 100%;
 }
