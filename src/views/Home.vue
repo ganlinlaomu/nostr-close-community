@@ -285,13 +285,18 @@ export default defineComponent({
           since = Math.max(lastMessageTime, now - sevenDaysInSeconds);
           logger.info(`从最后消息时间开始: ${new Date(since * 1000).toLocaleString()}`);
         } else if (keys.loginTimestamp && keys.loginTimestamp > 0 && !isNaN(keys.loginTimestamp)) {
-          // No messages, use login time with 7 day window before it
-          since = Math.max(keys.loginTimestamp - sevenDaysInSeconds, 0);
-          logger.info(`使用登录时间前7天: ${new Date(since * 1000).toLocaleString()}`);
+          // No messages and no breakpoint - this could be:
+          // 1. First time login (loginTimestamp is close to now)
+          // 2. Returning user with cleared cache (loginTimestamp is close to now but user has history)
+          // In both cases, fetch last 30 days to ensure we get history for returning users
+          const thirtyDaysInSeconds = 30 * 24 * 60 * 60;
+          since = Math.max(keys.loginTimestamp - thirtyDaysInSeconds, 0);
+          logger.info(`完全无缓存，获取登录时间前30天的消息: ${new Date(since * 1000).toLocaleString()}`);
         } else {
-          // Fallback: 7 days from now
-          since = now - sevenDaysInSeconds;
-          logger.info(`使用当前时间前7天: ${new Date(since * 1000).toLocaleString()}`);
+          // Fallback: 30 days from now
+          const thirtyDaysInSeconds = 30 * 24 * 60 * 60;
+          since = now - thirtyDaysInSeconds;
+          logger.info(`使用当前时间前30天: ${new Date(since * 1000).toLocaleString()}`);
         }
         
         status.value = "获取历史消息中...";
@@ -359,9 +364,9 @@ export default defineComponent({
             // Save breakpoint for next time (use current time)
             saveBackfillBreakpoint(breakpointKey, now);
           },
-          batchSize: 500,
+          batchSize: 1000, // Increased batch size for more efficient fetching
           authorBatchSize: 50,
-          maxBatches: 10, // Limit to prevent excessive fetching
+          maxBatches: 20, // Allow more batches to fetch more history
           timeoutMs: 10000
         });
         
