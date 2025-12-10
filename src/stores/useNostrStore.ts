@@ -48,7 +48,7 @@ export default defineStore('nostr', () => {
       content,
       privateKey,
       recipients,
-      kind: 24242
+      kind: 8964
     });
   };
 

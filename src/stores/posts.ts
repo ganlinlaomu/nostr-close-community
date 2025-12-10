@@ -42,7 +42,7 @@ export const usePostsStore = defineStore("posts", {
       const contentStr = JSON.stringify(payload);
 
       const event: any = {
-        kind: 24242,
+        kind: 8964,
         pubkey: key.pkHex,
         created_at: Math.floor(Date.now() / 1000),
         tags: [],
