@@ -3,6 +3,7 @@ import * as nostr from "nostr-tools";
 import { useRouter } from "vue-router";
 import { useFriendsStore } from "./friends";
 import { useMessagesStore } from "./messages";
+import { useSettingsStore } from "./settings";
 import type { WindowNostr } from "nostr-tools/lib/types/nip07";
 import { BunkerSigner, type BunkerPointer, parseBunkerInput } from "nostr-tools/nip46";
 import { finalizeEvent } from "nostr-tools";
@@ -221,6 +222,10 @@ export const useKeyStore = defineStore("keys", {
         const msgs = useMessagesStore();
         await msgs.load(this.pkHex);
       } catch {}
+      try {
+        const settings = useSettingsStore();
+        await settings.load(this.pkHex);
+      } catch {}
     },
 
     /**
@@ -253,6 +258,10 @@ export const useKeyStore = defineStore("keys", {
         try {
           const msgs = useMessagesStore();
           await msgs.load(this.pkHex);
+        } catch {}
+        try {
+          const settings = useSettingsStore();
+          await settings.load(this.pkHex);
         } catch {}
       } catch (e: any) {
         this.pkHex = "";
@@ -317,6 +326,10 @@ export const useKeyStore = defineStore("keys", {
         try {
           const msgs = useMessagesStore();
           await msgs.load(this.pkHex);
+        } catch {}
+        try {
+          const settings = useSettingsStore();
+          await settings.load(this.pkHex);
         } catch {}
       } catch (e: any) {
         this.pkHex = "";
@@ -392,6 +405,10 @@ export const useKeyStore = defineStore("keys", {
       try {
         const msgs = useMessagesStore();
         msgs.reset(false);
+      } catch {}
+      try {
+        const settings = useSettingsStore();
+        settings.reset(false);
       } catch {}
       // navigate to login
       try {
