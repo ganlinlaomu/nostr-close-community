@@ -58,7 +58,7 @@
                       <span class="muted"> · {{ toLocalTime(reply.timestamp) }}</span>
                     </div>
                     <div class="comment-text">{{ reply.text }}</div>
-                    <button class="reply-btn small" @click="startReply(m.id, comment.id, displayName(reply.author))">
+                    <button class="reply-btn small" @click="startReply(m.id, reply.id, displayName(reply.author))">
                       回复
                     </button>
                   </div>
@@ -129,6 +129,7 @@ export default defineComponent({
     const showingComments = ref<Set<string>>(new Set());
     const commentInputs = ref<Record<string, string>>({});
     const replyingTo = ref<Record<string, string>>({}); // messageId -> commentId being replied to
+    const replyingToAuthor = ref<Record<string, string>>({}); // messageId -> author pubkey of comment being replied to
 
     function updateLocalRefs() {
       messagesRef.value = msgs.inbox;
@@ -216,10 +217,13 @@ export default defineComponent({
 
       try {
         const parentCommentId = replyingTo.value[messageId];
-        await interactions.sendComment(messageId, message.pubkey, text, parentCommentId);
+        // Determine recipient: if replying to a comment, send to comment author; otherwise send to post author
+        const recipient = replyingToAuthor.value[messageId] || message.pubkey;
+        await interactions.sendComment(messageId, recipient, text, parentCommentId);
         // Clear input and reply state
         commentInputs.value[messageId] = "";
         replyingTo.value[messageId] = "";
+        replyingToAuthor.value[messageId] = "";
       } catch (e: any) {
         logger.error("Add comment failed", e);
       }
@@ -228,6 +232,17 @@ export default defineComponent({
     function startReply(messageId: string, commentId: string, authorName: string) {
       replyingTo.value[messageId] = commentId;
       commentInputs.value[messageId] = `@${authorName} `;
+      
+      // Find the comment to get its author pubkey
+      // Note: interactions.getComments() returns ALL comments (including nested replies)
+      const allComments = interactions.getComments(messageId);
+      const comment = allComments.find((c: any) => c.id === commentId);
+      if (comment) {
+        replyingToAuthor.value[messageId] = comment.author;
+      } else {
+        logger.warn("Could not find comment to reply to", { messageId, commentId });
+      }
+      
       // Focus input after state update
       setTimeout(() => {
         const input = document.querySelector(`input[data-message-id="${messageId}"]`) as HTMLInputElement;
@@ -237,6 +252,7 @@ export default defineComponent({
 
     function cancelReply(messageId: string) {
       replyingTo.value[messageId] = "";
+      replyingToAuthor.value[messageId] = "";
       commentInputs.value[messageId] = "";
     }
 
@@ -564,7 +580,8 @@ export default defineComponent({
       startReply,
       cancelReply,
       getReplies,
-      replyingTo
+      replyingTo,
+      replyingToAuthor
     };
   }
 });
