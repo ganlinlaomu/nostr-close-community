@@ -258,11 +258,11 @@ export default defineComponent({
         const sevenDaysInSeconds = 7 * 24 * 60 * 60;
         let since: number;
         
-        // Find the last message timestamp from inbox
-        // Inbox is sorted with newest messages first (at index 0)
+        // Find the last (newest) message timestamp from inbox
+        // Note: Messages may not be perfectly sorted as they can arrive out of order during backfill
         let lastMessageTime = 0;
         if (msgs.inbox.length > 0) {
-          // Find the newest message (highest timestamp)
+          // Find the newest message by checking all timestamps
           for (const msg of msgs.inbox) {
             if (msg.created_at > lastMessageTime) {
               lastMessageTime = msg.created_at;
