@@ -383,9 +383,13 @@ export const useInteractionsStore = defineStore("interactions", {
         return { fetched: 0, processed: 0 };
       }
       
+      // Calculate default 'since' value for incremental sync
+      // Use lastSyncedAt + 1 to avoid re-fetching events with the same timestamp
+      const defaultSince = this.lastSyncedAt > 0 ? this.lastSyncedAt + 1 : 0;
+      
       const {
         relays,
-        since = this.lastSyncedAt > 0 ? this.lastSyncedAt + 1 : 0, // Use lastSyncedAt + 1 to avoid re-fetching the same timestamp
+        since = defaultSince,
         until = Math.floor(Date.now() / 1000),
         maxBatches = 10,
         onProgress
@@ -439,7 +443,8 @@ export const useInteractionsStore = defineStore("interactions", {
         });
         
         // Update lastSyncedAt after successful sync
-        // Use 'until' if no events were found to avoid re-fetching the same time window
+        // If we found events, use the max timestamp; otherwise use 'until'
+        // to mark this time range as successfully synced and avoid re-fetching
         const newSyncedAt = maxTimestamp > this.lastSyncedAt ? maxTimestamp : until;
         if (newSyncedAt > this.lastSyncedAt) {
           this.lastSyncedAt = newSyncedAt;

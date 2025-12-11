@@ -499,12 +499,10 @@ export default defineComponent({
         const now = Math.floor(Date.now() / 1000);
         const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
         
-        // Use the store's backfillInteractions method with incremental sync
-        // If lastSyncedAt is 0 or older than 3 days, fetch from 3 days ago
-        // Otherwise, use lastSyncedAt (store will add +1 automatically)
-        const since = interactions.lastSyncedAt > 0 && interactions.lastSyncedAt > threeDaysAgo 
-          ? interactions.lastSyncedAt 
-          : threeDaysAgo;
+        // Determine if we should use incremental sync (fetch from lastSyncedAt)
+        // or full 3-day window sync (fetch from 3 days ago)
+        const shouldUseIncrementalSync = interactions.lastSyncedAt > 0 && interactions.lastSyncedAt > threeDaysAgo;
+        const since = shouldUseIncrementalSync ? interactions.lastSyncedAt : threeDaysAgo;
         
         logger.info(`开始回填互动事件 (增量同步): since=${new Date(since * 1000).toLocaleString()}`);
         
