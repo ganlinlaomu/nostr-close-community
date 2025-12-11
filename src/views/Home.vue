@@ -1,13 +1,14 @@
 <template>
-  <div>
-    <div class="card">
-    
+  <PullToRefresh @refresh="handleRefresh">
+    <div>
+      <div class="card">
       
-      <div class="small" style="margin-top:6px;">订阅状态: {{ status }}</div>
-      <div v-if="messageTimeRange" class="small" style="margin-top:4px; color: #94a3b8;">
-        仅展示三天内的新消息: {{ messageTimeRange }}
+        
+        <div class="small" style="margin-top:6px;">订阅状态: {{ status }}</div>
+        <div v-if="messageTimeRange" class="small" style="margin-top:4px; color: #94a3b8;">
+          仅展示三天内的新消息: {{ messageTimeRange }}
+        </div>
       </div>
-    </div>
 
     <div class="card">
       <!-- New message notification banner -->
@@ -18,15 +19,23 @@
       
       <h4 style="margin: 0 0 12px 0;">好友动态</h4>
       <div v-if="displayedMessages.length === 0" class="small">还没有消息</div>
-      <div class="list">
-        <div v-for="m in displayedMessages" :key="m.id" class="card">
-          <div class="small">
-            {{ displayName(m.pubkey) }}
-            <span class="muted"> · {{ toLocalTime(m.created_at) }}</span>
-          </div>
+      <RecycleScroller
+        v-if="displayedMessages.length > 0"
+        class="scroller"
+        :items="displayedMessages"
+        :item-size="null"
+        key-field="id"
+        :buffer="200"
+      >
+        <template #default="{ item: m }">
+          <div class="message-card">
+            <div class="small">
+              {{ displayName(m.pubkey) }}
+              <span class="muted"> · {{ toLocalTime(m.created_at) }}</span>
+            </div>
 
-          <!-- 图片预览（方案 B：直接从内容抽取图片 URL 并渲染） -->
-          <PostImagePreview :content="m.content" :showAll="false" style="margin-top:8px;" />
+            <!-- 图片预览（方案 B：直接从内容抽取图片 URL 并渲染） -->
+            <PostImagePreview :content="m.content" :showAll="false" style="margin-top:8px;" />
 
           <!-- 如果仍需显示文本（去除了图片 URL/Markdown），使用 processedTexts -->
           <div v-if="processedTexts[m.id]" class="message-text">{{ processedTexts[m.id] }}</div>
@@ -43,61 +52,62 @@
             </button>
           </div>
 
-          <!-- 评论区域 -->
-          <div v-if="showingComments.has(m.id)" class="comments-section">
-            <div class="comments-list">
-              <div v-for="comment in getComments(m.id)" :key="comment.id" class="comment-thread">
-                <!-- 主评论 -->
-                <div class="comment-item">
-                  <div class="comment-header small">
-                    <strong>{{ displayName(comment.author) }}</strong>
-                    <span class="muted"> · {{ toLocalTime(comment.timestamp) }}</span>
+            <!-- 评论区域 -->
+            <div v-if="showingComments.has(m.id)" class="comments-section">
+              <div class="comments-list">
+                <div v-for="comment in getComments(m.id)" :key="comment.id" class="comment-thread">
+                  <!-- 主评论 -->
+                  <div class="comment-item">
+                    <div class="comment-header small">
+                      <strong>{{ displayName(comment.author) }}</strong>
+                      <span class="muted"> · {{ toLocalTime(comment.timestamp) }}</span>
+                    </div>
+                    <div class="comment-text">{{ comment.text }}</div>
+                    <button class="reply-btn small" @click="startReply(m.id, comment.id, displayName(comment.author))">
+                      回复
+                    </button>
                   </div>
-                  <div class="comment-text">{{ comment.text }}</div>
-                  <button class="reply-btn small" @click="startReply(m.id, comment.id, displayName(comment.author))">
-                    回复
+                  
+                  <!-- 回复列表 -->
+                  <div v-if="getReplies(m.id, comment.id).length > 0" class="replies-list">
+                    <div v-for="reply in getReplies(m.id, comment.id)" :key="reply.id" class="comment-item reply-item">
+                      <div class="comment-header small">
+                        <strong>{{ displayName(reply.author) }}</strong>
+                        <span class="muted"> · {{ toLocalTime(reply.timestamp) }}</span>
+                      </div>
+                      <div class="comment-text">{{ reply.text }}</div>
+                      <!-- 不显示回复按钮，因为只支持两层评论 -->
+                    </div>
+                  </div>
+                </div>
+                <div v-if="getComments(m.id).length === 0" class="small muted">暂无评论</div>
+              </div>
+              
+              <!-- 评论输入框 -->
+              <div class="comment-input-container">
+                <div v-if="replyingTo[m.id]" class="replying-indicator small">
+                  <span>正在回复...</span>
+                  <button class="cancel-reply-btn" @click="cancelReply(m.id)">✕</button>
+                </div>
+                <div class="comment-input-wrapper">
+                  <input 
+                    v-model="commentInputs[m.id]" 
+                    class="comment-input" 
+                    placeholder="写下你的评论..."
+                    :data-message-id="m.id"
+                    @keyup.enter="addComment(m.id)"
+                  />
+                  <button class="comment-submit" @click="addComment(m.id)" :disabled="!commentInputs[m.id]?.trim()">
+                    发送
                   </button>
                 </div>
-                
-                <!-- 回复列表 -->
-                <div v-if="getReplies(m.id, comment.id).length > 0" class="replies-list">
-                  <div v-for="reply in getReplies(m.id, comment.id)" :key="reply.id" class="comment-item reply-item">
-                    <div class="comment-header small">
-                      <strong>{{ displayName(reply.author) }}</strong>
-                      <span class="muted"> · {{ toLocalTime(reply.timestamp) }}</span>
-                    </div>
-                    <div class="comment-text">{{ reply.text }}</div>
-                    <!-- 不显示回复按钮，因为只支持两层评论 -->
-                  </div>
-                </div>
-              </div>
-              <div v-if="getComments(m.id).length === 0" class="small muted">暂无评论</div>
-            </div>
-            
-            <!-- 评论输入框 -->
-            <div class="comment-input-container">
-              <div v-if="replyingTo[m.id]" class="replying-indicator small">
-                <span>正在回复...</span>
-                <button class="cancel-reply-btn" @click="cancelReply(m.id)">✕</button>
-              </div>
-              <div class="comment-input-wrapper">
-                <input 
-                  v-model="commentInputs[m.id]" 
-                  class="comment-input" 
-                  placeholder="写下你的评论..."
-                  :data-message-id="m.id"
-                  @keyup.enter="addComment(m.id)"
-                />
-                <button class="comment-submit" @click="addComment(m.id)" :disabled="!commentInputs[m.id]?.trim()">
-                  发送
-                </button>
               </div>
             </div>
           </div>
-        </div>
-      </div>
+        </template>
+      </RecycleScroller>
     </div>
-  </div>
+  </PullToRefresh>
 </template>
 
 <script lang="ts">
@@ -112,6 +122,7 @@ import { logger } from "@/utils/logger";
 import { formatRelativeTime } from "@/utils/format";
 import PostImagePreview from "@/components/PostImagePreview.vue";
 import BunkerStatus from "@/components/BunkerStatus.vue";
+import PullToRefresh from "@/components/PullToRefresh.vue";
 import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
 import { isBunkerError } from "@/utils/bunker";
 import { runWhenIdle } from "@/utils/idle";
@@ -127,7 +138,7 @@ const RECONNECT_BACKFILL_DEBOUNCE_MS = 2000; // Wait 2 seconds for multiple rela
 
 export default defineComponent({
   name: "Home",
-  components: { PostImagePreview, BunkerStatus },
+  components: { PostImagePreview, BunkerStatus, RecycleScroller },
   setup() {
     const friends = useFriendsStore();
     const keys = useKeyStore();
@@ -560,25 +571,12 @@ export default defineComponent({
     async function backfillInteractions(relays: string[], isReconnect = false) {
       try {
         const now = Math.floor(Date.now() / 1000);
-        const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
-        
-        // Determine time range for backfill
-        // If reconnecting and we have a recent timestamp, fetch from that point
-        // Otherwise, use 3-day window
-        let since: number;
-        if (isReconnect && interactions.latestInteractionTimestamp > 0) {
-          // When reconnecting, fetch from last known interaction
-          since = interactions.latestInteractionTimestamp;
-          logger.info(`重新连接: 从上次互动时间回填 ${new Date(since * 1000).toLocaleString()}`);
-        } else {
-          // Initial load or no previous timestamp: use 3-day window
-          since = threeDaysAgo;
-          logger.info(`初始回填: 获取最近3天的互动事件`);
-        }
-        
+        // Always use 3-day window for backfill (259200 seconds = 3 * 24 * 60 * 60)
+        // This ensures consistency across devices and handles offline periods
+        const since = now - THREE_DAYS_IN_SECONDS;
         const until = now;
         
-        logger.info(`开始回填互动事件: ${new Date(since * 1000).toLocaleString()} 到 ${new Date(until * 1000).toLocaleString()}`);
+        logger.info(`回填互动事件: 获取最近3天的互动 (${new Date(since * 1000).toLocaleString()} 到 ${new Date(until * 1000).toLocaleString()})`);
         
         // Track statistics
         let fetchedEvents = 0;
@@ -843,6 +841,37 @@ export default defineComponent({
         });
       }, RECONNECT_BACKFILL_DEBOUNCE_MS);
     }
+    
+    async function handleRefresh(finishRefresh: () => void) {
+      try {
+        logger.info("用户触发下拉刷新");
+        status.value = "刷新中...";
+        
+        // Re-fetch messages and interactions
+        await friends.load();
+        const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
+        if (keys.pkHex) friendSet.add(keys.pkHex);
+        
+        const relays = getRelaysFromStorage();
+        
+        // Backfill latest messages
+        await backfillMessages(friendSet, relays);
+        
+        // Backfill latest interactions
+        await backfillInteractions(relays, true);
+        
+        logger.info("下拉刷新完成");
+        // Restore subscription status after refresh
+        if (status.value === "刷新中...") {
+          status.value = "已订阅";
+        }
+      } catch (e) {
+        logger.error("下拉刷新失败", e);
+        status.value = "刷新失败";
+      } finally {
+        finishRefresh();
+      }
+    }
 
     onMounted(async () => { 
       await startSub();
@@ -919,6 +948,21 @@ export default defineComponent({
 .card { background: #fff; padding:12px; border-radius:10px; margin-bottom:12px; box-shadow: 0 4px 10px rgba(0,0,0,0.04); }
 .list { display:flex; flex-direction:column; gap:8px; }
 .muted { color: #94a3b8; font-size: 12px; margin-left:6px; }
+
+/* Virtual scroller styles */
+.scroller {
+  /* Height calculation: 100vh minus header, card padding, and margins (~220px) */
+  height: calc(100vh - 220px);
+  min-height: 400px;
+}
+
+.message-card {
+  background: #fff;
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.04);
+}
 .message-text {
   margin-top: 8px;
   white-space: pre-wrap;
