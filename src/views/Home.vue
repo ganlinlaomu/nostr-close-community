@@ -270,6 +270,14 @@ export default defineComponent({
       return pubkey.slice(0, 8) + "...";
     }
 
+    // Helper function to safely extract event info for logging
+    function getEventInfo(evt: any): { id: string; pubkey: string } {
+      return {
+        id: evt?.id ? evt.id.slice(0, 8) : 'unknown',
+        pubkey: evt?.pubkey ? evt.pubkey.slice(0, 8) : 'unknown'
+      };
+    }
+
     function addMessageIfNew(evt: any, plain: string) {
       if (!evt || !evt.id) return false;
       if (msgs.inbox.find((m) => m.id === evt.id)) return false;
@@ -447,8 +455,7 @@ export default defineComponent({
         const processEvent = async (evt: any) => {
           fetchedEvents++;
           try {
-            const evtId = evt?.id ? evt.id.slice(0, 8) : 'unknown';
-            const evtPubkey = evt?.pubkey ? evt.pubkey.slice(0, 8) : 'unknown';
+            const { id: evtId, pubkey: evtPubkey } = getEventInfo(evt);
             logger.debug(`回填事件处理开始: ${evtId}, pubkey: ${evtPubkey}`);
             
             if (!friendSet.has(evt.pubkey)) {
@@ -762,8 +769,7 @@ export default defineComponent({
           sub = adapterSub;
           adapterSub.on("event", async (evt: any) => {
             try {
-              const evtId = evt?.id ? evt.id.slice(0, 8) : 'unknown';
-              const evtPubkey = evt?.pubkey ? evt.pubkey.slice(0, 8) : 'unknown';
+              const { id: evtId, pubkey: evtPubkey } = getEventInfo(evt);
               logger.debug(`实时事件接收: ${evtId}, pubkey: ${evtPubkey}`);
               
               if (!friendSet.has(evt.pubkey)) {
