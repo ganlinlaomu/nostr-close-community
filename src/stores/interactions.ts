@@ -36,6 +36,8 @@ export const useInteractionsStore = defineStore("interactions", {
     interactions: new Map<string, Interaction[]>(),
     // Map of interaction event id -> interaction (to avoid duplicates)
     processedEvents: new Set<string>(),
+    // Latest synced timestamp for incremental backfill
+    lastSyncedAt: 0,
   }),
   
   getters: {
@@ -251,6 +253,11 @@ export const useInteractionsStore = defineStore("interactions", {
           // Add to state
           this._addInteraction(interaction.messageId, interaction);
           
+          // Update lastSyncedAt to track the most recent event
+          if (evt.created_at && evt.created_at > this.lastSyncedAt) {
+            this.lastSyncedAt = evt.created_at;
+          }
+          
           logger.debug("processed interaction", { interaction });
         } catch (e) {
           logger.warn("symDecryptPackage failed", e);
@@ -309,7 +316,17 @@ export const useInteractionsStore = defineStore("interactions", {
         
         if (stored) {
           const data = JSON.parse(stored);
-          this.interactions = new Map(Object.entries(data));
+          
+          // Backward compatibility: check if data has new structure or old structure
+          if (data && typeof data === 'object' && 'interactions' in data) {
+            // New structure: { interactions: {...}, lastSyncedAt: number }
+            this.interactions = new Map(Object.entries(data.interactions || {}));
+            this.lastSyncedAt = data.lastSyncedAt || 0;
+          } else {
+            // Old structure: direct map of messageId -> interactions
+            this.interactions = new Map(Object.entries(data));
+            this.lastSyncedAt = 0;
+          }
         }
       } catch (e) {
         logger.warn("Failed to load interactions", e);
@@ -325,15 +342,114 @@ export const useInteractionsStore = defineStore("interactions", {
         if (!key.pkHex) return;
         
         const storageKey = `interactions_${key.pkHex}`;
-        const data: Record<string, Interaction[]> = {};
+        const interactionsObj: Record<string, Interaction[]> = {};
         
         this.interactions.forEach((value, key) => {
-          data[key] = value;
+          interactionsObj[key] = value;
         });
+        
+        // Save new structure with lastSyncedAt
+        const data = {
+          interactions: interactionsObj,
+          lastSyncedAt: this.lastSyncedAt
+        };
         
         localStorage.setItem(storageKey, JSON.stringify(data));
       } catch (e) {
         logger.warn("Failed to save interactions", e);
+      }
+    },
+    
+    /**
+     * Backfill interactions from relays for multi-device sync
+     * 
+     * This method implements incremental sync by fetching interactions
+     * since the last synced timestamp, ensuring no interactions are missed
+     * across devices.
+     */
+    async backfillInteractions(options: {
+      relays: string[];
+      since?: number;
+      until?: number;
+      maxBatches?: number;
+      onProgress?: (fetched: number, processed: number) => void;
+    }) {
+      const key = useKeyStore();
+      if (!key.pkHex) {
+        logger.warn("Cannot backfill interactions: not logged in");
+        return { fetched: 0, processed: 0 };
+      }
+      
+      const {
+        relays,
+        since = this.lastSyncedAt, // Default to last synced timestamp for incremental sync
+        until = Math.floor(Date.now() / 1000),
+        maxBatches = 10,
+        onProgress
+      } = options;
+      
+      logger.info(`开始回填互动事件: since=${since ? new Date(since * 1000).toLocaleString() : 'beginning'}, until=${new Date(until * 1000).toLocaleString()}`);
+      
+      let fetchedCount = 0;
+      let processedCount = 0;
+      let maxTimestamp = this.lastSyncedAt;
+      
+      try {
+        // Import backfillEvents dynamically to avoid circular dependencies
+        const { backfillEvents } = await import("@/utils/backfill");
+        
+        const processEvent = async (evt: any) => {
+          fetchedCount++;
+          try {
+            await this.processInteractionEvent(evt, key.pkHex);
+            processedCount++;
+            
+            // Track the maximum timestamp we've seen
+            if (evt.created_at && evt.created_at > maxTimestamp) {
+              maxTimestamp = evt.created_at;
+            }
+            
+            if (onProgress) {
+              onProgress(fetchedCount, processedCount);
+            }
+          } catch (e) {
+            logger.warn("处理回填互动事件失败", e);
+          }
+        };
+        
+        // Use backfill utility with time-based pagination
+        await backfillEvents({
+          relays,
+          filters: {
+            kinds: [24243],
+            "#p": [key.pkHex], // Only get interactions targeted at us
+            since,
+            until
+          },
+          onEvent: processEvent,
+          onProgress: (stats) => {
+            logger.debug(`回填互动进度: ${stats.totalEvents} 条事件`);
+          },
+          onComplete: (stats) => {
+            logger.info(`互动事件回填完成: 获取 ${fetchedCount} 条, 处理 ${processedCount} 条`);
+          },
+          batchSize: 500,
+          maxBatches,
+          timeoutMs: 10000
+        });
+        
+        // Update lastSyncedAt to the maximum timestamp we've seen
+        // This ensures we don't re-fetch the same events on next sync
+        if (maxTimestamp > this.lastSyncedAt) {
+          this.lastSyncedAt = maxTimestamp;
+          this._saveToStorage();
+          logger.info(`更新最后同步时间戳: ${new Date(maxTimestamp * 1000).toLocaleString()}`);
+        }
+        
+        return { fetched: fetchedCount, processed: processedCount };
+      } catch (e) {
+        logger.error("回填互动事件失败", e);
+        return { fetched: fetchedCount, processed: processedCount };
       }
     }
   }
