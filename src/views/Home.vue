@@ -1,24 +1,25 @@
 <template>
-  <div>
-    <div class="card">
-    
+  <PullToRefresh @refresh="handleRefresh">
+    <div>
+      <div class="card">
       
-      <div class="small" style="margin-top:6px;">订阅状态: {{ status }}</div>
-      <div v-if="messageTimeRange" class="small" style="margin-top:4px; color: #94a3b8;">
-        仅展示三天内的新消息: {{ messageTimeRange }}
+        
+        <div class="small" style="margin-top:6px;">订阅状态: {{ status }}</div>
+        <div v-if="messageTimeRange" class="small" style="margin-top:4px; color: #94a3b8;">
+          仅展示三天内的新消息: {{ messageTimeRange }}
+        </div>
       </div>
-    </div>
 
-    <div class="card">
-      <!-- New message notification banner -->
-      <div v-if="newMessageCount > 0" class="new-message-banner" @click="showNewMessages">
-        <span class="new-message-text">{{ newMessageCount }} 条新消息</span>
-        <span class="new-message-icon">↓</span>
-      </div>
-      
-      <h4 style="margin: 0 0 12px 0;">好友动态</h4>
-      <div v-if="displayedMessages.length === 0" class="small">还没有消息</div>
-      <div class="list">
+      <div class="card">
+        <!-- New message notification banner -->
+        <div v-if="newMessageCount > 0" class="new-message-banner" @click="showNewMessages">
+          <span class="new-message-text">{{ newMessageCount }} 条新消息</span>
+          <span class="new-message-icon">↓</span>
+        </div>
+        
+        <h4 style="margin: 0 0 12px 0;">好友动态</h4>
+        <div v-if="displayedMessages.length === 0" class="small">还没有消息</div>
+        <div class="list">
         <div v-for="m in displayedMessages" :key="m.id" class="card">
           <div class="small">
             {{ displayName(m.pubkey) }}
@@ -95,9 +96,10 @@
             </div>
           </div>
         </div>
+        </div>
       </div>
     </div>
-  </div>
+  </PullToRefresh>
 </template>
 
 <script lang="ts">
@@ -112,6 +114,7 @@ import { logger } from "@/utils/logger";
 import { formatRelativeTime } from "@/utils/format";
 import PostImagePreview from "@/components/PostImagePreview.vue";
 import BunkerStatus from "@/components/BunkerStatus.vue";
+import PullToRefresh from "@/components/PullToRefresh.vue";
 import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
 import { isBunkerError } from "@/utils/bunker";
 
@@ -126,7 +129,7 @@ const RECONNECT_BACKFILL_DEBOUNCE_MS = 2000; // Wait 2 seconds for multiple rela
 
 export default defineComponent({
   name: "Home",
-  components: { PostImagePreview, BunkerStatus },
+  components: { PostImagePreview, BunkerStatus, PullToRefresh },
   setup() {
     const friends = useFriendsStore();
     const keys = useKeyStore();
@@ -798,6 +801,37 @@ export default defineComponent({
         });
       }, RECONNECT_BACKFILL_DEBOUNCE_MS);
     }
+    
+    async function handleRefresh(finishRefresh: () => void) {
+      try {
+        logger.info("用户触发下拉刷新");
+        status.value = "刷新中...";
+        
+        // Re-fetch messages and interactions
+        await friends.load();
+        const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
+        if (keys.pkHex) friendSet.add(keys.pkHex);
+        
+        const relays = getRelaysFromStorage();
+        
+        // Backfill latest messages
+        await backfillMessages(friendSet, relays);
+        
+        // Backfill latest interactions
+        await backfillInteractions(relays, true);
+        
+        logger.info("下拉刷新完成");
+        // Restore subscription status after refresh
+        if (status.value === "刷新中...") {
+          status.value = "已订阅";
+        }
+      } catch (e) {
+        logger.error("下拉刷新失败", e);
+        status.value = "刷新失败";
+      } finally {
+        finishRefresh();
+      }
+    }
 
     onMounted(async () => { 
       await startSub();
@@ -846,6 +880,7 @@ export default defineComponent({
       shortRelay, 
       displayName, 
       textWithoutImages,
+      handleRefresh,
       // Like and comment functions
       toggleLike,
       isLiked,
