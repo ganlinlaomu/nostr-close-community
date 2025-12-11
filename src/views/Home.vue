@@ -138,6 +138,7 @@ export default defineComponent({
     const displayedMessages = ref([] as any[]);
     const newMessageCount = ref(0);
     const initialLoadComplete = ref(false);
+    let autoRefreshTimer: any = null;
     
     // State for comments UI
     const showingComments = ref<Set<string>>(new Set());
@@ -163,10 +164,26 @@ export default defineComponent({
         displayedMessages.value = [...messagesRef.value];
         initialLoadComplete.value = true;
       } else {
-        // After initial load - count new messages but don't display
+        // After initial load - automatically refresh displayed messages after a short delay
         const currentDisplayedIds = new Set(displayedMessages.value.map(m => m.id));
         const newMessages = messagesRef.value.filter(m => !currentDisplayedIds.has(m.id));
-        newMessageCount.value = newMessages.length;
+        
+        if (newMessages.length > 0) {
+          // Show new message count temporarily
+          newMessageCount.value = newMessages.length;
+          
+          // Clear any existing timer
+          if (autoRefreshTimer) {
+            clearTimeout(autoRefreshTimer);
+          }
+          
+          // Auto-refresh after 2 seconds
+          autoRefreshTimer = setTimeout(() => {
+            displayedMessages.value = [...messagesRef.value];
+            newMessageCount.value = 0;
+            updateMessageTimeRange();
+          }, 2000);
+        }
       }
       
       updateMessageTimeRange();
@@ -520,12 +537,12 @@ export default defineComponent({
           }
         };
         
-        // Use backfill utility for interactions
+        // Backfill interactions targeted at us
         await backfillEvents({
           relays,
           filters: {
             kinds: [24243],
-            "#p": [keys.pkHex], // Only get interactions targeted at us
+            "#p": [keys.pkHex], // Interactions where we are recipient
             since,
             until
           },
@@ -534,12 +551,35 @@ export default defineComponent({
             logger.debug(`回填互动中: ${stats.totalEvents} 条事件`);
           },
           onComplete: (stats) => {
-            logger.info(`互动事件回填完成: 获取 ${fetchedEvents} 条, 处理 ${processedEvents} 条`);
+            logger.info(`互动事件(接收)回填完成: 获取 ${stats.totalEvents} 条`);
           },
           batchSize: 500,
           maxBatches: 10,
           timeoutMs: 10000
         });
+        
+        // Backfill interactions authored by us (for cross-device sync)
+        await backfillEvents({
+          relays,
+          filters: {
+            kinds: [24243],
+            authors: [keys.pkHex], // Interactions we authored
+            since,
+            until
+          },
+          onEvent: processEvent,
+          onProgress: (stats) => {
+            logger.debug(`回填自己的互动中: ${stats.totalEvents} 条事件`);
+          },
+          onComplete: (stats) => {
+            logger.info(`互动事件(发送)回填完成: 获取 ${stats.totalEvents} 条`);
+          },
+          batchSize: 500,
+          maxBatches: 10,
+          timeoutMs: 10000
+        });
+        
+        logger.info(`互动事件回填完成: 总共获取 ${fetchedEvents} 条, 处理 ${processedEvents} 条`);
         
       } catch (e) {
         logger.error("回填互动事件失败", e);
@@ -642,13 +682,22 @@ export default defineComponent({
         });
         
         // Subscribe to interactions (kind 24243)
+        // We need two filters to catch all relevant interactions:
+        // 1. Interactions targeted at us (we are recipient)
+        // 2. Interactions from us (we are author) - to sync across devices
         try {
-          const interactionsFilter = {
-            kinds: [24243],
-            "#p": [keys.pkHex] // Only get interactions targeted at us
-          };
+          const interactionsFilters = [
+            {
+              kinds: [24243],
+              "#p": [keys.pkHex] // Interactions where we are tagged as recipient
+            },
+            {
+              kinds: [24243],
+              authors: [keys.pkHex] // Interactions we authored (to sync between devices)
+            }
+          ];
           
-          interactionsSub = subscribe(relays, [interactionsFilter]);
+          interactionsSub = subscribe(relays, interactionsFilters);
           
           interactionsSub.on("event", async (evt: any) => {
             await interactions.processInteractionEvent(evt, keys.pkHex);
@@ -669,6 +718,12 @@ export default defineComponent({
     });
 
     onBeforeUnmount(() => {
+      // Clean up auto-refresh timer
+      if (autoRefreshTimer) {
+        clearTimeout(autoRefreshTimer);
+        autoRefreshTimer = null;
+      }
+      
       if (sub) {
         try { if (typeof sub.close === "function") sub.close(); else if (typeof sub.unsub === "function") sub.unsub(); else if (typeof sub.unsubscribe === "function") sub.unsubscribe(); else if (typeof sub === "function") sub(); } catch {}
       }
