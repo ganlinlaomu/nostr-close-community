@@ -284,6 +284,7 @@ export default defineComponent({
     }
 
     // Local debugging fallback for symDecryptPackage
+    // Returns the decrypted content or a debug message string starting with "[解密失败"
     async function symDecryptPackageWithFallback(symHex: string, pkg: { iv: string; ct: string }, eventId?: string): Promise<string> {
       try {
         // Try normal decryption
@@ -295,7 +296,7 @@ export default defineComponent({
         // Debugging fallback: Return a placeholder message that indicates decryption failed
         // This helps with debugging by showing which messages couldn't be decrypted
         const errorMsg = e instanceof Error ? e.message : String(e);
-        return `[解密失败 - 本地调试模式]\n错误类型: ${errorMsg}\n事件ID: ${eventId ? eventId.slice(0, 16) : '未知'}...\nCT长度: ${pkg.ct.length} 字节`;
+        return `[解密失败 - 本地调试模式]\n错误类型: ${errorMsg}\n事件ID: ${eventId ? eventId.slice(0, 8) : '未知'}...\nCT长度: ${pkg.ct.length} 字节`;
       }
     }
 
@@ -504,9 +505,18 @@ export default defineComponent({
             }
             
             const plain = await symDecryptPackageWithFallback(symHex, payload.pkg, evt.id);
+            
+            // Check if decryption actually failed (debug message starts with "[解密失败")
+            if (plain.startsWith('[解密失败')) {
+              decryptErrors++;
+            }
+            
             const added = addMessageIfNew(evt, plain);
             if (added) {
-              decryptedEvents++;
+              // Only count as successfully decrypted if not a debug message
+              if (!plain.startsWith('[解密失败')) {
+                decryptedEvents++;
+              }
               // Track the newest message timestamp for breakpoint
               if (evt.created_at > newestTimestamp) {
                 newestTimestamp = evt.created_at;
