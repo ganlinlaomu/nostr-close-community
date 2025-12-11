@@ -283,6 +283,22 @@ export default defineComponent({
       return s;
     }
 
+    // Local debugging fallback for symDecryptPackage
+    async function symDecryptPackageWithFallback(symHex: string, pkg: { iv: string; ct: string }, eventId?: string): Promise<string> {
+      try {
+        // Try normal decryption
+        return await symDecryptPackage(symHex, pkg);
+      } catch (e) {
+        // Log error for debugging
+        logger.warn(`symDecryptPackage 解密失败 ${eventId ? `(事件 ${eventId.slice(0, 8)})` : ''}, 使用调试回退`, e);
+        
+        // Debugging fallback: Return a placeholder message that indicates decryption failed
+        // This helps with debugging by showing which messages couldn't be decrypted
+        const errorMsg = e instanceof Error ? e.message : String(e);
+        return `[解密失败 - 本地调试模式]\n错误: ${errorMsg}\n对称密钥: ${symHex.slice(0, 16)}...\nIV: ${pkg.iv.slice(0, 16)}...\nCT长度: ${pkg.ct.length}`;
+      }
+    }
+
     // Cache processed text for all displayed messages to avoid repeated regex operations
     const processedTexts = computed(() => {
       const cache: Record<string, string> = {};
@@ -488,7 +504,7 @@ export default defineComponent({
             }
             
             try {
-              const plain = await symDecryptPackage(symHex, payload.pkg);
+              const plain = await symDecryptPackageWithFallback(symHex, payload.pkg, evt.id);
               const added = addMessageIfNew(evt, plain);
               if (added) {
                 decryptedEvents++;
@@ -768,7 +784,7 @@ export default defineComponent({
                 }
               }
               try {
-                const plain = await symDecryptPackage(symHex, payload.pkg);
+                const plain = await symDecryptPackageWithFallback(symHex, payload.pkg, evt.id);
                 addMessageIfNew(evt, plain);
               } catch (e) {
                 logger.warn(`实时事件 ${evt.id?.slice(0,8)} 对称解密失败`, e);
