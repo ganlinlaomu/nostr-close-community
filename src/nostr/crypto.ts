@@ -32,6 +32,16 @@ export function genSymHex() {
 }
 
 /**
+ * Helper function to create error messages for key normalization failures
+ */
+function createKeyNormalizationError(key: string | Uint8Array, cause?: Error | string): Error {
+  const keyType = typeof key;
+  const keyLength = key instanceof Uint8Array ? key.length : (key as string).length;
+  const causeMessage = cause ? `: ${cause instanceof Error ? cause.message : cause}` : '';
+  return new Error(`Failed to normalize symmetric key${causeMessage}. Key type: ${keyType}, Key length: ${keyLength}`);
+}
+
+/**
  * normalizeSymKey: Normalize a symmetric key to hex string format (64 characters)
  * Accepts: hex string (64 chars), base64 string, or Uint8Array (32 bytes)
  * Returns: hex string (64 characters)
@@ -55,7 +65,9 @@ export function normalizeSymKey(key: string | Uint8Array): string {
       return key.toLowerCase();
     }
     
-    // Try to decode as base64 (44 characters for 32 bytes in base64)
+    // Try to decode as base64
+    // Standard base64 encoding of 32 bytes produces 44 characters (without padding) or 43 chars + '='
+    // Allow range 40-48 to handle variations in padding and whitespace
     if (key.length >= 40 && key.length <= 48) {
       try {
         const bytes = base64ToBytes(key);
@@ -84,7 +96,7 @@ export async function symEncryptPackage(symKey: string | Uint8Array, plaintext: 
   try {
     symHex = normalizeSymKey(symKey);
   } catch (e) {
-    throw new Error(`Failed to normalize symmetric key: ${e instanceof Error ? e.message : e}. Key type: ${typeof symKey}, Key length: ${symKey instanceof Uint8Array ? symKey.length : (symKey as string).length}`);
+    throw createKeyNormalizationError(symKey, e instanceof Error ? e : String(e));
   }
   
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -104,7 +116,7 @@ export async function symDecryptPackage(symKey: string | Uint8Array, pkg: { iv: 
   try {
     symHex = normalizeSymKey(symKey);
   } catch (e) {
-    throw new Error(`Failed to normalize symmetric key: ${e instanceof Error ? e.message : e}. Key type: ${typeof symKey}, Key length: ${symKey instanceof Uint8Array ? symKey.length : (symKey as string).length}`);
+    throw createKeyNormalizationError(symKey, e instanceof Error ? e : String(e));
   }
   
   const iv = base64ToBytes(pkg.iv);

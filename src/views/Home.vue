@@ -512,7 +512,7 @@ export default defineComponent({
             }
             
             try {
-              logger.debug(`开始对称解密: ${evtId}, symKey长度: ${symHex?.length}`);
+              logger.debug(`开始对称解密: ${evtId}`);
               const normalizedKey = normalizeSymKey(symHex);
               logger.debug(`Key已规范化: ${evtId}`);
               const plain = await symDecryptPackage(normalizedKey, payload.pkg);
@@ -821,7 +821,7 @@ export default defineComponent({
               }
               
               try {
-                logger.debug(`开始对称解密实时事件: ${evtId}, symKey长度: ${symHex?.length}`);
+                logger.debug(`开始对称解密实时事件: ${evtId}`);
                 const normalizedKey = normalizeSymKey(symHex);
                 logger.debug(`实时事件Key已规范化: ${evtId}`);
                 const plain = await symDecryptPackage(normalizedKey, payload.pkg);
