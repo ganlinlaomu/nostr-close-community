@@ -18,84 +18,93 @@
       
       <h4 style="margin: 0 0 12px 0;">好友动态</h4>
       <div v-if="displayedMessages.length === 0" class="small">还没有消息</div>
-      <div class="list">
-        <div v-for="m in displayedMessages" :key="m.id" class="card">
-          <div class="small">
-            {{ displayName(m.pubkey) }}
-            <span class="muted"> · {{ toLocalTime(m.created_at) }}</span>
-          </div>
+      <RecycleScroller
+        v-if="displayedMessages.length > 0"
+        class="scroller"
+        :items="displayedMessages"
+        :item-size="null"
+        key-field="id"
+        :buffer="200"
+      >
+        <template #default="{ item: m }">
+          <div class="card message-card">
+            <div class="small">
+              {{ displayName(m.pubkey) }}
+              <span class="muted"> · {{ toLocalTime(m.created_at) }}</span>
+            </div>
 
-          <!-- 图片预览（方案 B：直接从内容抽取图片 URL 并渲染） -->
-          <PostImagePreview :content="m.content" :showAll="false" style="margin-top:8px;" />
+            <!-- 图片预览（方案 B：直接从内容抽取图片 URL 并渲染） -->
+            <PostImagePreview :content="m.content" :showAll="false" style="margin-top:8px;" />
 
-          <!-- 如果仍需显示文本（去除了图片 URL/Markdown），使用 textWithoutImages -->
-          <div v-if="textWithoutImages(m.content)" class="message-text">{{ textWithoutImages(m.content) }}</div>
-          
-          <!-- 操作按钮：点赞和评论 -->
-          <div class="message-actions">
-            <button class="action-btn" @click="toggleLike(m)" :class="{ 'liked': isLiked(m.id) }">
-              <span class="action-icon">{{ isLiked(m.id) ? '❤️' : '🤍' }}</span>
-              <span class="action-text">{{ getLikeCount(m.id) }}</span>
-            </button>
-            <button class="action-btn" @click="toggleComments(m.id)">
-              <span class="action-icon">💬</span>
-              <span class="action-text">{{ getCommentCount(m.id) }}</span>
-            </button>
-          </div>
+            <!-- 如果仍需显示文本（去除了图片 URL/Markdown），使用 textWithoutImages -->
+            <div v-if="textWithoutImages(m.content)" class="message-text">{{ textWithoutImages(m.content) }}</div>
+            
+            <!-- 操作按钮：点赞和评论 -->
+            <div class="message-actions">
+              <button class="action-btn" @click="toggleLike(m)" :class="{ 'liked': isLiked(m.id) }">
+                <span class="action-icon">{{ isLiked(m.id) ? '❤️' : '🤍' }}</span>
+                <span class="action-text">{{ getLikeCount(m.id) }}</span>
+              </button>
+              <button class="action-btn" @click="toggleComments(m.id)">
+                <span class="action-icon">💬</span>
+                <span class="action-text">{{ getCommentCount(m.id) }}</span>
+              </button>
+            </div>
 
-          <!-- 评论区域 -->
-          <div v-if="showingComments.has(m.id)" class="comments-section">
-            <div class="comments-list">
-              <div v-for="comment in getComments(m.id)" :key="comment.id" class="comment-thread">
-                <!-- 主评论 -->
-                <div class="comment-item">
-                  <div class="comment-header small">
-                    <strong>{{ displayName(comment.author) }}</strong>
-                    <span class="muted"> · {{ toLocalTime(comment.timestamp) }}</span>
+            <!-- 评论区域 -->
+            <div v-if="showingComments.has(m.id)" class="comments-section">
+              <div class="comments-list">
+                <div v-for="comment in getComments(m.id)" :key="comment.id" class="comment-thread">
+                  <!-- 主评论 -->
+                  <div class="comment-item">
+                    <div class="comment-header small">
+                      <strong>{{ displayName(comment.author) }}</strong>
+                      <span class="muted"> · {{ toLocalTime(comment.timestamp) }}</span>
+                    </div>
+                    <div class="comment-text">{{ comment.text }}</div>
+                    <button class="reply-btn small" @click="startReply(m.id, comment.id, displayName(comment.author))">
+                      回复
+                    </button>
                   </div>
-                  <div class="comment-text">{{ comment.text }}</div>
-                  <button class="reply-btn small" @click="startReply(m.id, comment.id, displayName(comment.author))">
-                    回复
+                  
+                  <!-- 回复列表 -->
+                  <div v-if="getReplies(m.id, comment.id).length > 0" class="replies-list">
+                    <div v-for="reply in getReplies(m.id, comment.id)" :key="reply.id" class="comment-item reply-item">
+                      <div class="comment-header small">
+                        <strong>{{ displayName(reply.author) }}</strong>
+                        <span class="muted"> · {{ toLocalTime(reply.timestamp) }}</span>
+                      </div>
+                      <div class="comment-text">{{ reply.text }}</div>
+                      <!-- 不显示回复按钮，因为只支持两层评论 -->
+                    </div>
+                  </div>
+                </div>
+                <div v-if="getComments(m.id).length === 0" class="small muted">暂无评论</div>
+              </div>
+              
+              <!-- 评论输入框 -->
+              <div class="comment-input-container">
+                <div v-if="replyingTo[m.id]" class="replying-indicator small">
+                  <span>正在回复...</span>
+                  <button class="cancel-reply-btn" @click="cancelReply(m.id)">✕</button>
+                </div>
+                <div class="comment-input-wrapper">
+                  <input 
+                    v-model="commentInputs[m.id]" 
+                    class="comment-input" 
+                    placeholder="写下你的评论..."
+                    :data-message-id="m.id"
+                    @keyup.enter="addComment(m.id)"
+                  />
+                  <button class="comment-submit" @click="addComment(m.id)" :disabled="!commentInputs[m.id]?.trim()">
+                    发送
                   </button>
                 </div>
-                
-                <!-- 回复列表 -->
-                <div v-if="getReplies(m.id, comment.id).length > 0" class="replies-list">
-                  <div v-for="reply in getReplies(m.id, comment.id)" :key="reply.id" class="comment-item reply-item">
-                    <div class="comment-header small">
-                      <strong>{{ displayName(reply.author) }}</strong>
-                      <span class="muted"> · {{ toLocalTime(reply.timestamp) }}</span>
-                    </div>
-                    <div class="comment-text">{{ reply.text }}</div>
-                    <!-- 不显示回复按钮，因为只支持两层评论 -->
-                  </div>
-                </div>
-              </div>
-              <div v-if="getComments(m.id).length === 0" class="small muted">暂无评论</div>
-            </div>
-            
-            <!-- 评论输入框 -->
-            <div class="comment-input-container">
-              <div v-if="replyingTo[m.id]" class="replying-indicator small">
-                <span>正在回复...</span>
-                <button class="cancel-reply-btn" @click="cancelReply(m.id)">✕</button>
-              </div>
-              <div class="comment-input-wrapper">
-                <input 
-                  v-model="commentInputs[m.id]" 
-                  class="comment-input" 
-                  placeholder="写下你的评论..."
-                  :data-message-id="m.id"
-                  @keyup.enter="addComment(m.id)"
-                />
-                <button class="comment-submit" @click="addComment(m.id)" :disabled="!commentInputs[m.id]?.trim()">
-                  发送
-                </button>
               </div>
             </div>
           </div>
-        </div>
-      </div>
+        </template>
+      </RecycleScroller>
     </div>
   </div>
 </template>
@@ -114,6 +123,9 @@ import PostImagePreview from "@/components/PostImagePreview.vue";
 import BunkerStatus from "@/components/BunkerStatus.vue";
 import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
 import { isBunkerError } from "@/utils/bunker";
+// @ts-ignore
+import { RecycleScroller } from 'vue-virtual-scroller';
+import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
 
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
 const mdImageRE = /!\[[^\]]*?\]\(\s*(https?:\/\/[^\s)]+)\s*\)/gi;
@@ -126,7 +138,7 @@ const RECONNECT_BACKFILL_DEBOUNCE_MS = 2000; // Wait 2 seconds for multiple rela
 
 export default defineComponent({
   name: "Home",
-  components: { PostImagePreview, BunkerStatus },
+  components: { PostImagePreview, BunkerStatus, RecycleScroller },
   setup() {
     const friends = useFriendsStore();
     const keys = useKeyStore();
@@ -873,6 +885,16 @@ export default defineComponent({
 .card { background: #fff; padding:12px; border-radius:10px; margin-bottom:12px; box-shadow: 0 4px 10px rgba(0,0,0,0.04); }
 .list { display:flex; flex-direction:column; gap:8px; }
 .muted { color: #94a3b8; font-size: 12px; margin-left:6px; }
+
+/* Virtual scroller styles */
+.scroller {
+  height: calc(100vh - 220px);
+  min-height: 400px;
+}
+
+.message-card {
+  margin-bottom: 8px;
+}
 .message-text {
   margin-top: 8px;
   white-space: pre-wrap;
