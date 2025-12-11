@@ -2,7 +2,7 @@
   <PullToRefresh @refresh="handleRefresh">
     <div>
       <div class="card">
-      
+        <BunkerStatus />
         
         <div class="small" style="margin-top:6px;">订阅状态: {{ status }}</div>
         <div v-if="messageTimeRange" class="small" style="margin-top:4px; color: #94a3b8;">
