@@ -124,6 +124,7 @@ const plainImgUrlRE = /(https?:\/\/[^\s)]+?\.(?:png|jpe?g|gif|webp|avif|svg)(?:\
 // Constants for time calculations
 const SECONDS_PER_DAY = 24 * 60 * 60;
 const THREE_DAYS_IN_SECONDS = 3 * SECONDS_PER_DAY;
+const RECONNECT_BACKFILL_DEBOUNCE_MS = 2000; // Wait 2 seconds for multiple relays to reconnect
 
 export default defineComponent({
   name: "Home",
@@ -142,7 +143,7 @@ export default defineComponent({
     const displayedMessages = ref([] as any[]);
     const newMessageCount = ref(0);
     const initialLoadComplete = ref(false);
-    let autoRefreshTimer: any = null;
+    let autoRefreshTimer: number | null = null;
     
     // State for comments UI
     const showingComments = ref<Set<string>>(new Set());
@@ -783,7 +784,7 @@ export default defineComponent({
     }
     
     // Handle relay reconnections
-    let reconnectBackfillTimer: any = null;
+    let reconnectBackfillTimer: number | null = null;
     function handleRelayReconnect(url: string) {
       logger.info(`中继重连: ${url}，将回填错过的互动事件`);
       
@@ -797,7 +798,7 @@ export default defineComponent({
         backfillInteractions(relays, true).catch((e) => {
           logger.error("中继重连后回填互动事件失败", e);
         });
-      }, 2000); // Wait 2 seconds for other relays to reconnect
+      }, RECONNECT_BACKFILL_DEBOUNCE_MS);
     }
 
     onMounted(async () => { 

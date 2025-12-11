@@ -30,6 +30,9 @@ export interface Comment {
 
 export type Interaction = Like | Comment;
 
+// Debounce timer for saving timestamp
+let saveTimestampTimer: number | null = null;
+
 export const useInteractionsStore = defineStore("interactions", {
   state: () => ({
     // Map of messageId -> array of interactions
@@ -217,7 +220,7 @@ export const useInteractionsStore = defineStore("interactions", {
         // Track latest timestamp for backfill checkpoint
         if (evt.created_at && evt.created_at > this.latestInteractionTimestamp) {
           this.latestInteractionTimestamp = evt.created_at;
-          this._saveLatestTimestamp();
+          this._saveLatestTimestampDebounced();
         }
         
         // Parse payload
@@ -361,6 +364,22 @@ export const useInteractionsStore = defineStore("interactions", {
       } catch (e) {
         logger.warn("Failed to save latest interaction timestamp", e);
       }
+    },
+    
+    /**
+     * Save the latest interaction timestamp with debouncing to reduce I/O
+     */
+    _saveLatestTimestampDebounced() {
+      // Clear any pending save
+      if (saveTimestampTimer !== null) {
+        clearTimeout(saveTimestampTimer);
+      }
+      
+      // Schedule a new save after 1 second of inactivity
+      saveTimestampTimer = setTimeout(() => {
+        this._saveLatestTimestamp();
+        saveTimestampTimer = null;
+      }, 1000) as unknown as number;
     },
     
     /**

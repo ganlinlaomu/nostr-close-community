@@ -16,6 +16,7 @@ type RelayConn = {
   subs: Map<string, { filters: any[]; handlers: Set<(evt: any) => void>; eoseHandlers: Set<() => void> }>;
   okHandlers: Map<string, (res: any) => void>;
   reconnectTimer?: number | null;
+  hasConnectedBefore?: boolean; // Track if this relay has connected before
 };
 
 const CONNECT_TIMEOUT = 4000;
@@ -48,7 +49,8 @@ function ensureRelayConn(url: string): RelayConn {
     queue: [],
     subs: new Map(),
     okHandlers: new Map(),
-    reconnectTimer: null
+    reconnectTimer: null,
+    hasConnectedBefore: false
   };
   relaysMap[url] = conn;
 
@@ -59,8 +61,10 @@ function ensureRelayConn(url: string): RelayConn {
       conn.ready = false;
 
       const onOpen = () => {
-        const wasReconnect = conn.ready === false && conn.ws !== null;
+        // Check if this is a reconnect (not the first connection)
+        const wasReconnect = conn.hasConnectedBefore === true;
         conn.ready = true;
+        conn.hasConnectedBefore = true;
         
         // Notify reconnect callbacks if this was a reconnect
         if (wasReconnect) {
