@@ -270,6 +270,14 @@ export default defineComponent({
       return pubkey.slice(0, 8) + "...";
     }
 
+    // Helper function to safely extract event info for logging
+    function getEventInfo(evt: any): { id: string; pubkey: string } {
+      return {
+        id: evt?.id ? evt.id.slice(0, 8) : 'unknown',
+        pubkey: evt?.pubkey ? evt.pubkey.slice(0, 8) : 'unknown'
+      };
+    }
+
     function addMessageIfNew(evt: any, plain: string) {
       if (!evt || !evt.id) return false;
       if (msgs.inbox.find((m) => m.id === evt.id)) return false;
@@ -447,8 +455,12 @@ export default defineComponent({
         const processEvent = async (evt: any) => {
           fetchedEvents++;
           try {
+            const { id: evtId, pubkey: evtPubkey } = getEventInfo(evt);
+            logger.debug(`回填事件处理开始: ${evtId}, pubkey: ${evtPubkey}`);
+            
             if (!friendSet.has(evt.pubkey)) {
               notFromFriends++;
+              logger.debug(`跳过非好友事件: ${evtId}`);
               return;
             }
             
@@ -457,37 +469,42 @@ export default defineComponent({
               payload = JSON.parse(evt.content); 
             } catch { 
               parseErrors++;
-              logger.warn(`事件 ${evt.id?.slice(0,8)} 解析失败: 无效的JSON`);
+              logger.warn(`事件 ${evtId} 解析失败: 无效的JSON`);
               return; 
             }
             
             if (!payload?.keys || !payload?.pkg) {
               parseErrors++;
+              logger.debug(`事件 ${evtId} 缺少 keys 或 pkg 字段`);
               return;
             }
             
             const myEntry = payload.keys.find((k: any) => k.to === keys.pkHex);
             if (!myEntry) {
               notForMe++;
+              logger.debug(`事件 ${evtId} 不是发给自己的`);
               return;
             }
+            
+            logger.debug(`开始解密事件: ${evtId}`);
             
             let symHex: string | null = null;
             try {
               symHex = await keys.nip04Decrypt(evt.pubkey, myEntry.enc);
+              logger.debug(`NIP-04解密成功: ${evtId}`);
             } catch (e: any) {
               // Check if this is a bunker-related error
               if (isBunkerError(e)) {
                 bunkerErrors++;
-                logger.warn(`事件 ${evt.id?.slice(0,8)} Bunker解密失败: ${e.message || e}`);
+                logger.warn(`事件 ${evtId} Bunker解密失败: ${e.message || e}`);
               } else {
-                logger.warn(`事件 ${evt.id?.slice(0,8)} NIP-04解密失败，尝试备用方案`, e);
+                logger.warn(`事件 ${evtId} NIP-04解密失败，尝试备用方案`, e);
               }
               
               // Fallback: check if enc is already a hex key
               if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
                 symHex = myEntry.enc;
-                logger.info(`事件 ${evt.id?.slice(0,8)} 使用备用hex key`);
+                logger.info(`事件 ${evtId} 使用备用hex key`);
               } else {
                 decryptErrors++;
                 return;
@@ -495,18 +512,24 @@ export default defineComponent({
             }
             
             try {
+              logger.debug(`开始对称解密: ${evtId}`);
               const plain = await symDecryptPackage(symHex, payload.pkg);
+              logger.debug(`对称解密成功: ${evtId}, 内容长度: ${plain?.length || 0}`);
+              
               const added = addMessageIfNew(evt, plain);
               if (added) {
                 decryptedEvents++;
+                logger.debug(`消息已添加到收件箱: ${evtId}`);
                 // Track the newest message timestamp for breakpoint
                 if (evt.created_at > newestTimestamp) {
                   newestTimestamp = evt.created_at;
                 }
+              } else {
+                logger.debug(`消息已存在，跳过: ${evtId}`);
               }
             } catch (e) {
               decryptErrors++;
-              logger.warn(`事件 ${evt.id?.slice(0,8)} 对称解密失败`, e);
+              logger.warn(`事件 ${evtId} 对称解密失败`, e);
             }
           } catch (e) {
             logger.error("处理回填事件失败", e);
@@ -746,39 +769,68 @@ export default defineComponent({
           sub = adapterSub;
           adapterSub.on("event", async (evt: any) => {
             try {
-              if (!friendSet.has(evt.pubkey)) return;
+              const { id: evtId, pubkey: evtPubkey } = getEventInfo(evt);
+              logger.debug(`实时事件接收: ${evtId}, pubkey: ${evtPubkey}`);
+              
+              if (!friendSet.has(evt.pubkey)) {
+                logger.debug(`跳过非好友实时事件: ${evtId}`);
+                return;
+              }
+              
               let payload: any;
               try { 
                 payload = JSON.parse(evt.content); 
               } catch { 
-                logger.warn(`实时事件 ${evt.id?.slice(0,8)} JSON解析失败`);
+                logger.warn(`实时事件 ${evtId} JSON解析失败`);
                 return; 
               }
-              if (!payload?.keys || !payload?.pkg) return;
+              
+              if (!payload?.keys || !payload?.pkg) {
+                logger.debug(`实时事件 ${evtId} 缺少 keys 或 pkg 字段`);
+                return;
+              }
+              
               const myEntry = payload.keys.find((k: any) => k.to === keys.pkHex);
-              if (!myEntry) return;
+              if (!myEntry) {
+                logger.debug(`实时事件 ${evtId} 不是发给自己的`);
+                return;
+              }
+              
+              logger.debug(`开始解密实时事件: ${evtId}`);
+              
               let symHex: string | null = null;
               try {
                 symHex = await keys.nip04Decrypt(evt.pubkey, myEntry.enc);
+                logger.debug(`实时事件NIP-04解密成功: ${evtId}`);
               } catch (e: any) {
                 // Check if this is a bunker-related error
                 if (isBunkerError(e)) {
-                  logger.warn(`实时事件 ${evt.id?.slice(0,8)} Bunker解密失败: ${e.message || e}. 请检查签名器连接。`);
+                  logger.warn(`实时事件 ${evtId} Bunker解密失败: ${e.message || e}. 请检查签名器连接。`);
                 } else {
-                  logger.warn(`实时事件 ${evt.id?.slice(0,8)} NIP-04解密失败，尝试备用方案`, e);
+                  logger.warn(`实时事件 ${evtId} NIP-04解密失败，尝试备用方案`, e);
                 }
                 
                 if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
                   symHex = myEntry.enc;
+                  logger.debug(`实时事件使用备用hex key: ${evtId}`);
                 } else {
                   return;
                 }
               }
+              
               try {
+                logger.debug(`开始对称解密实时事件: ${evtId}`);
                 const plain = await symDecryptPackage(symHex, payload.pkg);
-                addMessageIfNew(evt, plain);
+                logger.debug(`实时事件对称解密成功: ${evtId}, 内容长度: ${plain?.length || 0}`);
+                
+                const added = addMessageIfNew(evt, plain);
+                if (added) {
+                  logger.debug(`实时消息已添加到收件箱: ${evtId}`);
+                } else {
+                  logger.debug(`实时消息已存在，跳过: ${evtId}`);
+                }
               } catch (e) {
-                logger.warn(`实时事件 ${evt.id?.slice(0,8)} 对称解密失败`, e);
+                logger.warn(`实时事件 ${evtId} 对称解密失败`, e);
               }
             } catch (e) {
               logger.warn("handle event fail", e);
