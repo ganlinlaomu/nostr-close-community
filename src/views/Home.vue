@@ -106,7 +106,7 @@
 import { defineComponent, ref, onMounted, onBeforeUnmount, watch } from "vue";
 import { useFriendsStore } from "@/stores/friends";
 import { useKeyStore } from "@/stores/keys";
-import { getRelaysFromStorage, subscribe } from "@/nostr/relays";
+import { getRelaysFromStorage, subscribe, onRelayReconnect, offRelayReconnect } from "@/nostr/relays";
 import { symDecryptPackage } from "@/nostr/crypto";
 import { useMessagesStore } from "@/stores/messages";
 import { useInteractionsStore } from "@/stores/interactions";
@@ -124,6 +124,7 @@ const plainImgUrlRE = /(https?:\/\/[^\s)]+?\.(?:png|jpe?g|gif|webp|avif|svg)(?:\
 // Constants for time calculations
 const SECONDS_PER_DAY = 24 * 60 * 60;
 const THREE_DAYS_IN_SECONDS = 3 * SECONDS_PER_DAY;
+const RECONNECT_BACKFILL_DEBOUNCE_MS = 2000; // Wait 2 seconds for multiple relays to reconnect
 
 export default defineComponent({
   name: "Home",
@@ -142,7 +143,7 @@ export default defineComponent({
     const displayedMessages = ref([] as any[]);
     const newMessageCount = ref(0);
     const initialLoadComplete = ref(false);
-    let autoRefreshTimer: any = null;
+    let autoRefreshTimer: number | null = null;
     
     // State for comments UI
     const showingComments = ref<Set<string>>(new Set());
@@ -197,7 +198,7 @@ export default defineComponent({
             }
             
             // Auto-refresh after 2 seconds
-            autoRefreshTimer = setTimeout(() => {
+            autoRefreshTimer = window.setTimeout(() => {
               displayedMessages.value = [...messagesRef.value];
               newMessageCount.value = 0;
               updateMessageTimeRange();
@@ -546,13 +547,25 @@ export default defineComponent({
       }
     }
     
-    async function backfillInteractions(relays: string[]) {
+    async function backfillInteractions(relays: string[], isReconnect = false) {
       try {
         const now = Math.floor(Date.now() / 1000);
         const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
         
-        // Determine time range for backfill - use 3-day window
-        const since = threeDaysAgo;
+        // Determine time range for backfill
+        // If reconnecting and we have a recent timestamp, fetch from that point
+        // Otherwise, use 3-day window
+        let since: number;
+        if (isReconnect && interactions.latestInteractionTimestamp > 0) {
+          // When reconnecting, fetch from last known interaction
+          since = interactions.latestInteractionTimestamp;
+          logger.info(`重新连接: 从上次互动时间回填 ${new Date(since * 1000).toLocaleString()}`);
+        } else {
+          // Initial load or no previous timestamp: use 3-day window
+          since = threeDaysAgo;
+          logger.info(`初始回填: 获取最近3天的互动事件`);
+        }
+        
         const until = now;
         
         logger.info(`开始回填互动事件: ${new Date(since * 1000).toLocaleString()} 到 ${new Date(until * 1000).toLocaleString()}`);
@@ -760,8 +773,42 @@ export default defineComponent({
       updateLocalRefs();
     });
 
+    // Handle online/offline events for interaction backfill
+    function handleOnline() {
+      logger.info("网络已恢复，开始回填错过的互动事件");
+      const relays = getRelaysFromStorage();
+      // Trigger backfill with reconnect flag
+      backfillInteractions(relays, true).catch((e) => {
+        logger.error("重新连接后回填互动事件失败", e);
+      });
+    }
+    
+    // Handle relay reconnections
+    let reconnectBackfillTimer: number | null = null;
+    function handleRelayReconnect(url: string) {
+      logger.info(`中继重连: ${url}，将回填错过的互动事件`);
+      
+      // Debounce: wait for multiple relays to reconnect before triggering backfill
+      if (reconnectBackfillTimer) {
+        clearTimeout(reconnectBackfillTimer);
+      }
+      
+      reconnectBackfillTimer = window.setTimeout(() => {
+        const relays = getRelaysFromStorage();
+        backfillInteractions(relays, true).catch((e) => {
+          logger.error("中继重连后回填互动事件失败", e);
+        });
+      }, RECONNECT_BACKFILL_DEBOUNCE_MS);
+    }
+
     onMounted(async () => { 
-      await startSub(); 
+      await startSub();
+      
+      // Listen for online event to backfill missed interactions
+      window.addEventListener('online', handleOnline);
+      
+      // Listen for relay reconnections
+      onRelayReconnect(handleRelayReconnect);
     });
 
     onBeforeUnmount(() => {
@@ -770,6 +817,18 @@ export default defineComponent({
         clearTimeout(autoRefreshTimer);
         autoRefreshTimer = null;
       }
+      
+      // Clean up reconnect backfill timer
+      if (reconnectBackfillTimer) {
+        clearTimeout(reconnectBackfillTimer);
+        reconnectBackfillTimer = null;
+      }
+      
+      // Clean up online event listener
+      window.removeEventListener('online', handleOnline);
+      
+      // Clean up relay reconnect listener
+      offRelayReconnect(handleRelayReconnect);
       
       if (sub) {
         try { if (typeof sub.close === "function") sub.close(); else if (typeof sub.unsub === "function") sub.unsub(); else if (typeof sub.unsubscribe === "function") sub.unsubscribe(); else if (typeof sub === "function") sub(); } catch {}

@@ -16,6 +16,7 @@ type RelayConn = {
   subs: Map<string, { filters: any[]; handlers: Set<(evt: any) => void>; eoseHandlers: Set<() => void> }>;
   okHandlers: Map<string, (res: any) => void>;
   reconnectTimer?: number | null;
+  hasConnectedBefore?: boolean; // Track if this relay has connected before
 };
 
 const CONNECT_TIMEOUT = 4000;
@@ -23,6 +24,9 @@ const PUBLISH_TIMEOUT = 5000;
 const RECONNECT_DELAY = 3000;
 
 const relaysMap: Record<string, RelayConn> = {};
+
+// Reconnect callbacks
+const reconnectCallbacks: Set<(url: string) => void> = new Set();
 
 export const DEFAULT_RELAYS = [
   "wss://relay.damus.io",
@@ -45,7 +49,8 @@ function ensureRelayConn(url: string): RelayConn {
     queue: [],
     subs: new Map(),
     okHandlers: new Map(),
-    reconnectTimer: null
+    reconnectTimer: null,
+    hasConnectedBefore: false
   };
   relaysMap[url] = conn;
 
@@ -56,7 +61,19 @@ function ensureRelayConn(url: string): RelayConn {
       conn.ready = false;
 
       const onOpen = () => {
+        // Check if this is a reconnect (not the first connection)
+        const wasReconnect = conn.hasConnectedBefore === true;
         conn.ready = true;
+        conn.hasConnectedBefore = true;
+        
+        // Notify reconnect callbacks if this was a reconnect
+        if (wasReconnect) {
+          logger.info(`Relay reconnected: ${url}`);
+          for (const cb of reconnectCallbacks) {
+            try { cb(url); } catch (e) { logger.warn("reconnect callback error", e); }
+          }
+        }
+        
         // flush queue
         while (conn.queue.length) {
           const m = conn.queue.shift()!;
@@ -265,6 +282,20 @@ export function reconnectRelay(url: string) {
   } catch (e) {
     logger.warn("reconnectRelay error", e);
   }
+}
+
+/**
+ * Register a callback to be called when any relay reconnects
+ */
+export function onRelayReconnect(callback: (url: string) => void) {
+  reconnectCallbacks.add(callback);
+}
+
+/**
+ * Unregister a reconnect callback
+ */
+export function offRelayReconnect(callback: (url: string) => void) {
+  reconnectCallbacks.delete(callback);
 }
 
 /**
