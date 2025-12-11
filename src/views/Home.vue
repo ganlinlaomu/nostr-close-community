@@ -101,7 +101,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, onBeforeUnmount } from "vue";
+import { defineComponent, ref, onMounted, onBeforeUnmount, watch } from "vue";
 import { useFriendsStore } from "@/stores/friends";
 import { useKeyStore } from "@/stores/keys";
 import { getRelaysFromStorage, subscribe } from "@/nostr/relays";
@@ -164,25 +164,41 @@ export default defineComponent({
         displayedMessages.value = [...messagesRef.value];
         initialLoadComplete.value = true;
       } else {
-        // After initial load - automatically refresh displayed messages after a short delay
+        // After initial load - check for new messages
         const currentDisplayedIds = new Set(displayedMessages.value.map(m => m.id));
         const newMessages = messagesRef.value.filter(m => !currentDisplayedIds.has(m.id));
         
         if (newMessages.length > 0) {
-          // Show new message count temporarily
-          newMessageCount.value = newMessages.length;
+          // Check if any new messages are from the user themselves
+          const ownMessages = newMessages.filter(m => m.pubkey === keys.pkHex);
           
-          // Clear any existing timer
-          if (autoRefreshTimer) {
-            clearTimeout(autoRefreshTimer);
-          }
-          
-          // Auto-refresh after 2 seconds
-          autoRefreshTimer = setTimeout(() => {
+          if (ownMessages.length > 0) {
+            // Immediately show own posts
             displayedMessages.value = [...messagesRef.value];
             newMessageCount.value = 0;
             updateMessageTimeRange();
-          }, 2000);
+            
+            // Clear any existing timer since we're immediately displaying
+            if (autoRefreshTimer) {
+              clearTimeout(autoRefreshTimer);
+              autoRefreshTimer = null;
+            }
+          } else {
+            // For messages from others, show new message count and auto-refresh after delay
+            newMessageCount.value = newMessages.length;
+            
+            // Clear any existing timer
+            if (autoRefreshTimer) {
+              clearTimeout(autoRefreshTimer);
+            }
+            
+            // Auto-refresh after 2 seconds
+            autoRefreshTimer = setTimeout(() => {
+              displayedMessages.value = [...messagesRef.value];
+              newMessageCount.value = 0;
+              updateMessageTimeRange();
+            }, 2000);
+          }
         }
       }
       
@@ -712,6 +728,12 @@ export default defineComponent({
         status.value = "订阅失败";
       }
     }
+
+    // Watch for changes in msgs.inbox length to update display when posts are added
+    // Using length instead of deep watch for better performance
+    watch(() => msgs.inbox.length, () => {
+      updateLocalRefs();
+    });
 
     onMounted(async () => { 
       await startSub(); 
