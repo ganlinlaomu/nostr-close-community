@@ -27,7 +27,7 @@
         :buffer="200"
       >
         <template #default="{ item: m }">
-          <div class="card message-card">
+          <div class="message-card">
             <div class="small">
               {{ displayName(m.pubkey) }}
               <span class="muted"> · {{ toLocalTime(m.created_at) }}</span>
@@ -123,6 +123,7 @@ import PostImagePreview from "@/components/PostImagePreview.vue";
 import BunkerStatus from "@/components/BunkerStatus.vue";
 import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
 import { isBunkerError } from "@/utils/bunker";
+// vue-virtual-scroller is in beta and lacks TypeScript definitions
 // @ts-ignore
 import { RecycleScroller } from 'vue-virtual-scroller';
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
@@ -888,12 +889,17 @@ export default defineComponent({
 
 /* Virtual scroller styles */
 .scroller {
+  /* Height calculation: 100vh minus header, card padding, and margins (~220px) */
   height: calc(100vh - 220px);
   min-height: 400px;
 }
 
 .message-card {
+  background: #fff;
+  padding: 12px;
+  border-radius: 10px;
   margin-bottom: 8px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.04);
 }
 .message-text {
   margin-top: 8px;
