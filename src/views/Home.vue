@@ -198,7 +198,7 @@ export default defineComponent({
             }
             
             // Auto-refresh after 2 seconds
-            autoRefreshTimer = setTimeout(() => {
+            autoRefreshTimer = window.setTimeout(() => {
               displayedMessages.value = [...messagesRef.value];
               newMessageCount.value = 0;
               updateMessageTimeRange();
@@ -793,7 +793,7 @@ export default defineComponent({
         clearTimeout(reconnectBackfillTimer);
       }
       
-      reconnectBackfillTimer = setTimeout(() => {
+      reconnectBackfillTimer = window.setTimeout(() => {
         const relays = getRelaysFromStorage();
         backfillInteractions(relays, true).catch((e) => {
           logger.error("中继重连后回填互动事件失败", e);

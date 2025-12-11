@@ -376,10 +376,10 @@ export const useInteractionsStore = defineStore("interactions", {
       }
       
       // Schedule a new save after 1 second of inactivity
-      saveTimestampTimer = setTimeout(() => {
+      saveTimestampTimer = window.setTimeout(() => {
         this._saveLatestTimestamp();
         saveTimestampTimer = null;
-      }, 1000) as unknown as number;
+      }, 1000);
     },
     
     /**
