@@ -115,6 +115,7 @@ import { formatRelativeTime } from "@/utils/format";
 import PostImagePreview from "@/components/PostImagePreview.vue";
 import BunkerStatus from "@/components/BunkerStatus.vue";
 import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
+import { isBunkerError } from "@/utils/bunker";
 
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
 const mdImageRE = /!\[[^\]]*?\]\(\s*(https?:\/\/[^\s)]+)\s*\)/gi;
@@ -444,14 +445,9 @@ export default defineComponent({
               symHex = await keys.nip04Decrypt(evt.pubkey, myEntry.enc);
             } catch (e: any) {
               // Check if this is a bunker-related error
-              const errorMsg = e.message || String(e);
-              const isBunkerError = errorMsg.includes("Bunker") || 
-                                   errorMsg.includes("签名器") || 
-                                   errorMsg.includes("超时");
-              
-              if (isBunkerError) {
+              if (isBunkerError(e)) {
                 bunkerErrors++;
-                logger.warn(`事件 ${evt.id?.slice(0,8)} Bunker解密失败: ${errorMsg}`);
+                logger.warn(`事件 ${evt.id?.slice(0,8)} Bunker解密失败: ${e.message || e}`);
               } else {
                 logger.warn(`事件 ${evt.id?.slice(0,8)} NIP-04解密失败，尝试备用方案`, e);
               }
@@ -691,13 +687,8 @@ export default defineComponent({
                 symHex = await keys.nip04Decrypt(evt.pubkey, myEntry.enc);
               } catch (e: any) {
                 // Check if this is a bunker-related error
-                const errorMsg = e.message || String(e);
-                const isBunkerError = errorMsg.includes("Bunker") || 
-                                     errorMsg.includes("签名器") || 
-                                     errorMsg.includes("超时");
-                
-                if (isBunkerError) {
-                  logger.warn(`实时事件 ${evt.id?.slice(0,8)} Bunker解密失败: ${errorMsg}. 请检查签名器连接。`);
+                if (isBunkerError(e)) {
+                  logger.warn(`实时事件 ${evt.id?.slice(0,8)} Bunker解密失败: ${e.message || e}. 请检查签名器连接。`);
                 } else {
                   logger.warn(`实时事件 ${evt.id?.slice(0,8)} NIP-04解密失败，尝试备用方案`, e);
                 }

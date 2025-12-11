@@ -92,7 +92,8 @@ export default defineComponent({
       
       const bunkerInput = localStorage.getItem('bunkerInput');
       if (!bunkerInput) {
-        alert('未找到签名器配置，请重新登录');
+        keyStore.bunkerLastError = '未找到签名器配置，请重新登录';
+        showDetails.value = true;
         return;
       }
 
@@ -102,7 +103,9 @@ export default defineComponent({
         showDetails.value = false;
       } catch (e: any) {
         console.error('Reconnect failed:', e);
-        alert(`重新连接失败: ${e.message || e}`);
+        keyStore.bunkerLastError = `重新连接失败: ${e.message || e}`;
+        keyStore.bunkerConnectionStatus = 'error';
+        showDetails.value = true;
       } finally {
         reconnecting.value = false;
       }

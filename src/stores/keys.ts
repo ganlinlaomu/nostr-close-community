@@ -94,12 +94,21 @@ export const useKeyStore = defineStore("keys", {
       timeoutMs: number = 10000,
       operationName: string = "bunker operation"
     ): Promise<T> {
-      return Promise.race([
-        operation(),
-        new Promise<T>((_, reject) =>
-          setTimeout(() => reject(new Error(`${operationName}超时 (${timeoutMs}ms)`)), timeoutMs)
-        )
-      ]);
+      let timeoutId: NodeJS.Timeout | null = null;
+      
+      try {
+        return await Promise.race([
+          operation(),
+          new Promise<T>((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error(`${operationName}超时 (${timeoutMs}ms)`)), timeoutMs);
+          })
+        ]);
+      } finally {
+        // Clean up timeout if operation completed first
+        if (timeoutId !== null) {
+          clearTimeout(timeoutId);
+        }
+      }
     },
 
     /**
