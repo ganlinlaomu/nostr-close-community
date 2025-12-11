@@ -28,8 +28,8 @@
           <!-- 图片预览（方案 B：直接从内容抽取图片 URL 并渲染） -->
           <PostImagePreview :content="m.content" :showAll="false" style="margin-top:8px;" />
 
-          <!-- 如果仍需显示文本（去除了图片 URL/Markdown），使用 textWithoutImages -->
-          <div v-if="textWithoutImages(m.content)" class="message-text">{{ textWithoutImages(m.content) }}</div>
+          <!-- 如果仍需显示文本（去除了图片 URL/Markdown），使用 processedTexts -->
+          <div v-if="processedTexts[m.id]" class="message-text">{{ processedTexts[m.id] }}</div>
           
           <!-- 操作按钮：点赞和评论 -->
           <div class="message-actions">
@@ -101,7 +101,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, onBeforeUnmount, watch } from "vue";
+import { defineComponent, ref, onMounted, onBeforeUnmount, watch, computed } from "vue";
 import { useFriendsStore } from "@/stores/friends";
 import { useKeyStore } from "@/stores/keys";
 import { getRelaysFromStorage, subscribe, onRelayReconnect, offRelayReconnect } from "@/nostr/relays";
@@ -267,6 +267,17 @@ export default defineComponent({
       s = s.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
       return s;
     }
+
+    // Cache processed text for all displayed messages to avoid repeated regex operations
+    const processedTexts = computed(() => {
+      const cache: Record<string, string> = {};
+      for (const msg of displayedMessages.value) {
+        if (msg && msg.id && msg.content) {
+          cache[msg.id] = textWithoutImages(msg.content);
+        }
+      }
+      return cache;
+    });
 
     // Like functionality
     async function toggleLike(message: any) {
@@ -846,6 +857,7 @@ export default defineComponent({
       shortRelay, 
       displayName, 
       textWithoutImages,
+      processedTexts,
       // Like and comment functions
       toggleLike,
       isLiked,
