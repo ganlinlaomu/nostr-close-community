@@ -86,14 +86,16 @@ export async function backfillEvents(options: BackfillOptions): Promise<Backfill
     ? batchAuthors(filters.authors, authorBatchSize)
     : [undefined];
 
-  logger.info(`开始回填: ${filters.kinds.join(',')} kinds, ${authorBatches.length} 个作者批次, ${authorBatches.length > 0 && authorBatches[0] ? authorBatches[0].length : 0} 个作者/批次`);
+  const targetSince = filters.since || 0;
+  const initialUntil = filters.until || Math.floor(Date.now() / 1000);
+  logger.info(`开始回填: kinds=[${filters.kinds.join(',')}], 作者批次数=${authorBatches.length}, 每批作者数=${authorBatches.length > 0 && authorBatches[0] ? authorBatches[0].length : 0}`);
+  logger.info(`时间范围: since=${new Date(targetSince * 1000).toLocaleString()} (${targetSince}), until=${new Date(initialUntil * 1000).toLocaleString()} (${initialUntil})`);
 
   // Process each author batch
   for (let authorBatchIdx = 0; authorBatchIdx < authorBatches.length; authorBatchIdx++) {
     const authorBatch = authorBatches[authorBatchIdx];
-    logger.info(`处理作者批次 ${authorBatchIdx + 1}/${authorBatches.length}`);
+    logger.info(`处理作者批次 ${authorBatchIdx + 1}/${authorBatches.length}${authorBatch ? ` (${authorBatch.length}个作者)` : ''}`);
     let currentUntil = filters.until || Math.floor(Date.now() / 1000);
-    const targetSince = filters.since || 0;
     let batchCount = 0;
 
     // Continue fetching batches for this author group
@@ -116,7 +118,7 @@ export async function backfillEvents(options: BackfillOptions): Promise<Backfill
         batchFilter.authors = authorBatch;
       }
 
-      logger.debug(`获取批次 #${batchCount + 1}: until=${new Date(currentUntil * 1000).toISOString()}`);
+      logger.debug(`获取批次 #${batchCount + 1}: since=${new Date(targetSince * 1000).toISOString()}, until=${new Date(currentUntil * 1000).toISOString()}, limit=${batchSize}`);
 
       // Fetch events for this batch
       const batchEvents: any[] = [];
