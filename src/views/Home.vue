@@ -499,46 +499,21 @@ export default defineComponent({
         const now = Math.floor(Date.now() / 1000);
         const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
         
-        // Determine time range for backfill - use 3-day window
-        const since = threeDaysAgo;
-        const until = now;
+        // Determine if we should use incremental sync (fetch from lastSyncedAt)
+        // or full 3-day window sync (fetch from 3 days ago)
+        const shouldUseIncrementalSync = interactions.lastSyncedAt > 0 && interactions.lastSyncedAt > threeDaysAgo;
+        const since = shouldUseIncrementalSync ? interactions.lastSyncedAt : threeDaysAgo;
         
-        logger.info(`开始回填互动事件: ${new Date(since * 1000).toLocaleString()} 到 ${new Date(until * 1000).toLocaleString()}`);
+        logger.info(`开始回填互动事件 (增量同步): since=${new Date(since * 1000).toLocaleString()}`);
         
-        // Track statistics
-        let fetchedEvents = 0;
-        let processedEvents = 0;
-        
-        // Process interaction event
-        const processEvent = async (evt: any) => {
-          fetchedEvents++;
-          try {
-            await interactions.processInteractionEvent(evt, keys.pkHex);
-            processedEvents++;
-          } catch (e) {
-            logger.warn("处理回填互动事件失败", e);
-          }
-        };
-        
-        // Use backfill utility for interactions
-        await backfillEvents({
+        await interactions.backfillInteractions({
           relays,
-          filters: {
-            kinds: [24243],
-            "#p": [keys.pkHex], // Only get interactions targeted at us
-            since,
-            until
-          },
-          onEvent: processEvent,
-          onProgress: (stats) => {
-            logger.debug(`回填互动中: ${stats.totalEvents} 条事件`);
-          },
-          onComplete: (stats) => {
-            logger.info(`互动事件回填完成: 获取 ${fetchedEvents} 条, 处理 ${processedEvents} 条`);
-          },
-          batchSize: 500,
+          since,
+          until: now,
           maxBatches: 10,
-          timeoutMs: 10000
+          onProgress: (fetched, processed) => {
+            logger.debug(`回填互动进度: 获取 ${fetched} 条, 处理 ${processed} 条`);
+          }
         });
         
       } catch (e) {
