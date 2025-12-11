@@ -516,7 +516,6 @@ export default defineComponent({
               let normalizedKey: string;
               try {
                 normalizedKey = normalizeSymKey(symHex);
-                logger.debug(`Key已规范化: ${evtId}`);
               } catch (e) {
                 decryptErrors++;
                 logger.warn(`事件 ${evtId} 对称密钥规范化失败`, e);
@@ -832,7 +831,6 @@ export default defineComponent({
                 let normalizedKey: string;
                 try {
                   normalizedKey = normalizeSymKey(symHex);
-                  logger.debug(`实时事件Key已规范化: ${evtId}`);
                 } catch (e) {
                   logger.warn(`实时事件 ${evtId} 对称密钥规范化失败`, e);
                   return;
