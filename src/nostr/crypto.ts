@@ -31,12 +31,87 @@ export function genSymHex() {
   return bytesToHex(arr); // 64 chars hex
 }
 
+/**
+ * Helper function to create error messages for key normalization failures
+ */
+function createKeyNormalizationError(key: string | Uint8Array, cause?: Error | string): Error {
+  const keyType = typeof key;
+  const keyLength = key instanceof Uint8Array ? key.length : (key as string).length;
+  const causeMessage = cause ? `: ${cause instanceof Error ? cause.message : cause}` : '';
+  return new Error(`Failed to normalize symmetric key${causeMessage}. Key type: ${keyType}, Key length: ${keyLength}`);
+}
+
+/**
+ * normalizeSymKey: Normalize a symmetric key to hex string format (64 characters)
+ * 
+ * This function ensures consistent symmetric key format across the codebase.
+ * It handles keys that may come from various sources in different formats:
+ * - Direct hex strings from genSymHex() (64 characters)
+ * - Decrypted results from nip04Decrypt() which should be hex but may have whitespace
+ * - Base64-encoded keys from legacy systems or different implementations
+ * - Raw Uint8Array keys from cryptographic operations
+ * 
+ * The normalization is critical because AES-GCM decryption requires the exact
+ * key that was used for encryption. Any format mismatch will cause decryption
+ * to fail with a DOMException.
+ * 
+ * @param key - The symmetric key in any supported format
+ * @returns Normalized 64-character lowercase hex string
+ * @throws Error if the key format is invalid or length is incorrect
+ */
+export function normalizeSymKey(key: string | Uint8Array): string {
+  // If already Uint8Array, convert to hex
+  if (key instanceof Uint8Array) {
+    if (key.length !== 32) {
+      throw new Error(`Invalid symmetric key length: expected 32 bytes, got ${key.length}`);
+    }
+    return bytesToHex(key);
+  }
+  
+  // If string, determine if it's hex or base64
+  if (typeof key === 'string') {
+    // Remove whitespace
+    key = key.trim();
+    
+    // Check if it's a valid hex string (64 characters)
+    if (/^[0-9a-fA-F]{64}$/.test(key)) {
+      return key.toLowerCase();
+    }
+    
+    // Try to decode as base64
+    // Standard base64 encoding of 32 bytes: 32 * 4/3 = 42.67, rounds to 44 chars with padding
+    // Without padding: 43 characters. Allow range 40-48 to handle variations
+    if (key.length >= 40 && key.length <= 48) {
+      try {
+        const bytes = base64ToBytes(key);
+        if (bytes.length === 32) {
+          return bytesToHex(bytes);
+        }
+      } catch (e) {
+        // Not valid base64, continue to error
+      }
+    }
+    
+    throw new Error(`Invalid symmetric key format: expected 64-char hex or 32-byte base64, got string of length ${key.length}`);
+  }
+  
+  throw new Error(`Invalid symmetric key type: expected string or Uint8Array, got ${typeof key}`);
+}
+
 async function importAesKeyFromHex(symHex: string) {
   const raw = hexToBytes(symHex);
   return await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 
-export async function symEncryptPackage(symHex: string, plaintext: string) {
+export async function symEncryptPackage(symKey: string | Uint8Array, plaintext: string) {
+  // Normalize the symmetric key to hex format
+  let symHex: string;
+  try {
+    symHex = normalizeSymKey(symKey);
+  } catch (e) {
+    throw createKeyNormalizationError(symKey, e instanceof Error ? e : String(e));
+  }
+  
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await importAesKeyFromHex(symHex);
   const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(plaintext));
@@ -48,7 +123,15 @@ export async function symEncryptPackage(symHex: string, plaintext: string) {
   };
 }
 
-export async function symDecryptPackage(symHex: string, pkg: { iv: string; ct: string }) {
+export async function symDecryptPackage(symKey: string | Uint8Array, pkg: { iv: string; ct: string }) {
+  // Normalize the symmetric key to hex format
+  let symHex: string;
+  try {
+    symHex = normalizeSymKey(symKey);
+  } catch (e) {
+    throw createKeyNormalizationError(symKey, e instanceof Error ? e : String(e));
+  }
+  
   const iv = base64ToBytes(pkg.iv);
   const ct = base64ToBytes(pkg.ct);
   const key = await importAesKeyFromHex(symHex);

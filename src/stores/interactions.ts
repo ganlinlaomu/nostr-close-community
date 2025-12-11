@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { pool } from "@/nostr/relays";
 import { getRelaysFromStorage } from "@/nostr/relays";
 import { useKeyStore } from "@/stores/keys";
-import { genSymHex, symEncryptPackage, symDecryptPackage } from "@/nostr/crypto";
+import { genSymHex, symEncryptPackage, symDecryptPackage, normalizeSymKey } from "@/nostr/crypto";
 import { logger } from "@/utils/logger";
 
 /**
@@ -253,7 +253,14 @@ export const useInteractionsStore = defineStore("interactions", {
         
         // Decrypt interaction
         try {
-          const plain = await symDecryptPackage(symHex, payload.pkg);
+          let normalizedKey: string;
+          try {
+            normalizedKey = normalizeSymKey(symHex);
+          } catch (e) {
+            logger.warn("Failed to normalize symmetric key for interaction", e);
+            return;
+          }
+          const plain = await symDecryptPackage(normalizedKey, payload.pkg);
           const interaction: Interaction = JSON.parse(plain);
           
           // Validate interaction

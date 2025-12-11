@@ -116,7 +116,7 @@ import { defineComponent, ref, onMounted, onBeforeUnmount, watch, computed } fro
 import { useFriendsStore } from "@/stores/friends";
 import { useKeyStore } from "@/stores/keys";
 import { getRelaysFromStorage, subscribe, onRelayReconnect, offRelayReconnect } from "@/nostr/relays";
-import { symDecryptPackage } from "@/nostr/crypto";
+import { symDecryptPackage, normalizeSymKey } from "@/nostr/crypto";
 import { useMessagesStore } from "@/stores/messages";
 import { useInteractionsStore } from "@/stores/interactions";
 import { logger } from "@/utils/logger";
@@ -513,7 +513,15 @@ export default defineComponent({
             
             try {
               logger.debug(`开始对称解密: ${evtId}`);
-              const plain = await symDecryptPackage(symHex, payload.pkg);
+              let normalizedKey: string;
+              try {
+                normalizedKey = normalizeSymKey(symHex);
+              } catch (e) {
+                decryptErrors++;
+                logger.warn(`事件 ${evtId} 对称密钥规范化失败`, e);
+                return;
+              }
+              const plain = await symDecryptPackage(normalizedKey, payload.pkg);
               logger.debug(`对称解密成功: ${evtId}, 内容长度: ${plain?.length || 0}`);
               
               const added = addMessageIfNew(evt, plain);
@@ -820,7 +828,14 @@ export default defineComponent({
               
               try {
                 logger.debug(`开始对称解密实时事件: ${evtId}`);
-                const plain = await symDecryptPackage(symHex, payload.pkg);
+                let normalizedKey: string;
+                try {
+                  normalizedKey = normalizeSymKey(symHex);
+                } catch (e) {
+                  logger.warn(`实时事件 ${evtId} 对称密钥规范化失败`, e);
+                  return;
+                }
+                const plain = await symDecryptPackage(normalizedKey, payload.pkg);
                 logger.debug(`实时事件对称解密成功: ${evtId}, 内容长度: ${plain?.length || 0}`);
                 
                 const added = addMessageIfNew(evt, plain);
