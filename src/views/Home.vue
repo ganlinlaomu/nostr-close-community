@@ -659,11 +659,14 @@ export default defineComponent({
         
         // Load cached data immediately (synchronously from localStorage)
         // This ensures messages appear quickly before network requests
+        let friendsLoaded = false;
         try {
           await friends.load();
+          friendsLoaded = true;
           logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
         } catch (e) {
           logger.error("加载好友列表失败", e);
+          // Continue to load messages even if friends fail - user can still see cached messages
         }
         
         try {
@@ -676,10 +679,20 @@ export default defineComponent({
         }
         
         // Start subscription to get live updates
-        await startSubscription();
+        // Only proceed if friends loaded successfully (needed for subscription filters)
+        if (friendsLoaded) {
+          try {
+            await startSubscription();
+          } catch (e) {
+            logger.error("订阅失败", e);
+            status.value = "订阅失败";
+          }
+        } else {
+          status.value = "好友列表加载失败";
+        }
       } catch (e) {
         logger.error("startSub failed", e);
-        status.value = "订阅失败";
+        status.value = "加载失败";
       }
     }
 
