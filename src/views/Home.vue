@@ -295,7 +295,7 @@ export default defineComponent({
         // Debugging fallback: Return a placeholder message that indicates decryption failed
         // This helps with debugging by showing which messages couldn't be decrypted
         const errorMsg = e instanceof Error ? e.message : String(e);
-        return `[解密失败 - 本地调试模式]\n错误: ${errorMsg}\n对称密钥: ${symHex.slice(0, 16)}...\nIV: ${pkg.iv.slice(0, 16)}...\nCT长度: ${pkg.ct.length}`;
+        return `[解密失败 - 本地调试模式]\n错误类型: ${errorMsg}\n事件ID: ${eventId ? eventId.slice(0, 16) : '未知'}...\nCT长度: ${pkg.ct.length} 字节`;
       }
     }
 
@@ -503,19 +503,14 @@ export default defineComponent({
               }
             }
             
-            try {
-              const plain = await symDecryptPackageWithFallback(symHex, payload.pkg, evt.id);
-              const added = addMessageIfNew(evt, plain);
-              if (added) {
-                decryptedEvents++;
-                // Track the newest message timestamp for breakpoint
-                if (evt.created_at > newestTimestamp) {
-                  newestTimestamp = evt.created_at;
-                }
+            const plain = await symDecryptPackageWithFallback(symHex, payload.pkg, evt.id);
+            const added = addMessageIfNew(evt, plain);
+            if (added) {
+              decryptedEvents++;
+              // Track the newest message timestamp for breakpoint
+              if (evt.created_at > newestTimestamp) {
+                newestTimestamp = evt.created_at;
               }
-            } catch (e) {
-              decryptErrors++;
-              logger.warn(`事件 ${evt.id?.slice(0,8)} 对称解密失败`, e);
             }
           } catch (e) {
             logger.error("处理回填事件失败", e);
@@ -783,12 +778,8 @@ export default defineComponent({
                   return;
                 }
               }
-              try {
-                const plain = await symDecryptPackageWithFallback(symHex, payload.pkg, evt.id);
-                addMessageIfNew(evt, plain);
-              } catch (e) {
-                logger.warn(`实时事件 ${evt.id?.slice(0,8)} 对称解密失败`, e);
-              }
+              const plain = await symDecryptPackageWithFallback(symHex, payload.pkg, evt.id);
+              addMessageIfNew(evt, plain);
             } catch (e) {
               logger.warn("handle event fail", e);
             }
