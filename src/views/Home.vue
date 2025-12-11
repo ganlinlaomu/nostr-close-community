@@ -646,16 +646,52 @@ export default defineComponent({
     async function startSub() {
       try {
         logger.info("开始订阅流程");
-        await friends.load();
-        logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
         
+        // Show loading status immediately
+        status.value = "加载中...";
+        
+        // Load data in background without blocking render
+        // Use requestIdleCallback polyfill for better browser compatibility
+        const idleCallback = (window as any).requestIdleCallback || ((cb: any) => setTimeout(cb, 1));
+        
+        idleCallback(() => {
+          friends.load().then(() => {
+            logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
+            
+            if (!keys.isLoggedIn) {
+              status.value = "未登录";
+              return;
+            }
+            
+            // Continue loading other data in background
+            Promise.all([
+              msgs.load(),
+              interactions.load()
+            ]).then(() => {
+              updateLocalRefs();
+              // Start subscription after data is loaded
+              startSubscription();
+            }).catch((e) => {
+              logger.error("加载数据失败", e);
+              status.value = "加载失败";
+            });
+          }).catch((e) => {
+            logger.error("加载好友列表失败", e);
+            status.value = "加载失败";
+          });
+        });
+      } catch (e) {
+        logger.error("startSub failed", e);
+        status.value = "订阅失败";
+      }
+    }
+
+    async function startSubscription() {
+      try {
         if (!keys.isLoggedIn) {
           status.value = "未登录";
           return;
         }
-        await msgs.load();
-        await interactions.load(); // Load interactions
-        updateLocalRefs();
 
         const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
         if (keys.pkHex) friendSet.add(keys.pkHex);
