@@ -93,6 +93,7 @@ export const useMessagesStore = defineStore("messages", {
       if (this.inbox.length > 1000) this.inbox.splice(1000);
       this.saveInbox();
       // Track self-sent messages so UI can show them immediately
+      // Note: Set after saveInbox() since saveInbox() is synchronous and completes before watcher fires
       if (isSelfSent) {
         this.lastSelfSentMessageId = item.id;
       }

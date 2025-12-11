@@ -666,7 +666,7 @@ export default defineComponent({
 
     // Watch for self-sent messages and show them immediately
     watch(() => msgs.lastSelfSentMessageId, (newId) => {
-      if (newId && initialLoadComplete.value) {
+      if (newId && newId.trim() !== "" && initialLoadComplete.value) {
         // A self-sent message was added, show it immediately
         logger.debug("Self-sent message detected, showing immediately:", newId);
         showNewMessages();
