@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div ref="homeContainer">
     <div class="card">
     
       <div class="small">已自动订阅你添加的好友，实时解密可读消息</div>
@@ -97,11 +97,18 @@
         </div>
       </div>
     </div>
+    
+    <!-- Scroll to top button -->
+    <transition name="fade">
+      <button v-if="showScrollTop" @click="scrollToTop" class="scroll-top-btn" aria-label="回到顶部">
+        ↑
+      </button>
+    </transition>
   </div>
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, onBeforeUnmount } from "vue";
+import { defineComponent, ref, onMounted, onBeforeUnmount, onUnmounted } from "vue";
 import { useFriendsStore } from "@/stores/friends";
 import { useKeyStore } from "@/stores/keys";
 import { getRelaysFromStorage, subscribe } from "@/nostr/relays";
@@ -147,6 +154,18 @@ export default defineComponent({
     
     // State for message time range display
     const messageTimeRange = ref<string>("");
+    
+    // Scroll to top functionality
+    const showScrollTop = ref(false);
+    const homeContainer = ref<HTMLElement | null>(null);
+    
+    function handleScroll() {
+      showScrollTop.value = window.scrollY > 300;
+    }
+    
+    function scrollToTop() {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
     
     function showNewMessages() {
       // Move all messages to displayed messages, sorted by timestamp
@@ -665,7 +684,8 @@ export default defineComponent({
     }
 
     onMounted(async () => { 
-      await startSub(); 
+      await startSub();
+      window.addEventListener("scroll", handleScroll);
     });
 
     onBeforeUnmount(() => {
@@ -675,6 +695,7 @@ export default defineComponent({
       if (interactionsSub) {
         try { if (typeof interactionsSub.close === "function") interactionsSub.close(); else if (typeof interactionsSub.unsub === "function") interactionsSub.unsub(); else if (typeof interactionsSub.unsubscribe === "function") interactionsSub.unsubscribe(); else if (typeof interactionsSub === "function") interactionsSub(); } catch {}
       }
+      window.removeEventListener("scroll", handleScroll);
     });
 
     return { 
@@ -703,7 +724,11 @@ export default defineComponent({
       getReplies,
       replyingTo,
       replyingToAuthor,
-      messageTimeRange
+      messageTimeRange,
+      // Scroll to top
+      showScrollTop,
+      scrollToTop,
+      homeContainer
     };
   }
 });
@@ -942,4 +967,51 @@ export default defineComponent({
 .comment-input-wrapper {
   display: flex;
   gap: 8px;
+}
+
+/* Scroll to top button */
+.scroll-top-btn {
+  position: fixed;
+  bottom: 80px; /* Above bottom navigation */
+  right: 20px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #1976d2;
+  color: white;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(25, 118, 210, 0.3);
+  transition: all 0.3s ease;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scroll-top-btn:hover {
+  background: #1565c0;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(25, 118, 210, 0.4);
+}
+
+.scroll-top-btn:active {
+  transform: translateY(0);
+}
+
+/* Fade transition for scroll-to-top button */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.fade-enter-to,
+.fade-leave-from {
+  opacity: 1;
 }</style>
