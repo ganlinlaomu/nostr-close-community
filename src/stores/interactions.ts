@@ -4,6 +4,7 @@ import { getRelaysFromStorage } from "@/nostr/relays";
 import { useKeyStore } from "@/stores/keys";
 import { genSymHex, symEncryptPackage, symDecryptPackage } from "@/nostr/crypto";
 import { logger } from "@/utils/logger";
+import { backfillEvents } from "@/utils/backfill";
 
 /**
  * Interactions store - handles encrypted likes and comments
@@ -395,9 +396,6 @@ export const useInteractionsStore = defineStore("interactions", {
       let maxTimestamp = this.lastSyncedAt;
       
       try {
-        // Import backfillEvents dynamically to avoid circular dependencies
-        const { backfillEvents } = await import("@/utils/backfill");
-        
         const processEvent = async (evt: any) => {
           fetchedCount++;
           try {
