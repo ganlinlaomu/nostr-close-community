@@ -114,6 +114,7 @@ import PostImagePreview from "@/components/PostImagePreview.vue";
 import BunkerStatus from "@/components/BunkerStatus.vue";
 import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
 import { isBunkerError } from "@/utils/bunker";
+import { runWhenIdle } from "@/utils/idle";
 
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
 const mdImageRE = /!\[[^\]]*?\]\(\s*(https?:\/\/[^\s)]+)\s*\)/gi;
@@ -651,10 +652,7 @@ export default defineComponent({
         status.value = "加载中...";
         
         // Load data in background without blocking render
-        // Use requestIdleCallback polyfill for better browser compatibility
-        const idleCallback = (window as any).requestIdleCallback || ((cb: any) => setTimeout(cb, 1));
-        
-        idleCallback(() => {
+        runWhenIdle(() => {
           friends.load().then(() => {
             logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
             

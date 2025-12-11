@@ -96,8 +96,9 @@ self.addEventListener('fetch', event => {
           }
           return response;
         }).catch(() => {
-          // Return a fallback image if needed
-          return new Response('', { status: 404 });
+          // Return a transparent 1x1 pixel image as fallback for failed image loads
+          const transparentPixel = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+          return fetch(transparentPixel);
         });
       })
     );

@@ -134,6 +134,7 @@ import { useMessagesStore } from "@/stores/messages";
 import { useUIStore } from "@/stores/ui";
 import { uploadImageToBlossom, getBlossomConfig } from "@/utils/blossom";
 import BunkerStatus from "@/components/BunkerStatus.vue";
+import { runWhenIdle } from "@/utils/idle";
 
 type UploadItem = {
   id: string;
@@ -380,15 +381,12 @@ export default defineComponent({
         return;
       }
       
-      // Load data in background without blocking render
-      const idleCallback = (window as any).requestIdleCallback || ((cb: any) => setTimeout(cb, 1));
-      
       // Show editor immediately with loading state
       allFriends.value = true;
       selectedGroups.value = [];
       
-      // Load data in background
-      idleCallback(() => {
+      // Load data in background without blocking render
+      runWhenIdle(() => {
         Promise.all([
           checkBlossom(),
           friends.load(),
