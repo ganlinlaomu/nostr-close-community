@@ -95,7 +95,12 @@ export async function symEncryptPackage(symKey: string | Uint8Array, plaintext: 
 
 export async function symDecryptPackage(symKey: string | Uint8Array, pkg: { iv: string; ct: string }) {
   // Normalize the symmetric key to hex format
-  const symHex = normalizeSymKey(symKey);
+  let symHex: string;
+  try {
+    symHex = normalizeSymKey(symKey);
+  } catch (e) {
+    throw new Error(`Failed to normalize symmetric key: ${e instanceof Error ? e.message : e}. Key type: ${typeof symKey}, Key value: ${symKey instanceof Uint8Array ? `Uint8Array(${symKey.length})` : `string(${(symKey as string).length})`}`);
+  }
   
   const iv = base64ToBytes(pkg.iv);
   const ct = base64ToBytes(pkg.ct);

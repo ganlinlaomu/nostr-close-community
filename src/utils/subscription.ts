@@ -2,7 +2,7 @@ import { SimplePool } from "nostr-tools";
 import { pool, RELAYS } from "@/nostr/relays";
 import { useKeyStore } from "@/stores/keys";
 import { nip04 } from "nostr-tools";
-import { symDecryptPackage } from "@/nostr/crypto";
+import { symDecryptPackage, normalizeSymKey } from "@/nostr/crypto";
 
 /**
  * subscribeToGroupWithAuthors:
@@ -43,8 +43,9 @@ export function subscribeToGroupWithAuthors(groupId: string, authors: string[], 
       // 3) 用 nip04.decrypt 解出 symHex（接收者私钥 + 发送者 pubkey）
       const symHex = await nip04.decrypt(mySk, evt.pubkey, myEntry.enc);
 
-      // 4) 用 symHex 解密 pkg 得到明文
-      const plaintext = await symDecryptPackage(symHex, payload.pkg);
+      // 4) 规范化对称密钥并解密 pkg 得到明文
+      const normalizedKey = normalizeSymKey(symHex);
+      const plaintext = await symDecryptPackage(normalizedKey, payload.pkg);
 
       // 5) 回调给 UI 显示（上层负责把明文加密保存到本地 DB）
       onMessage(evt, plaintext);

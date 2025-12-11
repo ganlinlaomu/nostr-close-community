@@ -116,7 +116,7 @@ import { defineComponent, ref, onMounted, onBeforeUnmount, watch, computed } fro
 import { useFriendsStore } from "@/stores/friends";
 import { useKeyStore } from "@/stores/keys";
 import { getRelaysFromStorage, subscribe, onRelayReconnect, offRelayReconnect } from "@/nostr/relays";
-import { symDecryptPackage } from "@/nostr/crypto";
+import { symDecryptPackage, normalizeSymKey } from "@/nostr/crypto";
 import { useMessagesStore } from "@/stores/messages";
 import { useInteractionsStore } from "@/stores/interactions";
 import { logger } from "@/utils/logger";
@@ -512,8 +512,10 @@ export default defineComponent({
             }
             
             try {
-              logger.debug(`开始对称解密: ${evtId}`);
-              const plain = await symDecryptPackage(symHex, payload.pkg);
+              logger.debug(`开始对称解密: ${evtId}, symKey长度: ${symHex?.length}`);
+              const normalizedKey = normalizeSymKey(symHex);
+              logger.debug(`Key已规范化: ${evtId}`);
+              const plain = await symDecryptPackage(normalizedKey, payload.pkg);
               logger.debug(`对称解密成功: ${evtId}, 内容长度: ${plain?.length || 0}`);
               
               const added = addMessageIfNew(evt, plain);
@@ -819,8 +821,10 @@ export default defineComponent({
               }
               
               try {
-                logger.debug(`开始对称解密实时事件: ${evtId}`);
-                const plain = await symDecryptPackage(symHex, payload.pkg);
+                logger.debug(`开始对称解密实时事件: ${evtId}, symKey长度: ${symHex?.length}`);
+                const normalizedKey = normalizeSymKey(symHex);
+                logger.debug(`实时事件Key已规范化: ${evtId}`);
+                const plain = await symDecryptPackage(normalizedKey, payload.pkg);
                 logger.debug(`实时事件对称解密成功: ${evtId}, 内容长度: ${plain?.length || 0}`);
                 
                 const added = addMessageIfNew(evt, plain);
