@@ -355,6 +355,7 @@ export default defineComponent({
           // Have messages within 3 days - fetch messages newer than last message
           // Use lastMessageTime + 1 to avoid re-fetching the same message
           // (relay filter: created_at >= since, so we need to exclude the last message we already have)
+          // Note: Nostr timestamps are always integer Unix timestamps (seconds), so +1 is safe
           since = lastMessageTime + 1;
           logger.info(`有三天内的消息，拉取晚于最后一条消息的事件: 最后消息时间=${new Date(lastMessageTime * 1000).toLocaleString()}, since=${new Date(since * 1000).toLocaleString()}`);
         } else {

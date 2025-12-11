@@ -95,7 +95,8 @@ export async function backfillEvents(options: BackfillOptions): Promise<Backfill
   for (let authorBatchIdx = 0; authorBatchIdx < authorBatches.length; authorBatchIdx++) {
     const authorBatch = authorBatches[authorBatchIdx];
     logger.info(`处理作者批次 ${authorBatchIdx + 1}/${authorBatches.length}${authorBatch ? ` (${authorBatch.length}个作者)` : ''}`);
-    let currentUntil = filters.until || Math.floor(Date.now() / 1000);
+    // Each author batch starts from the initial until time and pages backward
+    let currentUntil = initialUntil;
     let batchCount = 0;
 
     // Continue fetching batches for this author group
