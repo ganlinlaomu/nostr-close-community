@@ -120,6 +120,8 @@ export default defineComponent({
       pullDistance.value = 0;
     };
 
+    let isListenersAttached = false;
+    
     onMounted(() => {
       const container = containerRef.value;
       if (!container) return;
@@ -127,15 +129,17 @@ export default defineComponent({
       container.addEventListener("touchstart", handleTouchStart, { passive: true });
       container.addEventListener("touchmove", handleTouchMove, { passive: false });
       container.addEventListener("touchend", handleTouchEnd, { passive: true });
+      isListenersAttached = true;
     });
 
     onBeforeUnmount(() => {
       const container = containerRef.value;
-      if (!container) return;
+      if (!container || !isListenersAttached) return;
       
       container.removeEventListener("touchstart", handleTouchStart);
       container.removeEventListener("touchmove", handleTouchMove);
       container.removeEventListener("touchend", handleTouchEnd);
+      isListenersAttached = false;
     });
 
     return {

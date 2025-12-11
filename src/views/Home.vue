@@ -802,7 +802,7 @@ export default defineComponent({
       }, RECONNECT_BACKFILL_DEBOUNCE_MS);
     }
     
-    async function handleRefresh(done: () => void) {
+    async function handleRefresh(finishRefresh: () => void) {
       try {
         logger.info("用户触发下拉刷新");
         status.value = "刷新中...";
@@ -821,11 +821,15 @@ export default defineComponent({
         await backfillInteractions(relays, true);
         
         logger.info("下拉刷新完成");
+        // Restore subscription status after refresh
+        if (status.value === "刷新中...") {
+          status.value = "已订阅";
+        }
       } catch (e) {
         logger.error("下拉刷新失败", e);
         status.value = "刷新失败";
       } finally {
-        done();
+        finishRefresh();
       }
     }
 
