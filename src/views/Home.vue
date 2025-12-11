@@ -141,7 +141,7 @@ const RECONNECT_BACKFILL_DEBOUNCE_MS = 2000; // Wait 2 seconds for multiple rela
 
 export default defineComponent({
   name: "Home",
-  components: { PostImagePreview, BunkerStatus, RecycleScroller },
+  components: { PostImagePreview, BunkerStatus, RecycleScroller, PullToRefresh },
   setup() {
     const friends = useFriendsStore();
     const keys = useKeyStore();
@@ -951,7 +951,9 @@ export default defineComponent({
       getReplies,
       replyingTo,
       replyingToAuthor,
-      messageTimeRange
+      messageTimeRange,
+      // Pull to refresh
+      handleRefresh
     };
   }
 });
