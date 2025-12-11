@@ -80,6 +80,16 @@ export const useKeyStore = defineStore("keys", {
         default:
           return false;
       }
+    },
+    /**
+     * Get bunker input from localStorage (for reconnection)
+     */
+    bunkerInput(): string {
+      try {
+        return localStorage.getItem("bunkerInput") || "";
+      } catch {
+        return "";
+      }
     }
   },
   actions: {
@@ -94,13 +104,13 @@ export const useKeyStore = defineStore("keys", {
       timeoutMs: number = 10000,
       operationName: string = "bunker operation"
     ): Promise<T> {
-      let timeoutId: NodeJS.Timeout | null = null;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
       
       try {
         return await Promise.race([
           operation(),
           new Promise<T>((_, reject) => {
-            timeoutId = setTimeout(() => reject(new Error(`${operationName}超时 (${timeoutMs}ms)`)), timeoutMs);
+            timeoutId = setTimeout(() => reject(new Error(`${operationName}操作超时 (${timeoutMs}ms)`)), timeoutMs);
           })
         ]);
       } finally {

@@ -90,7 +90,7 @@ export default defineComponent({
     const attemptReconnect = async () => {
       if (reconnecting.value) return;
       
-      const bunkerInput = localStorage.getItem('bunkerInput');
+      const bunkerInput = keyStore.bunkerInput;
       if (!bunkerInput) {
         keyStore.bunkerLastError = '未找到签名器配置，请重新登录';
         showDetails.value = true;

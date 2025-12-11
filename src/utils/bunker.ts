@@ -4,6 +4,11 @@
 
 /**
  * Check if an error is related to bunker/remote signer connection issues
+ * 
+ * Note: This function uses string matching which may have false positives.
+ * Ideally, bunker implementation should provide specific error types/codes,
+ * but for now we detect common patterns in error messages.
+ * 
  * @param error - Error object or message
  * @returns true if this is a bunker-related error
  */
@@ -13,6 +18,7 @@ export function isBunkerError(error: any): boolean {
          errorMsg.includes("bunker") ||
          errorMsg.includes("签名器") || 
          errorMsg.includes("超时") ||
+         errorMsg.includes("操作超时") ||
          errorMsg.includes("timeout") ||
          errorMsg.includes("remote signer");
 }
