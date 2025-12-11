@@ -43,8 +43,21 @@ function createKeyNormalizationError(key: string | Uint8Array, cause?: Error | s
 
 /**
  * normalizeSymKey: Normalize a symmetric key to hex string format (64 characters)
- * Accepts: hex string (64 chars), base64 string, or Uint8Array (32 bytes)
- * Returns: hex string (64 characters)
+ * 
+ * This function ensures consistent symmetric key format across the codebase.
+ * It handles keys that may come from various sources in different formats:
+ * - Direct hex strings from genSymHex() (64 characters)
+ * - Decrypted results from nip04Decrypt() which should be hex but may have whitespace
+ * - Base64-encoded keys from legacy systems or different implementations
+ * - Raw Uint8Array keys from cryptographic operations
+ * 
+ * The normalization is critical because AES-GCM decryption requires the exact
+ * key that was used for encryption. Any format mismatch will cause decryption
+ * to fail with a DOMException.
+ * 
+ * @param key - The symmetric key in any supported format
+ * @returns Normalized 64-character lowercase hex string
+ * @throws Error if the key format is invalid or length is incorrect
  */
 export function normalizeSymKey(key: string | Uint8Array): string {
   // If already Uint8Array, convert to hex
@@ -66,8 +79,8 @@ export function normalizeSymKey(key: string | Uint8Array): string {
     }
     
     // Try to decode as base64
-    // Standard base64 encoding of 32 bytes produces 44 characters (without padding) or 43 chars + '='
-    // Allow range 40-48 to handle variations in padding and whitespace
+    // Standard base64 encoding of 32 bytes: 32 * 4/3 = 42.67, rounds to 44 chars with padding
+    // Without padding: 43 characters. Allow range 40-48 to handle variations
     if (key.length >= 40 && key.length <= 48) {
       try {
         const bytes = base64ToBytes(key);

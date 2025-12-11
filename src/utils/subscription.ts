@@ -44,7 +44,13 @@ export function subscribeToGroupWithAuthors(groupId: string, authors: string[], 
       const symHex = await nip04.decrypt(mySk, evt.pubkey, myEntry.enc);
 
       // 4) 规范化对称密钥并解密 pkg 得到明文
-      const normalizedKey = normalizeSymKey(symHex);
+      let normalizedKey: string;
+      try {
+        normalizedKey = normalizeSymKey(symHex);
+      } catch (e) {
+        console.warn("Failed to normalize symmetric key", e);
+        return;
+      }
       const plaintext = await symDecryptPackage(normalizedKey, payload.pkg);
 
       // 5) 回调给 UI 显示（上层负责把明文加密保存到本地 DB）

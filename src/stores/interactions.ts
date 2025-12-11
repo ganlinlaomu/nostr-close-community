@@ -253,7 +253,13 @@ export const useInteractionsStore = defineStore("interactions", {
         
         // Decrypt interaction
         try {
-          const normalizedKey = normalizeSymKey(symHex);
+          let normalizedKey: string;
+          try {
+            normalizedKey = normalizeSymKey(symHex);
+          } catch (e) {
+            logger.warn("Failed to normalize symmetric key for interaction", e);
+            return;
+          }
           const plain = await symDecryptPackage(normalizedKey, payload.pkg);
           const interaction: Interaction = JSON.parse(plain);
           
