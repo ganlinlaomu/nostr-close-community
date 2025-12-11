@@ -1,13 +1,14 @@
 <template>
-  <div>
-    <div class="card">
-    
+  <PullToRefresh @refresh="handleRefresh">
+    <div>
+      <div class="card">
       
-      <div class="small" style="margin-top:6px;">订阅状态: {{ status }}</div>
-      <div v-if="messageTimeRange" class="small" style="margin-top:4px; color: #94a3b8;">
-        仅展示三天内的新消息: {{ messageTimeRange }}
+        
+        <div class="small" style="margin-top:6px;">订阅状态: {{ status }}</div>
+        <div v-if="messageTimeRange" class="small" style="margin-top:4px; color: #94a3b8;">
+          仅展示三天内的新消息: {{ messageTimeRange }}
+        </div>
       </div>
-    </div>
 
     <div class="card">
       <!-- New message notification banner -->
@@ -106,7 +107,7 @@
         </template>
       </RecycleScroller>
     </div>
-  </div>
+  </PullToRefresh>
 </template>
 
 <script lang="ts">
@@ -121,6 +122,7 @@ import { logger } from "@/utils/logger";
 import { formatRelativeTime } from "@/utils/format";
 import PostImagePreview from "@/components/PostImagePreview.vue";
 import BunkerStatus from "@/components/BunkerStatus.vue";
+import PullToRefresh from "@/components/PullToRefresh.vue";
 import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
 import { isBunkerError } from "@/utils/bunker";
 // vue-virtual-scroller is in beta and lacks TypeScript definitions
@@ -561,25 +563,12 @@ export default defineComponent({
     async function backfillInteractions(relays: string[], isReconnect = false) {
       try {
         const now = Math.floor(Date.now() / 1000);
-        const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
-        
-        // Determine time range for backfill
-        // If reconnecting and we have a recent timestamp, fetch from that point
-        // Otherwise, use 3-day window
-        let since: number;
-        if (isReconnect && interactions.latestInteractionTimestamp > 0) {
-          // When reconnecting, fetch from last known interaction
-          since = interactions.latestInteractionTimestamp;
-          logger.info(`重新连接: 从上次互动时间回填 ${new Date(since * 1000).toLocaleString()}`);
-        } else {
-          // Initial load or no previous timestamp: use 3-day window
-          since = threeDaysAgo;
-          logger.info(`初始回填: 获取最近3天的互动事件`);
-        }
-        
+        // Always use 3-day window for backfill (259200 seconds = 3 * 24 * 60 * 60)
+        // This ensures consistency across devices and handles offline periods
+        const since = now - THREE_DAYS_IN_SECONDS;
         const until = now;
         
-        logger.info(`开始回填互动事件: ${new Date(since * 1000).toLocaleString()} 到 ${new Date(until * 1000).toLocaleString()}`);
+        logger.info(`回填互动事件: 获取最近3天的互动 (${new Date(since * 1000).toLocaleString()} 到 ${new Date(until * 1000).toLocaleString()})`);
         
         // Track statistics
         let fetchedEvents = 0;
@@ -811,6 +800,37 @@ export default defineComponent({
         });
       }, RECONNECT_BACKFILL_DEBOUNCE_MS);
     }
+    
+    async function handleRefresh(finishRefresh: () => void) {
+      try {
+        logger.info("用户触发下拉刷新");
+        status.value = "刷新中...";
+        
+        // Re-fetch messages and interactions
+        await friends.load();
+        const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
+        if (keys.pkHex) friendSet.add(keys.pkHex);
+        
+        const relays = getRelaysFromStorage();
+        
+        // Backfill latest messages
+        await backfillMessages(friendSet, relays);
+        
+        // Backfill latest interactions
+        await backfillInteractions(relays, true);
+        
+        logger.info("下拉刷新完成");
+        // Restore subscription status after refresh
+        if (status.value === "刷新中...") {
+          status.value = "已订阅";
+        }
+      } catch (e) {
+        logger.error("下拉刷新失败", e);
+        status.value = "刷新失败";
+      } finally {
+        finishRefresh();
+      }
+    }
 
     onMounted(async () => { 
       await startSub();
@@ -859,6 +879,7 @@ export default defineComponent({
       shortRelay, 
       displayName, 
       textWithoutImages,
+      handleRefresh,
       // Like and comment functions
       toggleLike,
       isLiked,
