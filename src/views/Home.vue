@@ -729,10 +729,11 @@ export default defineComponent({
       }
     }
 
-    // Watch for changes in msgs.inbox to update display when posts are added
-    watch(() => msgs.inbox, () => {
+    // Watch for changes in msgs.inbox length to update display when posts are added
+    // Using length instead of deep watch for better performance
+    watch(() => msgs.inbox.length, () => {
       updateLocalRefs();
-    }, { deep: true });
+    });
 
     onMounted(async () => { 
       await startSub(); 
