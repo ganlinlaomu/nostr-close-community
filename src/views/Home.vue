@@ -1,5 +1,5 @@
 <template>
-  <div ref="homeContainer">
+  <div>
     <div class="card">
     
       <div class="small">已自动订阅你添加的好友，实时解密可读消息</div>
@@ -108,7 +108,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, onBeforeUnmount, onUnmounted } from "vue";
+import { defineComponent, ref, onMounted, onBeforeUnmount } from "vue";
 import { useFriendsStore } from "@/stores/friends";
 import { useKeyStore } from "@/stores/keys";
 import { getRelaysFromStorage, subscribe } from "@/nostr/relays";
@@ -157,7 +157,6 @@ export default defineComponent({
     
     // Scroll to top functionality
     const showScrollTop = ref(false);
-    const homeContainer = ref<HTMLElement | null>(null);
     
     function handleScroll() {
       showScrollTop.value = window.scrollY > 300;
@@ -727,8 +726,7 @@ export default defineComponent({
       messageTimeRange,
       // Scroll to top
       showScrollTop,
-      scrollToTop,
-      homeContainer
+      scrollToTop
     };
   }
 });
