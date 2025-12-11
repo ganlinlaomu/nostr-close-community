@@ -367,6 +367,8 @@ export const useInteractionsStore = defineStore("interactions", {
      * This method implements incremental sync by fetching interactions
      * since the last synced timestamp, ensuring no interactions are missed
      * across devices.
+     * 
+     * @returns Object with fetched and processed counts
      */
     async backfillInteractions(options: {
       relays: string[];
@@ -374,7 +376,7 @@ export const useInteractionsStore = defineStore("interactions", {
       until?: number;
       maxBatches?: number;
       onProgress?: (fetched: number, processed: number) => void;
-    }) {
+    }): Promise<{ fetched: number; processed: number }> {
       const key = useKeyStore();
       if (!key.pkHex) {
         logger.warn("Cannot backfill interactions: not logged in");
@@ -383,7 +385,7 @@ export const useInteractionsStore = defineStore("interactions", {
       
       const {
         relays,
-        since = this.lastSyncedAt, // Default to last synced timestamp for incremental sync
+        since = this.lastSyncedAt > 0 ? this.lastSyncedAt + 1 : 0, // Use lastSyncedAt + 1 to avoid re-fetching the same timestamp
         until = Math.floor(Date.now() / 1000),
         maxBatches = 10,
         onProgress
@@ -436,12 +438,13 @@ export const useInteractionsStore = defineStore("interactions", {
           timeoutMs: 10000
         });
         
-        // Update lastSyncedAt to the maximum timestamp we've seen
-        // This ensures we don't re-fetch the same events on next sync
-        if (maxTimestamp > this.lastSyncedAt) {
-          this.lastSyncedAt = maxTimestamp;
+        // Update lastSyncedAt after successful sync
+        // Use 'until' if no events were found to avoid re-fetching the same time window
+        const newSyncedAt = maxTimestamp > this.lastSyncedAt ? maxTimestamp : until;
+        if (newSyncedAt > this.lastSyncedAt) {
+          this.lastSyncedAt = newSyncedAt;
           this._saveToStorage();
-          logger.info(`更新最后同步时间戳: ${new Date(maxTimestamp * 1000).toLocaleString()}`);
+          logger.info(`更新最后同步时间戳: ${new Date(newSyncedAt * 1000).toLocaleString()}`);
         }
         
         return { fetched: fetchedCount, processed: processedCount };
