@@ -447,8 +447,11 @@ export default defineComponent({
         const processEvent = async (evt: any) => {
           fetchedEvents++;
           try {
+            logger.debug(`回填事件处理开始: ${evt.id?.slice(0,8)}, pubkey: ${evt.pubkey?.slice(0,8)}`);
+            
             if (!friendSet.has(evt.pubkey)) {
               notFromFriends++;
+              logger.debug(`跳过非好友事件: ${evt.id?.slice(0,8)}`);
               return;
             }
             
@@ -463,18 +466,23 @@ export default defineComponent({
             
             if (!payload?.keys || !payload?.pkg) {
               parseErrors++;
+              logger.debug(`事件 ${evt.id?.slice(0,8)} 缺少 keys 或 pkg 字段`);
               return;
             }
             
             const myEntry = payload.keys.find((k: any) => k.to === keys.pkHex);
             if (!myEntry) {
               notForMe++;
+              logger.debug(`事件 ${evt.id?.slice(0,8)} 不是发给自己的`);
               return;
             }
+            
+            logger.debug(`开始解密事件: ${evt.id?.slice(0,8)}`);
             
             let symHex: string | null = null;
             try {
               symHex = await keys.nip04Decrypt(evt.pubkey, myEntry.enc);
+              logger.debug(`NIP-04解密成功: ${evt.id?.slice(0,8)}`);
             } catch (e: any) {
               // Check if this is a bunker-related error
               if (isBunkerError(e)) {
@@ -495,14 +503,20 @@ export default defineComponent({
             }
             
             try {
+              logger.debug(`开始对称解密: ${evt.id?.slice(0,8)}`);
               const plain = await symDecryptPackage(symHex, payload.pkg);
+              logger.debug(`对称解密成功: ${evt.id?.slice(0,8)}, 内容长度: ${plain?.length || 0}`);
+              
               const added = addMessageIfNew(evt, plain);
               if (added) {
                 decryptedEvents++;
+                logger.debug(`消息已添加到收件箱: ${evt.id?.slice(0,8)}`);
                 // Track the newest message timestamp for breakpoint
                 if (evt.created_at > newestTimestamp) {
                   newestTimestamp = evt.created_at;
                 }
+              } else {
+                logger.debug(`消息已存在，跳过: ${evt.id?.slice(0,8)}`);
               }
             } catch (e) {
               decryptErrors++;
@@ -746,7 +760,13 @@ export default defineComponent({
           sub = adapterSub;
           adapterSub.on("event", async (evt: any) => {
             try {
-              if (!friendSet.has(evt.pubkey)) return;
+              logger.debug(`实时事件接收: ${evt.id?.slice(0,8)}, pubkey: ${evt.pubkey?.slice(0,8)}`);
+              
+              if (!friendSet.has(evt.pubkey)) {
+                logger.debug(`跳过非好友实时事件: ${evt.id?.slice(0,8)}`);
+                return;
+              }
+              
               let payload: any;
               try { 
                 payload = JSON.parse(evt.content); 
@@ -754,12 +774,24 @@ export default defineComponent({
                 logger.warn(`实时事件 ${evt.id?.slice(0,8)} JSON解析失败`);
                 return; 
               }
-              if (!payload?.keys || !payload?.pkg) return;
+              
+              if (!payload?.keys || !payload?.pkg) {
+                logger.debug(`实时事件 ${evt.id?.slice(0,8)} 缺少 keys 或 pkg 字段`);
+                return;
+              }
+              
               const myEntry = payload.keys.find((k: any) => k.to === keys.pkHex);
-              if (!myEntry) return;
+              if (!myEntry) {
+                logger.debug(`实时事件 ${evt.id?.slice(0,8)} 不是发给自己的`);
+                return;
+              }
+              
+              logger.debug(`开始解密实时事件: ${evt.id?.slice(0,8)}`);
+              
               let symHex: string | null = null;
               try {
                 symHex = await keys.nip04Decrypt(evt.pubkey, myEntry.enc);
+                logger.debug(`实时事件NIP-04解密成功: ${evt.id?.slice(0,8)}`);
               } catch (e: any) {
                 // Check if this is a bunker-related error
                 if (isBunkerError(e)) {
@@ -770,13 +802,23 @@ export default defineComponent({
                 
                 if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
                   symHex = myEntry.enc;
+                  logger.debug(`实时事件使用备用hex key: ${evt.id?.slice(0,8)}`);
                 } else {
                   return;
                 }
               }
+              
               try {
+                logger.debug(`开始对称解密实时事件: ${evt.id?.slice(0,8)}`);
                 const plain = await symDecryptPackage(symHex, payload.pkg);
-                addMessageIfNew(evt, plain);
+                logger.debug(`实时事件对称解密成功: ${evt.id?.slice(0,8)}, 内容长度: ${plain?.length || 0}`);
+                
+                const added = addMessageIfNew(evt, plain);
+                if (added) {
+                  logger.debug(`实时消息已添加到收件箱: ${evt.id?.slice(0,8)}`);
+                } else {
+                  logger.debug(`实时消息已存在，跳过: ${evt.id?.slice(0,8)}`);
+                }
               } catch (e) {
                 logger.warn(`实时事件 ${evt.id?.slice(0,8)} 对称解密失败`, e);
               }
