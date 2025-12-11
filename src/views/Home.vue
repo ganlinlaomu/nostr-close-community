@@ -284,7 +284,9 @@ export default defineComponent({
     }
 
     // Local debugging fallback for symDecryptPackage
-    // Returns the decrypted content or a debug message string starting with "[解密失败"
+    // Usage: This wrapper is used in both development and production to handle decryption failures gracefully.
+    // Instead of silently dropping failed messages, it displays them with debugging information.
+    // Returns: the decrypted content or a debug message string starting with "[解密失败"
     async function symDecryptPackageWithFallback(symHex: string, pkg: { iv: string; ct: string }, eventId?: string): Promise<string> {
       try {
         // Try normal decryption
