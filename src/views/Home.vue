@@ -37,20 +37,20 @@
             <!-- 图片预览（方案 B：直接从内容抽取图片 URL 并渲染） -->
             <PostImagePreview :content="m.content" :showAll="false" style="margin-top:8px;" />
 
-            <!-- 如果仍需显示文本（去除了图片 URL/Markdown），使用 textWithoutImages -->
-            <div v-if="textWithoutImages(m.content)" class="message-text">{{ textWithoutImages(m.content) }}</div>
-            
-            <!-- 操作按钮：点赞和评论 -->
-            <div class="message-actions">
-              <button class="action-btn" @click="toggleLike(m)" :class="{ 'liked': isLiked(m.id) }">
-                <span class="action-icon">{{ isLiked(m.id) ? '❤️' : '🤍' }}</span>
-                <span class="action-text">{{ getLikeCount(m.id) }}</span>
-              </button>
-              <button class="action-btn" @click="toggleComments(m.id)">
-                <span class="action-icon">💬</span>
-                <span class="action-text">{{ getCommentCount(m.id) }}</span>
-              </button>
-            </div>
+          <!-- 如果仍需显示文本（去除了图片 URL/Markdown），使用 processedTexts -->
+          <div v-if="processedTexts[m.id]" class="message-text">{{ processedTexts[m.id] }}</div>
+          
+          <!-- 操作按钮：点赞和评论 -->
+          <div class="message-actions">
+            <button class="action-btn" @click="toggleLike(m)" :class="{ 'liked': isLiked(m.id) }">
+              <span class="action-icon">{{ isLiked(m.id) ? '❤️' : '🤍' }}</span>
+              <span class="action-text">{{ getLikeCount(m.id) }}</span>
+            </button>
+            <button class="action-btn" @click="toggleComments(m.id)">
+              <span class="action-icon">💬</span>
+              <span class="action-text">{{ getCommentCount(m.id) }}</span>
+            </button>
+          </div>
 
             <!-- 评论区域 -->
             <div v-if="showingComments.has(m.id)" class="comments-section">
@@ -111,7 +111,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, onBeforeUnmount, watch } from "vue";
+import { defineComponent, ref, onMounted, onBeforeUnmount, watch, computed } from "vue";
 import { useFriendsStore } from "@/stores/friends";
 import { useKeyStore } from "@/stores/keys";
 import { getRelaysFromStorage, subscribe, onRelayReconnect, offRelayReconnect } from "@/nostr/relays";
@@ -125,10 +125,7 @@ import BunkerStatus from "@/components/BunkerStatus.vue";
 import PullToRefresh from "@/components/PullToRefresh.vue";
 import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
 import { isBunkerError } from "@/utils/bunker";
-// vue-virtual-scroller is in beta and lacks TypeScript definitions
-// @ts-ignore
-import { RecycleScroller } from 'vue-virtual-scroller';
-import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
+import { runWhenIdle } from "@/utils/idle";
 
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
 const mdImageRE = /!\[[^\]]*?\]\(\s*(https?:\/\/[^\s)]+)\s*\)/gi;
@@ -282,6 +279,17 @@ export default defineComponent({
       s = s.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
       return s;
     }
+
+    // Cache processed text for all displayed messages to avoid repeated regex operations
+    const processedTexts = computed(() => {
+      const cache: Record<string, string> = {};
+      for (const msg of displayedMessages.value) {
+        if (msg && msg.id && msg.content) {
+          cache[msg.id] = textWithoutImages(msg.content);
+        }
+      }
+      return cache;
+    });
 
     // Like functionality
     async function toggleLike(message: any) {
@@ -637,16 +645,49 @@ export default defineComponent({
     async function startSub() {
       try {
         logger.info("开始订阅流程");
-        await friends.load();
-        logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
         
+        // Show loading status immediately
+        status.value = "加载中...";
+        
+        // Load data in background without blocking render
+        runWhenIdle(() => {
+          friends.load().then(() => {
+            logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
+            
+            if (!keys.isLoggedIn) {
+              status.value = "未登录";
+              return;
+            }
+            
+            // Continue loading other data in background
+            Promise.all([
+              msgs.load(),
+              interactions.load()
+            ]).then(() => {
+              updateLocalRefs();
+              // Start subscription after data is loaded
+              startSubscription();
+            }).catch((e) => {
+              logger.error("加载数据失败", e);
+              status.value = "加载失败";
+            });
+          }).catch((e) => {
+            logger.error("加载好友列表失败", e);
+            status.value = "加载失败";
+          });
+        });
+      } catch (e) {
+        logger.error("startSub failed", e);
+        status.value = "订阅失败";
+      }
+    }
+
+    async function startSubscription() {
+      try {
         if (!keys.isLoggedIn) {
           status.value = "未登录";
           return;
         }
-        await msgs.load();
-        await interactions.load(); // Load interactions
-        updateLocalRefs();
 
         const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
         if (keys.pkHex) friendSet.add(keys.pkHex);
@@ -879,7 +920,7 @@ export default defineComponent({
       shortRelay, 
       displayName, 
       textWithoutImages,
-      handleRefresh,
+      processedTexts,
       // Like and comment functions
       toggleLike,
       isLiked,

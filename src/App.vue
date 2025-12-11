@@ -11,6 +11,7 @@
 import { defineComponent, defineAsyncComponent } from "vue";
 import HeaderBar from "@/components/HeaderBar.vue";
 
+// Lazy load non-critical components
 const ToastContainer = defineAsyncComponent(() => import("@/components/ToastContainer.vue"));
 const PostEditorModal = defineAsyncComponent(() => import("@/components/PostEditorModal.vue"));
 

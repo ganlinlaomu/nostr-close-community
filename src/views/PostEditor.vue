@@ -134,6 +134,7 @@ import { useMessagesStore } from "@/stores/messages";
 import { useUIStore } from "@/stores/ui";
 import { uploadImageToBlossom, getBlossomConfig } from "@/utils/blossom";
 import BunkerStatus from "@/components/BunkerStatus.vue";
+import { runWhenIdle } from "@/utils/idle";
 
 type UploadItem = {
   id: string;
@@ -374,16 +375,27 @@ export default defineComponent({
     }
 
     onMounted(async ()=>{
-      await checkBlossom();
       // Check pkHex directly instead of isLoggedIn to avoid timing issues where loginMethod might not be set yet
       if (!keys.pkHex) {
         router.replace({ path: "/login", query: { redirect: "/post" } });
         return;
       }
-      await friends.load();
-      await msgs.load();
+      
+      // Show editor immediately with loading state
       allFriends.value = true;
       selectedGroups.value = [];
+      
+      // Load data in background without blocking render
+      runWhenIdle(() => {
+        Promise.all([
+          checkBlossom(),
+          friends.load(),
+          msgs.load()
+        ]).catch((e) => {
+          console.error("Failed to load editor data", e);
+        });
+      });
+      
       await nextTick();
     });
 
