@@ -177,12 +177,15 @@ export default defineComponent({
       // Sort messages by timestamp descending (newest first)
       messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
       
-      if (!initialLoadComplete.value) {
-        // Initial load - show all messages sorted
+      // Fix: If current displayed messages are empty, directly show all messages (including newly decrypted ones)
+      if (!initialLoadComplete.value || displayedMessages.value.length === 0) {
         displayedMessages.value = [...messagesRef.value];
-        initialLoadComplete.value = true;
+        // Only mark as complete when we actually have messages to display
+        if (messagesRef.value.length > 0) {
+          initialLoadComplete.value = true;
+        }
       } else {
-        // After initial load - check for new messages
+        // Already have messages displayed - check for new messages
         const currentDisplayedIds = new Set(displayedMessages.value.map(m => m.id));
         const newMessages = messagesRef.value.filter(m => !currentDisplayedIds.has(m.id));
         
@@ -917,10 +920,20 @@ export default defineComponent({
       offRelayReconnect(handleRelayReconnect);
       
       if (sub) {
-        try { if (typeof sub.close === "function") sub.close(); else if (typeof sub.unsub === "function") sub.unsub(); else if (typeof sub.unsubscribe === "function") sub.unsubscribe(); else if (typeof sub === "function") sub(); } catch {}
+        try {
+          if (typeof sub.close === "function") sub.close();
+          else if (typeof sub.unsub === "function") sub.unsub();
+          else if (typeof sub.unsubscribe === "function") sub.unsubscribe();
+          else if (typeof sub === "function") sub();
+        } catch {}
       }
       if (interactionsSub) {
-        try { if (typeof interactionsSub.close === "function") interactionsSub.close(); else if (typeof interactionsSub.unsub === "function") interactionsSub.unsub(); else if (typeof interactionsSub.unsubscribe === "function") interactionsSub.unsubscribe(); else if (typeof interactionsSub === "function") interactionsSub(); } catch {}
+        try {
+          if (typeof interactionsSub.close === "function") interactionsSub.close();
+          else if (typeof interactionsSub.unsub === "function") interactionsSub.unsub();
+          else if (typeof interactionsSub.unsubscribe === "function") interactionsSub.unsubscribe();
+          else if (typeof interactionsSub === "function") interactionsSub();
+        } catch {}
       }
     });
 
