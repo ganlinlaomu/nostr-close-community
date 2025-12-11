@@ -53,7 +53,9 @@ export const useKeyStore = defineStore("keys", {
     pkHex: "" as string,
     loginMethod: "" as "sk" | "nip07" | "nip46" | "",
     bunkerSigner: null as BunkerSigner | null,
-    loginTimestamp: 0 as number // Unix timestamp when user logged in
+    loginTimestamp: 0 as number, // Unix timestamp when user logged in
+    bunkerConnectionStatus: "disconnected" as "connected" | "connecting" | "disconnected" | "error",
+    bunkerLastError: "" as string
   }),
   getters: {
     /**
@@ -78,9 +80,85 @@ export const useKeyStore = defineStore("keys", {
         default:
           return false;
       }
+    },
+    /**
+     * Get bunker input from localStorage (for reconnection)
+     */
+    bunkerInput(): string {
+      try {
+        return localStorage.getItem("bunkerInput") || "";
+      } catch {
+        return "";
+      }
     }
   },
   actions: {
+    /**
+     * Helper to execute bunker operation with timeout
+     * @param operation - Async operation to execute
+     * @param timeoutMs - Timeout in milliseconds
+     * @param operationName - Name for error messages
+     */
+    async withBunkerTimeout<T>(
+      operation: () => Promise<T>,
+      timeoutMs: number = 10000,
+      operationName: string = "bunker operation"
+    ): Promise<T> {
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      
+      try {
+        return await Promise.race([
+          operation(),
+          new Promise<T>((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error(`${operationName}操作超时 (${timeoutMs}ms)`)), timeoutMs);
+          })
+        ]);
+      } finally {
+        // Clean up timeout if operation completed first
+        if (timeoutId !== null) {
+          clearTimeout(timeoutId);
+        }
+      }
+    },
+
+    /**
+     * Check bunker connection status and attempt to reconnect if needed
+     */
+    async ensureBunkerConnection(): Promise<boolean> {
+      if (this.loginMethod !== "nip46") {
+        return true; // Not using bunker
+      }
+
+      if (!this.bunkerSigner) {
+        this.bunkerConnectionStatus = "disconnected";
+        return false;
+      }
+
+      // If already connected, return true
+      if (this.bunkerConnectionStatus === "connected") {
+        return true;
+      }
+
+      // Try to ping the bunker to verify connection
+      try {
+        this.bunkerConnectionStatus = "connecting";
+        // Test connection by getting public key with short timeout
+        await this.withBunkerTimeout(
+          () => this.bunkerSigner!.getPublicKey(),
+          3000,
+          "bunker连接检查"
+        );
+        this.bunkerConnectionStatus = "connected";
+        this.bunkerLastError = "";
+        return true;
+      } catch (e: any) {
+        this.bunkerConnectionStatus = "error";
+        this.bunkerLastError = e.message || "连接失败";
+        console.warn("Bunker connection check failed:", e);
+        return false;
+      }
+    },
+
     /**
      * Unified NIP-04 decryption that works with all login methods
      * @param senderPubHex - The public key of the sender
@@ -108,11 +186,26 @@ export const useKeyStore = defineStore("keys", {
           return await window.nostr.nip04.decrypt(senderPubHex, ciphertext);
 
         case "nip46":
-          // Use bunker signer
+          // Use bunker signer with timeout and retry
           if (!this.bunkerSigner) {
-            throw new Error("Bunker 签名器未初始化");
+            throw new Error("Bunker 签名器未初始化，请重新登录");
           }
-          return await this.bunkerSigner.nip04Decrypt(senderPubHex, ciphertext);
+          
+          // Try decryption with timeout
+          try {
+            const result = await this.withBunkerTimeout(
+              () => this.bunkerSigner!.nip04Decrypt(senderPubHex, ciphertext),
+              10000,
+              "NIP-04解密"
+            );
+            this.bunkerConnectionStatus = "connected";
+            this.bunkerLastError = "";
+            return result;
+          } catch (e: any) {
+            this.bunkerConnectionStatus = "error";
+            this.bunkerLastError = e.message || "解密失败";
+            throw new Error(`Bunker解密失败: ${e.message || e}。可能是网络连接问题或签名器离线。`);
+          }
 
         default:
           throw new Error(`未知的登录方式: ${this.loginMethod}`);
@@ -146,11 +239,25 @@ export const useKeyStore = defineStore("keys", {
           return await window.nostr.nip04.encrypt(recipientPubHex, plaintext);
 
         case "nip46":
-          // Use bunker signer
+          // Use bunker signer with timeout
           if (!this.bunkerSigner) {
-            throw new Error("Bunker 签名器未初始化");
+            throw new Error("Bunker 签名器未初始化，请重新登录");
           }
-          return await this.bunkerSigner.nip04Encrypt(recipientPubHex, plaintext);
+          
+          try {
+            const result = await this.withBunkerTimeout(
+              () => this.bunkerSigner!.nip04Encrypt(recipientPubHex, plaintext),
+              10000,
+              "NIP-04加密"
+            );
+            this.bunkerConnectionStatus = "connected";
+            this.bunkerLastError = "";
+            return result;
+          } catch (e: any) {
+            this.bunkerConnectionStatus = "error";
+            this.bunkerLastError = e.message || "加密失败";
+            throw new Error(`Bunker加密失败: ${e.message || e}。可能是网络连接问题或签名器离线。`);
+          }
 
         default:
           throw new Error(`未知的登录方式: ${this.loginMethod}`);
@@ -183,11 +290,25 @@ export const useKeyStore = defineStore("keys", {
           return await window.nostr.signEvent(event);
 
         case "nip46":
-          // Use bunker signer
+          // Use bunker signer with timeout
           if (!this.bunkerSigner) {
-            throw new Error("Bunker 签名器未初始化");
+            throw new Error("Bunker 签名器未初始化，请重新登录");
           }
-          return await this.bunkerSigner.signEvent(event);
+          
+          try {
+            const result = await this.withBunkerTimeout(
+              () => this.bunkerSigner!.signEvent(event),
+              15000,
+              "事件签名"
+            );
+            this.bunkerConnectionStatus = "connected";
+            this.bunkerLastError = "";
+            return result;
+          } catch (e: any) {
+            this.bunkerConnectionStatus = "error";
+            this.bunkerLastError = e.message || "签名失败";
+            throw new Error(`Bunker签名失败: ${e.message || e}。可能是网络连接问题或签名器离线。`);
+          }
 
         default:
           throw new Error(`未知的登录方式: ${this.loginMethod}`);
@@ -309,6 +430,8 @@ export const useKeyStore = defineStore("keys", {
         this.loginMethod = "nip46";
         this.loginTimestamp = Math.floor(Date.now() / 1000);
         this.bunkerSigner = signer;
+        this.bunkerConnectionStatus = "connected";
+        this.bunkerLastError = "";
 
         try {
           localStorage.setItem("pkHex", this.pkHex);
@@ -336,6 +459,8 @@ export const useKeyStore = defineStore("keys", {
         this.loginMethod = "";
         this.loginTimestamp = 0;
         this.bunkerSigner = null;
+        this.bunkerConnectionStatus = "disconnected";
+        this.bunkerLastError = e.message || "登录失败";
         
         // Re-throw with a user-friendly message if not already handled
         if (e.message && e.message.includes("无法连接")) {
@@ -389,6 +514,10 @@ export const useKeyStore = defineStore("keys", {
         } catch {}
         this.bunkerSigner = null;
       }
+      
+      // Reset bunker connection status
+      this.bunkerConnectionStatus = "disconnected";
+      this.bunkerLastError = "";
       
       try {
         localStorage.removeItem("skHex");

@@ -1,7 +1,9 @@
 <template>
   <div>
     <div class="card">
-    
+      <!-- Bunker connection status -->
+      <BunkerStatus />
+      
       <div class="small">已自动订阅你添加的好友，实时解密可读消息</div>
       <div class="small" style="margin-top:6px;">订阅状态: {{ status }}</div>
       <div v-if="messageTimeRange" class="small" style="margin-top:4px; color: #94a3b8;">
@@ -111,7 +113,9 @@ import { useInteractionsStore } from "@/stores/interactions";
 import { logger } from "@/utils/logger";
 import { formatRelativeTime } from "@/utils/format";
 import PostImagePreview from "@/components/PostImagePreview.vue";
+import BunkerStatus from "@/components/BunkerStatus.vue";
 import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
+import { isBunkerError } from "@/utils/bunker";
 
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
 const mdImageRE = /!\[[^\]]*?\]\(\s*(https?:\/\/[^\s)]+)\s*\)/gi;
@@ -123,7 +127,7 @@ const THREE_DAYS_IN_SECONDS = 3 * SECONDS_PER_DAY;
 
 export default defineComponent({
   name: "Home",
-  components: { PostImagePreview },
+  components: { PostImagePreview, BunkerStatus },
   setup() {
     const friends = useFriendsStore();
     const keys = useKeyStore();
@@ -403,6 +407,7 @@ export default defineComponent({
         let notForMe = 0;
         let parseErrors = 0;
         let decryptErrors = 0;
+        let bunkerErrors = 0;
         let notFromFriends = 0;
         let newestTimestamp = 0;
         
@@ -438,8 +443,15 @@ export default defineComponent({
             let symHex: string | null = null;
             try {
               symHex = await keys.nip04Decrypt(evt.pubkey, myEntry.enc);
-            } catch (e) {
-              logger.warn(`事件 ${evt.id?.slice(0,8)} NIP-04解密失败，尝试备用方案`, e);
+            } catch (e: any) {
+              // Check if this is a bunker-related error
+              if (isBunkerError(e)) {
+                bunkerErrors++;
+                logger.warn(`事件 ${evt.id?.slice(0,8)} Bunker解密失败: ${e.message || e}`);
+              } else {
+                logger.warn(`事件 ${evt.id?.slice(0,8)} NIP-04解密失败，尝试备用方案`, e);
+              }
+              
               // Fallback: check if enc is already a hex key
               if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
                 symHex = myEntry.enc;
@@ -490,7 +502,8 @@ export default defineComponent({
             if (notFromFriends > 0) summary.push(`非好友: ${notFromFriends} 条`);
             if (notForMe > 0) summary.push(`非自己: ${notForMe} 条`);
             if (parseErrors > 0) summary.push(`解析失败: ${parseErrors} 条`);
-            if (decryptErrors > 0) summary.push(`解密失败: ${decryptErrors} 条`);
+            if (bunkerErrors > 0) summary.push(`签名器错误: ${bunkerErrors} 条`);
+            if (decryptErrors > 0) summary.push(`其他解密失败: ${decryptErrors} 条`);
             
             const summaryText = summary.join(', ');
             logger.info(`回填完成: ${summaryText}`);
@@ -498,8 +511,14 @@ export default defineComponent({
             if (decryptedEvents > 0) {
               status.value = `获取成功 ${decryptedEvents} 条消息`;
             } else if (fetchedEvents > 0) {
-              status.value = `获取了 ${fetchedEvents} 条事件但无法解密`;
-              logger.warn(`回填获取了事件但全部解密失败。可能原因: 1) 事件不是发给自己的 2) 密钥不匹配 3) 数据格式错误`);
+              // Provide more specific error message based on error type
+              if (bunkerErrors > 0) {
+                status.value = `获取了 ${fetchedEvents} 条事件，${bunkerErrors} 条因签名器问题无法解密`;
+                logger.warn(`Bunker签名器连接问题导致解密失败。请检查签名器是否在线或尝试重新连接。`);
+              } else {
+                status.value = `获取了 ${fetchedEvents} 条事件但无法解密`;
+                logger.warn(`回填获取了事件但全部解密失败。可能原因: 1) 事件不是发给自己的 2) 密钥不匹配 3) 数据格式错误`);
+              }
             } else {
               status.value = "已是最新";
             }
@@ -666,8 +685,14 @@ export default defineComponent({
               let symHex: string | null = null;
               try {
                 symHex = await keys.nip04Decrypt(evt.pubkey, myEntry.enc);
-              } catch (e) {
-                logger.warn(`实时事件 ${evt.id?.slice(0,8)} NIP-04解密失败，尝试备用方案`, e);
+              } catch (e: any) {
+                // Check if this is a bunker-related error
+                if (isBunkerError(e)) {
+                  logger.warn(`实时事件 ${evt.id?.slice(0,8)} Bunker解密失败: ${e.message || e}. 请检查签名器连接。`);
+                } else {
+                  logger.warn(`实时事件 ${evt.id?.slice(0,8)} NIP-04解密失败，尝试备用方案`, e);
+                }
+                
                 if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
                   symHex = myEntry.enc;
                 } else {

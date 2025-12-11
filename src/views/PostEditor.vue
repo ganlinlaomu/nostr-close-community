@@ -7,6 +7,9 @@
         </header>
 
         <main class="editor-body">
+          <!-- Bunker connection status -->
+          <BunkerStatus />
+          
           <textarea
             v-model="content"
             ref="textarea"
@@ -130,6 +133,7 @@ import { usePostsStore } from "@/stores/posts";
 import { useMessagesStore } from "@/stores/messages";
 import { useUIStore } from "@/stores/ui";
 import { uploadImageToBlossom, getBlossomConfig } from "@/utils/blossom";
+import BunkerStatus from "@/components/BunkerStatus.vue";
 
 type UploadItem = {
   id: string;
@@ -144,6 +148,7 @@ type UploadItem = {
 
 export default defineComponent({
   name: "PostEditor",
+  components: { BunkerStatus },
   setup() {
     const router = useRouter();
     const keys = useKeyStore();
