@@ -101,7 +101,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, onBeforeUnmount } from "vue";
+import { defineComponent, ref, onMounted, onBeforeUnmount, watch } from "vue";
 import { useFriendsStore } from "@/stores/friends";
 import { useKeyStore } from "@/stores/keys";
 import { getRelaysFromStorage, subscribe } from "@/nostr/relays";
@@ -663,6 +663,15 @@ export default defineComponent({
         status.value = "订阅失败";
       }
     }
+
+    // Watch for self-sent messages and show them immediately
+    watch(() => msgs.lastSelfSentMessageId, (newId) => {
+      if (newId && initialLoadComplete.value) {
+        // A self-sent message was added, show it immediately
+        logger.debug("Self-sent message detected, showing immediately:", newId);
+        showNewMessages();
+      }
+    });
 
     onMounted(async () => { 
       await startSub(); 

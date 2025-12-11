@@ -29,7 +29,8 @@ export const useMessagesStore = defineStore("messages", {
   state: () => ({
     inbox: [] as InboxItem[],
     outbox: [] as OutboxItem[],
-    loadedFor: "" as string
+    loadedFor: "" as string,
+    lastSelfSentMessageId: "" as string
   }),
   actions: {
     async load(pk?: string) {
@@ -83,7 +84,7 @@ export const useMessagesStore = defineStore("messages", {
       try { localStorage.setItem(key, JSON.stringify(this.outbox)); } catch {}
     },
 
-    addInbox(item: InboxItem) {
+    addInbox(item: InboxItem, isSelfSent = false) {
       if (!item || !item.id) return;
       // prevent exact duplicates
       if (this.inbox.find((m) => m.id === item.id)) return;
@@ -91,6 +92,10 @@ export const useMessagesStore = defineStore("messages", {
       // keep bounded history
       if (this.inbox.length > 1000) this.inbox.splice(1000);
       this.saveInbox();
+      // Track self-sent messages so UI can show them immediately
+      if (isSelfSent) {
+        this.lastSelfSentMessageId = item.id;
+      }
     },
 
     addOutbox(item: OutboxItem) {

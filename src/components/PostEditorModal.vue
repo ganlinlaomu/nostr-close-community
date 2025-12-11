@@ -429,7 +429,7 @@ export default defineComponent({
 
       try {
         const { signed } = await posts.publishNip44PerMessage(recips, content.value);
-        try { await msgs.load(); msgs.addInbox({ id: signed.id, pubkey: keys.pkHex, created_at: signed.created_at, content: content.value }); } catch {}
+        try { await msgs.load(); msgs.addInbox({ id: signed.id, pubkey: keys.pkHex, created_at: signed.created_at, content: content.value }, true); } catch {}
         ui.addToast("发送成功", 1200, "success");
         setTimeout(()=>{ onClose(); }, 220);
       } catch (e:any) {
