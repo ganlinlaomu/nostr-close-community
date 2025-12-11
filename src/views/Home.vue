@@ -1,7 +1,9 @@
 <template>
   <div>
     <div class="card">
-    
+      <!-- Bunker connection status -->
+      <BunkerStatus />
+      
       <div class="small">已自动订阅你添加的好友，实时解密可读消息</div>
       <div class="small" style="margin-top:6px;">订阅状态: {{ status }}</div>
       <div v-if="messageTimeRange" class="small" style="margin-top:4px; color: #94a3b8;">
@@ -111,6 +113,7 @@ import { useInteractionsStore } from "@/stores/interactions";
 import { logger } from "@/utils/logger";
 import { formatRelativeTime } from "@/utils/format";
 import PostImagePreview from "@/components/PostImagePreview.vue";
+import BunkerStatus from "@/components/BunkerStatus.vue";
 import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
 
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
@@ -123,7 +126,7 @@ const THREE_DAYS_IN_SECONDS = 3 * SECONDS_PER_DAY;
 
 export default defineComponent({
   name: "Home",
-  components: { PostImagePreview },
+  components: { PostImagePreview, BunkerStatus },
   setup() {
     const friends = useFriendsStore();
     const keys = useKeyStore();

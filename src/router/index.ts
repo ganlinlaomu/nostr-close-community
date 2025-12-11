@@ -91,9 +91,13 @@ router.beforeEach(async (to, from, next) => {
           try {
             await keyStore.loginWithBunker(bunkerInput);
           } catch (e) {
-            // If bunker restore fails, clear the login state
-            console.warn("Failed to restore bunker connection:", e);
-            keyStore.logout();
+            // If bunker restore fails, don't log out immediately
+            // The user may be temporarily offline and can reconnect later
+            console.warn("Failed to restore bunker connection, marking as disconnected:", e);
+            keyStore.bunkerConnectionStatus = "error";
+            keyStore.bunkerLastError = (e as any)?.message || "连接失败";
+            // Keep the login state but mark bunker as disconnected
+            // User can try operations which will show clear error messages
           }
         }
       } catch {
