@@ -177,10 +177,14 @@ export default defineComponent({
       // Sort messages by timestamp descending (newest first)
       messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
       
-      // Fix: If current displayed messages are empty, directly show all messages (including newly decrypted ones)
+      // Fix: Handle scenarios where displayedMessages is empty:
+      // 1. Initial load before any messages are shown (!initialLoadComplete)
+      // 2. After initial load with empty cache, when decrypted messages arrive (displayedMessages.value.length === 0)
+      // This ensures newly decrypted messages are displayed immediately instead of waiting for user interaction
       if (!initialLoadComplete.value || displayedMessages.value.length === 0) {
         displayedMessages.value = [...messagesRef.value];
         // Only mark as complete when we actually have messages to display
+        // This prevents premature completion when cache is empty
         if (messagesRef.value.length > 0) {
           initialLoadComplete.value = true;
         }
