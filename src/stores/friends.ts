@@ -92,15 +92,15 @@ export const useFriendsStore = defineStore("friends", {
             // We got data from relay
             if (!localData || localData.list.length === 0) {
               // No local data or empty local data, use relay data
-              logger.info("Using relay data (no local data)");
+              logger.debug("Using relay data (no local data)");
               return;
             } else if (fetchedTimestamp > localData.lastSyncTimestamp) {
               // Relay data is newer, already loaded by fetchFromRelays
-              logger.info(`Using relay data (newer: ${fetchedTimestamp} > ${localData.lastSyncTimestamp})`);
+              logger.debug(`Using relay data (newer: ${fetchedTimestamp} > ${localData.lastSyncTimestamp})`);
               return;
             } else if (fetchedTimestamp < localData.lastSyncTimestamp) {
               // Local data is newer, restore local and publish to relay
-              logger.info(`Using local data (newer: ${localData.lastSyncTimestamp} > ${fetchedTimestamp})`);
+              logger.debug(`Using local data (newer: ${localData.lastSyncTimestamp} > ${fetchedTimestamp})`);
               this.list = localData.list;
               this.lastSyncTimestamp = localData.lastSyncTimestamp;
               // Publish local data to relay since it's newer
@@ -108,14 +108,14 @@ export const useFriendsStore = defineStore("friends", {
               return;
             } else {
               // Timestamps are equal, use relay data (it's already loaded)
-              logger.info("Local and relay data have same timestamp, using relay data");
+              logger.debug("Local and relay data have same timestamp, using relay data");
               return;
             }
           } else {
             // No data from relay (or fetch failed)
             if (localData && localData.list.length > 0) {
               // Use local data and publish to relay
-              logger.info("Using local data (relay has no data or fetch failed)");
+              logger.debug("Using local data (relay has no data or fetch failed)");
               this.list = localData.list;
               this.lastSyncTimestamp = localData.lastSyncTimestamp;
               // Publish to relay to ensure sync
@@ -305,7 +305,7 @@ export const useFriendsStore = defineStore("friends", {
           return false;
         }
 
-        logger.info(`Friend list published to ${successCount}/${relays.length} relays`);
+        logger.debug(`Friend list published to ${successCount}/${relays.length} relays`);
         this.lastSyncTimestamp = Math.floor(Date.now() / 1000);
         this.save(); // Save the updated timestamp to localStorage
         return true;
@@ -369,7 +369,7 @@ export const useFriendsStore = defineStore("friends", {
                     this.list = friendsData;
                     this.save();
                     this.lastSyncTimestamp = latestEvent.created_at;
-                    logger.info(`Fetched ${friendsData.length} friends from relays (timeout)`);
+                    logger.debug(`Fetched ${friendsData.length} friends from relays (timeout)`);
                     this.syncing = false;
                     resolve(true);
                   } else {
@@ -386,7 +386,7 @@ export const useFriendsStore = defineStore("friends", {
                 }
               })();
             } else {
-              logger.info("No friend list found on relays (timeout)");
+              logger.debug("No friend list found on relays (timeout)");
               this.syncing = false;
               resolve(false);
             }
@@ -406,7 +406,7 @@ export const useFriendsStore = defineStore("friends", {
             sub.unsub();
 
             if (!latestEvent) {
-              logger.info("No friend list found on relays");
+              logger.debug("No friend list found on relays");
               this.syncing = false;
               resolve(false);
               return;
@@ -422,7 +422,7 @@ export const useFriendsStore = defineStore("friends", {
                 this.list = friendsData;
                 this.save(); // Save to localStorage as well
                 this.lastSyncTimestamp = latestEvent.created_at;
-                logger.info(`Fetched ${friendsData.length} friends from relays`);
+                logger.debug(`Fetched ${friendsData.length} friends from relays`);
                 resolve(true);
               } else {
                 logger.warn("Invalid friend list format from relay");
@@ -475,11 +475,11 @@ export const useFriendsStore = defineStore("friends", {
           // Got data from relay, compare timestamps
           if (fetchedTimestamp >= localTimestamp) {
             // Relay data is newer or equal, already loaded by fetchFromRelays
-            logger.info("Sync: Using relay data (newer or equal)");
+            logger.debug("Sync: Using relay data (newer or equal)");
             this.save();
           } else if (localList.length > 0) {
             // Local data is newer, restore and publish
-            logger.info("Sync: Local data is newer, publishing to relay");
+            logger.debug("Sync: Local data is newer, publishing to relay");
             this.list = localList;
             this.lastSyncTimestamp = localTimestamp;
             await this.publishToRelays();
@@ -488,12 +488,12 @@ export const useFriendsStore = defineStore("friends", {
           // No data from relay or fetch failed
           if (localList.length > 0) {
             // Restore local data and publish
-            logger.info("Sync: No relay data, publishing local data");
+            logger.debug("Sync: No relay data, publishing local data");
             this.list = localList;
             this.lastSyncTimestamp = localTimestamp;
             await this.publishToRelays();
           } else {
-            logger.info("Sync: No data to sync");
+            logger.debug("Sync: No data to sync");
           }
         }
       } catch (e: any) {

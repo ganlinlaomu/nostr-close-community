@@ -86,12 +86,12 @@ export async function backfillEvents(options: BackfillOptions): Promise<Backfill
     ? batchAuthors(filters.authors, authorBatchSize)
     : [undefined];
 
-  logger.info(`开始回填: ${filters.kinds.join(',')} kinds, ${authorBatches.length} 个作者批次, ${authorBatches.length > 0 && authorBatches[0] ? authorBatches[0].length : 0} 个作者/批次`);
+  logger.debug(`开始回填: ${filters.kinds.join(',')} kinds, ${authorBatches.length} 个作者批次, ${authorBatches.length > 0 && authorBatches[0] ? authorBatches[0].length : 0} 个作者/批次`);
 
   // Process each author batch
   for (let authorBatchIdx = 0; authorBatchIdx < authorBatches.length; authorBatchIdx++) {
     const authorBatch = authorBatches[authorBatchIdx];
-    logger.info(`处理作者批次 ${authorBatchIdx + 1}/${authorBatches.length}`);
+    logger.debug(`处理作者批次 ${authorBatchIdx + 1}/${authorBatches.length}`);
     let currentUntil = filters.until || Math.floor(Date.now() / 1000);
     const targetSince = filters.since || 0;
     let batchCount = 0;
@@ -99,7 +99,7 @@ export async function backfillEvents(options: BackfillOptions): Promise<Backfill
     // Continue fetching batches for this author group
     while (batchCount < maxBatches) {
       if (currentUntil <= targetSince) {
-        logger.info(`已到达时间边界，停止回填`);
+        logger.debug(`已到达时间边界，停止回填`);
         break;
       }
 
@@ -182,16 +182,16 @@ export async function backfillEvents(options: BackfillOptions): Promise<Backfill
           onProgress({ ...stats, completed: false });
         }
 
-        logger.info(`批次 #${batchCount} 完成: ${batchEvents.length} 个事件`);
+        logger.debug(`批次 #${batchCount} 完成: ${batchEvents.length} 个事件`);
 
         // Check if we should continue
         if (batchEvents.length === 0) {
-          logger.info(`没有更多事件，停止回填`);
+          logger.debug(`没有更多事件，停止回填`);
           break;
         }
 
         if (batchEvents.length < batchSize) {
-          logger.info(`获取到的事件少于限制，可能已到末尾`);
+          logger.debug(`获取到的事件少于限制，可能已到末尾`);
           break;
         }
 
@@ -247,7 +247,7 @@ export async function backfillFriendLists(options: {
   const authorBatches = batchAuthors(authors, authorBatchSize);
   let totalFetched = 0;
 
-  logger.info(`获取好友列表: ${authors.length} 个作者, ${authorBatches.length} 个批次`);
+  logger.debug(`获取好友列表: ${authors.length} 个作者, ${authorBatches.length} 个批次`);
 
   for (let i = 0; i < authorBatches.length; i++) {
     const batch = authorBatches[i];
@@ -298,14 +298,14 @@ export async function backfillFriendLists(options: {
         onProgress(totalFetched, authors.length);
       }
 
-      logger.info(`好友列表批次 ${i + 1}/${authorBatches.length}: ${batchEvents.length} 个事件`);
+      logger.debug(`好友列表批次 ${i + 1}/${authorBatches.length}: ${batchEvents.length} 个事件`);
 
     } catch (e) {
       logger.error(`好友列表批次 ${i + 1} 失败`, e);
     }
   }
 
-  logger.info(`好友列表获取完成: ${totalFetched} 个列表`);
+  logger.debug(`好友列表获取完成: ${totalFetched} 个列表`);
   return totalFetched;
 }
 

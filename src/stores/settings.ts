@@ -96,15 +96,15 @@ export const useSettingsStore = defineStore("settings", {
             // We got data from relay
             if (!localData || (localData.settings.relays.length === 0 && localData.settings.blossomServers.length === 0)) {
               // No local data or empty local data, use relay data
-              logger.info("Using relay settings (no local data)");
+              logger.debug("Using relay settings (no local data)");
               return;
             } else if (fetchedTimestamp > localData.lastSyncTimestamp) {
               // Relay data is newer, already loaded by fetchFromRelays
-              logger.info(`Using relay settings (newer: ${fetchedTimestamp} > ${localData.lastSyncTimestamp})`);
+              logger.debug(`Using relay settings (newer: ${fetchedTimestamp} > ${localData.lastSyncTimestamp})`);
               return;
             } else if (fetchedTimestamp < localData.lastSyncTimestamp) {
               // Local data is newer, restore local and publish to relay
-              logger.info(`Using local settings (newer: ${localData.lastSyncTimestamp} > ${fetchedTimestamp})`);
+              logger.debug(`Using local settings (newer: ${localData.lastSyncTimestamp} > ${fetchedTimestamp})`);
               this.settings = localData.settings;
               this.lastSyncTimestamp = localData.lastSyncTimestamp;
               // Publish local data to relay since it's newer
@@ -112,14 +112,14 @@ export const useSettingsStore = defineStore("settings", {
               return;
             } else {
               // Timestamps are equal, use relay data (it's already loaded)
-              logger.info("Local and relay settings have same timestamp, using relay data");
+              logger.debug("Local and relay settings have same timestamp, using relay data");
               return;
             }
           } else {
             // No data from relay (or fetch failed)
             if (localData && (localData.settings.relays.length > 0 || localData.settings.blossomServers.length > 0)) {
               // Use local data and publish to relay
-              logger.info("Using local settings (relay has no data or fetch failed)");
+              logger.debug("Using local settings (relay has no data or fetch failed)");
               this.settings = localData.settings;
               this.lastSyncTimestamp = localData.lastSyncTimestamp;
               // Publish to relay to ensure sync
@@ -260,7 +260,7 @@ export const useSettingsStore = defineStore("settings", {
           return false;
         }
 
-        logger.info(`Settings published to ${successCount}/${relays.length} relays`);
+        logger.debug(`Settings published to ${successCount}/${relays.length} relays`);
         this.lastSyncTimestamp = Math.floor(Date.now() / 1000);
         this.save(); // Save the updated timestamp to localStorage
         return true;
@@ -327,7 +327,7 @@ export const useSettingsStore = defineStore("settings", {
                     };
                     this.save();
                     this.lastSyncTimestamp = latestEvent.created_at;
-                    logger.info(`Fetched settings from relays (timeout)`);
+                    logger.debug(`Fetched settings from relays (timeout)`);
                     this.syncing = false;
                     resolve(true);
                   } else {
@@ -344,7 +344,7 @@ export const useSettingsStore = defineStore("settings", {
                 }
               })();
             } else {
-              logger.info("No settings found on relays (timeout)");
+              logger.debug("No settings found on relays (timeout)");
               this.syncing = false;
               resolve(false);
             }
@@ -364,7 +364,7 @@ export const useSettingsStore = defineStore("settings", {
             sub.unsub();
 
             if (!latestEvent) {
-              logger.info("No settings found on relays");
+              logger.debug("No settings found on relays");
               this.syncing = false;
               resolve(false);
               return;
@@ -383,7 +383,7 @@ export const useSettingsStore = defineStore("settings", {
                 };
                 this.save(); // Save to localStorage as well
                 this.lastSyncTimestamp = latestEvent.created_at;
-                logger.info(`Fetched settings from relays`);
+                logger.debug(`Fetched settings from relays`);
                 resolve(true);
               } else {
                 logger.warn("Invalid settings format from relay");
@@ -436,11 +436,11 @@ export const useSettingsStore = defineStore("settings", {
           // Got data from relay, compare timestamps
           if (fetchedTimestamp >= localTimestamp) {
             // Relay data is newer or equal, already loaded by fetchFromRelays
-            logger.info("Sync: Using relay settings (newer or equal)");
+            logger.debug("Sync: Using relay settings (newer or equal)");
             this.save();
           } else if (localSettings.relays.length > 0 || localSettings.blossomServers.length > 0) {
             // Local data is newer, restore and publish
-            logger.info("Sync: Local settings are newer, publishing to relay");
+            logger.debug("Sync: Local settings are newer, publishing to relay");
             this.settings = localSettings;
             this.lastSyncTimestamp = localTimestamp;
             await this.publishToRelays();
@@ -449,12 +449,12 @@ export const useSettingsStore = defineStore("settings", {
           // No data from relay or fetch failed
           if (localSettings.relays.length > 0 || localSettings.blossomServers.length > 0) {
             // Restore local data and publish
-            logger.info("Sync: No relay settings, publishing local settings");
+            logger.debug("Sync: No relay settings, publishing local settings");
             this.settings = localSettings;
             this.lastSyncTimestamp = localTimestamp;
             await this.publishToRelays();
           } else {
-            logger.info("Sync: No settings to sync");
+            logger.debug("Sync: No settings to sync");
           }
         }
       } catch (e: any) {

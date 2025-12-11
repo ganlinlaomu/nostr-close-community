@@ -417,11 +417,11 @@ export default defineComponent({
           // Have messages within 3 days - fetch messages newer than last message, within 3 days
           // Use lastMessageTime directly as relay will return messages with created_at >= since
           since = lastMessageTime;
-          logger.info(`有三天内的消息，拉取晚于最后一条消息的三天内信息: ${new Date(since * 1000).toLocaleString()}`);
+          logger.debug(`有三天内的消息，拉取晚于最后一条消息的三天内信息: ${new Date(since * 1000).toLocaleString()}`);
         } else {
           // No messages or last message is older than 3 days - fetch last 3 days
           since = threeDaysAgo;
-          logger.info(`无三天内消息，拉取最近三天的事件: ${new Date(since * 1000).toLocaleString()}`);
+          logger.debug(`无三天内消息，拉取最近三天的事件: ${new Date(since * 1000).toLocaleString()}`);
         }
         
         status.value = "获取历史消息中...";
@@ -480,7 +480,7 @@ export default defineComponent({
               // Fallback: check if enc is already a hex key
               if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
                 symHex = myEntry.enc;
-                logger.info(`事件 ${evt.id?.slice(0,8)} 使用备用hex key`);
+                logger.debug(`事件 ${evt.id?.slice(0,8)} 使用备用hex key`);
               } else {
                 decryptErrors++;
                 return;
@@ -553,7 +553,7 @@ export default defineComponent({
             const breakpointKey = `messages_${keys.pkHex}`;
             if (newestTimestamp > 0) {
               saveBackfillBreakpoint(breakpointKey, newestTimestamp);
-              logger.info(`保存最新消息时间戳: ${new Date(newestTimestamp * 1000).toLocaleString()}`);
+              logger.debug(`保存最新消息时间戳: ${new Date(newestTimestamp * 1000).toLocaleString()}`);
             } else {
               // No new messages, save current time
               saveBackfillBreakpoint(breakpointKey, now);
@@ -579,7 +579,7 @@ export default defineComponent({
         const since = now - THREE_DAYS_IN_SECONDS;
         const until = now;
         
-        logger.info(`回填互动事件: 获取最近3天的互动 (${new Date(since * 1000).toLocaleString()} 到 ${new Date(until * 1000).toLocaleString()})`);
+        logger.debug(`回填互动事件: 获取最近3天的互动 (${new Date(since * 1000).toLocaleString()} 到 ${new Date(until * 1000).toLocaleString()})`);
         
         // Track statistics
         let fetchedEvents = 0;
@@ -610,7 +610,7 @@ export default defineComponent({
             logger.debug(`回填互动中: ${stats.totalEvents} 条事件`);
           },
           onComplete: (stats) => {
-            logger.info(`互动事件(接收)回填完成: 获取 ${stats.totalEvents} 条`);
+            logger.debug(`互动事件(接收)回填完成: 获取 ${stats.totalEvents} 条`);
           },
           batchSize: 500,
           maxBatches: 10,
@@ -631,7 +631,7 @@ export default defineComponent({
             logger.debug(`回填自己的互动中: ${stats.totalEvents} 条事件`);
           },
           onComplete: (stats) => {
-            logger.info(`互动事件(发送)回填完成: 获取 ${stats.totalEvents} 条`);
+            logger.debug(`互动事件(发送)回填完成: 获取 ${stats.totalEvents} 条`);
           },
           batchSize: 500,
           maxBatches: 10,
@@ -663,7 +663,7 @@ export default defineComponent({
         try {
           await friends.load();
           friendsLoaded = true;
-          logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
+          logger.debug(`好友列表加载完成: ${friends.list.length} 个好友`);
         } catch (e) {
           logger.error("加载好友列表失败", e);
           // Continue to load messages even if friends fail - user can still see cached messages
@@ -673,7 +673,7 @@ export default defineComponent({
           await msgs.load();
           await interactions.load();
           updateLocalRefs();
-          logger.info(`已加载缓存消息: ${msgs.inbox.length} 条`);
+          logger.debug(`已加载缓存消息: ${msgs.inbox.length} 条`);
         } catch (e) {
           logger.error("加载缓存数据失败", e);
         }
@@ -705,7 +705,7 @@ export default defineComponent({
 
         const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
         if (keys.pkHex) friendSet.add(keys.pkHex);
-        logger.info(`准备订阅 ${friendSet.size} 个作者（包括自己）`);
+        logger.debug(`准备订阅 ${friendSet.size} 个作者（包括自己）`);
         
         if (friendSet.size === 0) {
           status.value = "好友为空";
