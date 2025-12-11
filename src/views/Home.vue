@@ -101,7 +101,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, onBeforeUnmount } from "vue";
+import { defineComponent, ref, onMounted, onBeforeUnmount, watch } from "vue";
 import { useFriendsStore } from "@/stores/friends";
 import { useKeyStore } from "@/stores/keys";
 import { getRelaysFromStorage, subscribe } from "@/nostr/relays";
@@ -712,6 +712,11 @@ export default defineComponent({
         status.value = "订阅失败";
       }
     }
+
+    // Watch for changes in msgs.inbox to update display when posts are added
+    watch(() => msgs.inbox, () => {
+      updateLocalRefs();
+    }, { deep: true });
 
     onMounted(async () => { 
       await startSub(); 
