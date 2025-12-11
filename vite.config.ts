@@ -1,6 +1,8 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import path from "path";
+import { visualizer } from "rollup-plugin-visualizer";
+import viteCompression from "vite-plugin-compression";
 
 const DEFAULT_PORT = 5173;
 
@@ -10,7 +12,24 @@ const rawAllowed = (process.env.ALLOWED_HOSTS ?? "localhost,127.0.0.1,pwa.lostr.
 const ALLOWED_HOSTS = rawAllowed === "" ? [] : rawAllowed.split(",").map(s => s.trim());
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    // Compression plugin - generate gzip files for production
+    viteCompression({
+      verbose: true,
+      disable: false,
+      threshold: 10240, // Only compress files larger than 10kb
+      algorithm: "gzip",
+      ext: ".gz"
+    }),
+    // Bundle analyzer - generates stats.html to visualize bundle size
+    visualizer({
+      filename: "dist/stats.html",
+      open: false,
+      gzipSize: true,
+      brotliSize: true
+    }) as any
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src")
