@@ -8,10 +8,12 @@
 </template>
 
 <script lang="ts">
-import { defineComponent } from "vue";
+import { defineComponent, defineAsyncComponent } from "vue";
 import HeaderBar from "@/components/HeaderBar.vue";
-import ToastContainer from "@/components/ToastContainer.vue";
-import PostEditorModal from "@/components/PostEditorModal.vue";
+
+// Lazy load non-critical components
+const ToastContainer = defineAsyncComponent(() => import("@/components/ToastContainer.vue"));
+const PostEditorModal = defineAsyncComponent(() => import("@/components/PostEditorModal.vue"));
 
 export default defineComponent({
   components: { HeaderBar, ToastContainer, PostEditorModal }

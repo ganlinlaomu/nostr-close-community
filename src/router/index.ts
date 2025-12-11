@@ -1,9 +1,4 @@
 import { createRouter, createWebHashHistory, RouteRecordRaw } from "vue-router";
-import Login from "@/views/Login.vue";
-import Home from "@/views/Home.vue";
-import PostEditor from "@/views/PostEditor.vue";
-import Friends from "@/views/Friends.vue";
-import Settings from "@/views/Settings.vue";
 import { useKeyStore } from "@/stores/keys";
 
 /**
@@ -23,31 +18,31 @@ const routes: Array<RouteRecordRaw> = [
   {
     path: "/login",
     name: "Login",
-    component: Login,
+    component: () => import("@/views/Login.vue"),
     meta: { requiresAuth: false }
   },
   {
     path: "/",
     name: "Home",
-    component: Home,
+    component: () => import("@/views/Home.vue"),
     meta: { requiresAuth: true }
   },
   {
     path: "/post",
     name: "PostEditor",
-    component: PostEditor,
+    component: () => import("@/views/PostEditor.vue"),
     meta: { requiresAuth: true }
   },
   {
     path: "/friends",
     name: "Friends",
-    component: Friends,
+    component: () => import("@/views/Friends.vue"),
     meta: { requiresAuth: true }
   },
   {
     path: "/settings",
     name: "Settings",
-    component: Settings,
+    component: () => import("@/views/Settings.vue"),
     meta: { requiresAuth: true }
   },
   // fallback
