@@ -127,6 +127,8 @@ import PullToRefresh from "@/components/PullToRefresh.vue";
 import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
 import { isBunkerError } from "@/utils/bunker";
 import { runWhenIdle } from "@/utils/idle";
+import { RecycleScroller } from "vue-virtual-scroller";
+import "vue-virtual-scroller/dist/vue-virtual-scroller.css";
 
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
 const mdImageRE = /!\[[^\]]*?\]\(\s*(https?:\/\/[^\s)]+)\s*\)/gi;
