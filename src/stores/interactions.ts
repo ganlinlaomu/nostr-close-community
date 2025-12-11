@@ -36,6 +36,8 @@ export const useInteractionsStore = defineStore("interactions", {
     interactions: new Map<string, Interaction[]>(),
     // Map of interaction event id -> interaction (to avoid duplicates)
     processedEvents: new Set<string>(),
+    // Track the latest interaction event timestamp for backfill
+    latestInteractionTimestamp: 0,
   }),
   
   getters: {
@@ -212,6 +214,12 @@ export const useInteractionsStore = defineStore("interactions", {
         if (this.processedEvents.has(evt.id)) return;
         this.processedEvents.add(evt.id);
         
+        // Track latest timestamp for backfill checkpoint
+        if (evt.created_at && evt.created_at > this.latestInteractionTimestamp) {
+          this.latestInteractionTimestamp = evt.created_at;
+          this._saveLatestTimestamp();
+        }
+        
         // Parse payload
         let payload: any;
         try {
@@ -311,6 +319,9 @@ export const useInteractionsStore = defineStore("interactions", {
           const data = JSON.parse(stored);
           this.interactions = new Map(Object.entries(data));
         }
+        
+        // Load latest timestamp
+        this._loadLatestTimestamp();
       } catch (e) {
         logger.warn("Failed to load interactions", e);
       }
@@ -334,6 +345,43 @@ export const useInteractionsStore = defineStore("interactions", {
         localStorage.setItem(storageKey, JSON.stringify(data));
       } catch (e) {
         logger.warn("Failed to save interactions", e);
+      }
+    },
+    
+    /**
+     * Save the latest interaction timestamp
+     */
+    _saveLatestTimestamp() {
+      try {
+        const key = useKeyStore();
+        if (!key.pkHex) return;
+        
+        const storageKey = `interactions_timestamp_${key.pkHex}`;
+        localStorage.setItem(storageKey, String(this.latestInteractionTimestamp));
+      } catch (e) {
+        logger.warn("Failed to save latest interaction timestamp", e);
+      }
+    },
+    
+    /**
+     * Load the latest interaction timestamp
+     */
+    _loadLatestTimestamp() {
+      try {
+        const key = useKeyStore();
+        if (!key.pkHex) return;
+        
+        const storageKey = `interactions_timestamp_${key.pkHex}`;
+        const stored = localStorage.getItem(storageKey);
+        
+        if (stored) {
+          const ts = parseInt(stored, 10);
+          if (!isNaN(ts)) {
+            this.latestInteractionTimestamp = ts;
+          }
+        }
+      } catch (e) {
+        logger.warn("Failed to load latest interaction timestamp", e);
       }
     }
   }

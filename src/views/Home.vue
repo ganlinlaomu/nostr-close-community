@@ -546,13 +546,25 @@ export default defineComponent({
       }
     }
     
-    async function backfillInteractions(relays: string[]) {
+    async function backfillInteractions(relays: string[], isReconnect = false) {
       try {
         const now = Math.floor(Date.now() / 1000);
         const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
         
-        // Determine time range for backfill - use 3-day window
-        const since = threeDaysAgo;
+        // Determine time range for backfill
+        // If reconnecting and we have a recent timestamp, fetch from that point
+        // Otherwise, use 3-day window
+        let since: number;
+        if (isReconnect && interactions.latestInteractionTimestamp > 0) {
+          // When reconnecting, fetch from last known interaction
+          since = interactions.latestInteractionTimestamp;
+          logger.info(`重新连接: 从上次互动时间回填 ${new Date(since * 1000).toLocaleString()}`);
+        } else {
+          // Initial load or no previous timestamp: use 3-day window
+          since = threeDaysAgo;
+          logger.info(`初始回填: 获取最近3天的互动事件`);
+        }
+        
         const until = now;
         
         logger.info(`开始回填互动事件: ${new Date(since * 1000).toLocaleString()} 到 ${new Date(until * 1000).toLocaleString()}`);
@@ -760,8 +772,21 @@ export default defineComponent({
       updateLocalRefs();
     });
 
+    // Handle online/offline events for interaction backfill
+    function handleOnline() {
+      logger.info("网络已恢复，开始回填错过的互动事件");
+      const relays = getRelaysFromStorage();
+      // Trigger backfill with reconnect flag
+      backfillInteractions(relays, true).catch((e) => {
+        logger.error("重新连接后回填互动事件失败", e);
+      });
+    }
+
     onMounted(async () => { 
-      await startSub(); 
+      await startSub();
+      
+      // Listen for online event to backfill missed interactions
+      window.addEventListener('online', handleOnline);
     });
 
     onBeforeUnmount(() => {
@@ -770,6 +795,9 @@ export default defineComponent({
         clearTimeout(autoRefreshTimer);
         autoRefreshTimer = null;
       }
+      
+      // Clean up online event listener
+      window.removeEventListener('online', handleOnline);
       
       if (sub) {
         try { if (typeof sub.close === "function") sub.close(); else if (typeof sub.unsub === "function") sub.unsub(); else if (typeof sub.unsubscribe === "function") sub.unsubscribe(); else if (typeof sub === "function") sub(); } catch {}
