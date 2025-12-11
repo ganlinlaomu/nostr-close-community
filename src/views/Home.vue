@@ -548,25 +548,12 @@ export default defineComponent({
     async function backfillInteractions(relays: string[], isReconnect = false) {
       try {
         const now = Math.floor(Date.now() / 1000);
-        const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
-        
-        // Determine time range for backfill
-        // If reconnecting and we have a recent timestamp, fetch from that point
-        // Otherwise, use 3-day window
-        let since: number;
-        if (isReconnect && interactions.latestInteractionTimestamp > 0) {
-          // When reconnecting, fetch from last known interaction
-          since = interactions.latestInteractionTimestamp;
-          logger.info(`重新连接: 从上次互动时间回填 ${new Date(since * 1000).toLocaleString()}`);
-        } else {
-          // Initial load or no previous timestamp: use 3-day window
-          since = threeDaysAgo;
-          logger.info(`初始回填: 获取最近3天的互动事件`);
-        }
-        
+        // Always use 3-day window for backfill (259200 seconds = 3 * 24 * 60 * 60)
+        // This ensures consistency across devices and handles offline periods
+        const since = now - THREE_DAYS_IN_SECONDS;
         const until = now;
         
-        logger.info(`开始回填互动事件: ${new Date(since * 1000).toLocaleString()} 到 ${new Date(until * 1000).toLocaleString()}`);
+        logger.info(`回填互动事件: 获取最近3天的互动 (${new Date(since * 1000).toLocaleString()} 到 ${new Date(until * 1000).toLocaleString()})`);
         
         // Track statistics
         let fetchedEvents = 0;
