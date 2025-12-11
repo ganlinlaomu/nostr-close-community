@@ -24,6 +24,9 @@ const RECONNECT_DELAY = 3000;
 
 const relaysMap: Record<string, RelayConn> = {};
 
+// Reconnect callbacks
+const reconnectCallbacks: Set<(url: string) => void> = new Set();
+
 export const DEFAULT_RELAYS = [
   "wss://relay.damus.io",
   "wss://relay.0xchat.com",
@@ -56,7 +59,17 @@ function ensureRelayConn(url: string): RelayConn {
       conn.ready = false;
 
       const onOpen = () => {
+        const wasReconnect = conn.ready === false && conn.ws !== null;
         conn.ready = true;
+        
+        // Notify reconnect callbacks if this was a reconnect
+        if (wasReconnect) {
+          logger.info(`Relay reconnected: ${url}`);
+          for (const cb of reconnectCallbacks) {
+            try { cb(url); } catch (e) { logger.warn("reconnect callback error", e); }
+          }
+        }
+        
         // flush queue
         while (conn.queue.length) {
           const m = conn.queue.shift()!;
@@ -265,6 +278,20 @@ export function reconnectRelay(url: string) {
   } catch (e) {
     logger.warn("reconnectRelay error", e);
   }
+}
+
+/**
+ * Register a callback to be called when any relay reconnects
+ */
+export function onRelayReconnect(callback: (url: string) => void) {
+  reconnectCallbacks.add(callback);
+}
+
+/**
+ * Unregister a reconnect callback
+ */
+export function offRelayReconnect(callback: (url: string) => void) {
+  reconnectCallbacks.delete(callback);
 }
 
 /**

@@ -106,7 +106,7 @@
 import { defineComponent, ref, onMounted, onBeforeUnmount, watch } from "vue";
 import { useFriendsStore } from "@/stores/friends";
 import { useKeyStore } from "@/stores/keys";
-import { getRelaysFromStorage, subscribe } from "@/nostr/relays";
+import { getRelaysFromStorage, subscribe, onRelayReconnect, offRelayReconnect } from "@/nostr/relays";
 import { symDecryptPackage } from "@/nostr/crypto";
 import { useMessagesStore } from "@/stores/messages";
 import { useInteractionsStore } from "@/stores/interactions";
@@ -781,12 +781,33 @@ export default defineComponent({
         logger.error("重新连接后回填互动事件失败", e);
       });
     }
+    
+    // Handle relay reconnections
+    let reconnectBackfillTimer: any = null;
+    function handleRelayReconnect(url: string) {
+      logger.info(`中继重连: ${url}，将回填错过的互动事件`);
+      
+      // Debounce: wait for multiple relays to reconnect before triggering backfill
+      if (reconnectBackfillTimer) {
+        clearTimeout(reconnectBackfillTimer);
+      }
+      
+      reconnectBackfillTimer = setTimeout(() => {
+        const relays = getRelaysFromStorage();
+        backfillInteractions(relays, true).catch((e) => {
+          logger.error("中继重连后回填互动事件失败", e);
+        });
+      }, 2000); // Wait 2 seconds for other relays to reconnect
+    }
 
     onMounted(async () => { 
       await startSub();
       
       // Listen for online event to backfill missed interactions
       window.addEventListener('online', handleOnline);
+      
+      // Listen for relay reconnections
+      onRelayReconnect(handleRelayReconnect);
     });
 
     onBeforeUnmount(() => {
@@ -796,8 +817,17 @@ export default defineComponent({
         autoRefreshTimer = null;
       }
       
+      // Clean up reconnect backfill timer
+      if (reconnectBackfillTimer) {
+        clearTimeout(reconnectBackfillTimer);
+        reconnectBackfillTimer = null;
+      }
+      
       // Clean up online event listener
       window.removeEventListener('online', handleOnline);
+      
+      // Clean up relay reconnect listener
+      offRelayReconnect(handleRelayReconnect);
       
       if (sub) {
         try { if (typeof sub.close === "function") sub.close(); else if (typeof sub.unsub === "function") sub.unsub(); else if (typeof sub.unsubscribe === "function") sub.unsubscribe(); else if (typeof sub === "function") sub(); } catch {}
