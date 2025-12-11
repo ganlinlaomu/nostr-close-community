@@ -652,33 +652,31 @@ export default defineComponent({
         // Show loading status immediately
         status.value = "加载中...";
         
-        // Load data in background without blocking render
-        runWhenIdle(() => {
-          friends.load().then(() => {
-            logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
-            
-            if (!keys.isLoggedIn) {
-              status.value = "未登录";
-              return;
-            }
-            
-            // Continue loading other data in background
-            Promise.all([
-              msgs.load(),
-              interactions.load()
-            ]).then(() => {
-              updateLocalRefs();
-              // Start subscription after data is loaded
-              startSubscription();
-            }).catch((e) => {
-              logger.error("加载数据失败", e);
-              status.value = "加载失败";
-            });
-          }).catch((e) => {
-            logger.error("加载好友列表失败", e);
-            status.value = "加载失败";
-          });
-        });
+        if (!keys.isLoggedIn) {
+          status.value = "未登录";
+          return;
+        }
+        
+        // Load cached data immediately (synchronously from localStorage)
+        // This ensures messages appear quickly before network requests
+        try {
+          await friends.load();
+          logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
+        } catch (e) {
+          logger.error("加载好友列表失败", e);
+        }
+        
+        try {
+          await msgs.load();
+          await interactions.load();
+          updateLocalRefs();
+          logger.info(`已加载缓存消息: ${msgs.inbox.length} 条`);
+        } catch (e) {
+          logger.error("加载缓存数据失败", e);
+        }
+        
+        // Start subscription to get live updates
+        await startSubscription();
       } catch (e) {
         logger.error("startSub failed", e);
         status.value = "订阅失败";

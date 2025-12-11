@@ -60,7 +60,7 @@ export default defineComponent({
   bottom: 0;
   left: 0;
   right: 0;
-  height: 60px;
+  height: 72px;
   display: flex;
   align-items: center;
   justify-content: space-around;
@@ -77,6 +77,8 @@ export default defineComponent({
   pointer-events: auto;
   /* Add shadow for better visual separation */
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+  /* Safe area for iPhone notch */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 .nav-item {
   display: flex;
@@ -84,8 +86,12 @@ export default defineComponent({
   align-items: center;
   text-decoration: none;
   color: inherit;
-  font-size: 12px;
+  font-size: 13px;
+  padding: 8px 16px;
+  min-width: 64px;
+  min-height: 48px;
+  cursor: pointer;
 }
-.icon { font-size: 18px; line-height: 1; }
-.label { margin-top: 2px; line-height: 1; }
+.icon { font-size: 22px; line-height: 1; }
+.label { margin-top: 4px; line-height: 1; }
 </style>
