@@ -107,6 +107,7 @@
         </template>
       </RecycleScroller>
     </div>
+    </div>
   </PullToRefresh>
 </template>
 
