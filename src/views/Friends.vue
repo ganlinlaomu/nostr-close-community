@@ -408,6 +408,7 @@ export default defineComponent({
   border: 1px solid #1976d2;
   font-size: 20px;
   font-weight: 300;
+  margin-right: 12px;
 }
 
 .btn-add:hover {
