@@ -244,6 +244,8 @@ export const useInteractionsStore = defineStore("interactions", {
         }
         
         // Decrypt interaction
+        if (!symHex) return;
+        
         try {
           const plain = await symDecryptPackage(symHex, payload.pkg);
           const interaction: Interaction = JSON.parse(plain);
