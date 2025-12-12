@@ -319,8 +319,7 @@ export default defineComponent({
       startEdit,
       closeModal,
       saveForm,
-      confirmDelete,
-      manualSync
+      confirmDelete
     };
   }
 });

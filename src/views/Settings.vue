@@ -485,7 +485,6 @@ export default defineComponent({
       reconnect,
       doLogout,
       settings,
-      manualSync,
       showSyncSuccess,
       isFadingOut
     };
