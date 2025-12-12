@@ -643,8 +643,8 @@ export default defineComponent({
 }
 
 .status-disconnected {
-  background: #ef4444;
-  color: white;
+  background: transparent;
+  color: #ef4444;
   border: 1px solid #ef4444;
 }
 
