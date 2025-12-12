@@ -568,15 +568,25 @@ export default defineComponent({
         const now = Math.floor(Date.now() / 1000);
         const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
         
-        // Determine if we should use incremental sync (fetch from lastSyncedAt)
-        // or full 3-day window sync (fetch from 3 days ago)
-        const shouldUseIncrementalSync = interactions.lastSyncedAt > 0 && interactions.lastSyncedAt > threeDaysAgo;
-        const since = shouldUseIncrementalSync ? interactions.lastSyncedAt : threeDaysAgo;
+        // Always fetch 3 days of interactions to ensure comprehensive sync
+        // This is important for devices that have been offline for extended periods
+        const since = threeDaysAgo;
         
-        logger.info(`开始回填互动事件 (增量同步): since=${new Date(since * 1000).toLocaleString()}`);
+        logger.info(`开始回填互动事件 (最近3天): since=${new Date(since * 1000).toLocaleString()}`);
         
+        // Get IDs of all displayed messages (posts) to fetch their interactions
+        const eventIds = displayedMessages.value.map(m => m.id).filter(Boolean);
+        
+        if (eventIds.length > 0) {
+          logger.info(`将回填 ${eventIds.length} 个帖子的互动`);
+        }
+        
+        // Use the updated backfillInteractions that fetches both:
+        // 1. Interactions targeted at user (#p)
+        // 2. Interactions on displayed posts (#e)
         await interactions.backfillInteractions({
           relays,
+          eventIds: eventIds.length > 0 ? eventIds : undefined,
           since,
           until: now,
           maxBatches: 10,
@@ -585,40 +595,10 @@ export default defineComponent({
           }
         });
         
+        logger.info("互动事件回填完成");
+        
       } catch (e) {
         logger.error("回填互动事件失败", e);
-      }
-    }
-    
-    async function backfillInteractionsForDisplayedPosts(relays: string[]) {
-      try {
-        // Get IDs of all displayed messages (posts)
-        const eventIds = displayedMessages.value.map(m => m.id).filter(Boolean);
-        
-        if (eventIds.length === 0) {
-          logger.info("没有显示的消息，跳过回填事件互动");
-          return;
-        }
-        
-        const now = Math.floor(Date.now() / 1000);
-        const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
-        
-        logger.info(`开始回填显示的帖子互动: ${eventIds.length} 个帖子`);
-        
-        // Backfill interactions for these specific posts
-        await interactions.backfillInteractionsForEvents({
-          relays,
-          eventIds,
-          since: threeDaysAgo,
-          until: now,
-          maxBatches: 10,
-          onProgress: (fetched, processed) => {
-            logger.debug(`回填帖子互动进度: 获取 ${fetched} 条, 处理 ${processed} 条`);
-          }
-        });
-        
-      } catch (e) {
-        logger.error("回填帖子互动失败", e);
       }
     }
 
@@ -718,10 +698,8 @@ export default defineComponent({
         }
         
         // Backfill historical interactions before subscribing to real-time events
+        // This now includes both interactions targeted at user and on displayed posts
         await backfillInteractions(relays);
-        
-        // Backfill interactions for displayed posts (likes/comments on visible posts)
-        await backfillInteractionsForDisplayedPosts(relays);
         
         // Subscribe to interactions (kind 24243)
         try {
