@@ -12,17 +12,7 @@
     </div>
 
     <div class="card">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-        <h3 style="margin: 0;">设置</h3>
-        <button 
-          class="btn btn-sync" 
-          @click="manualSync"
-          :disabled="settings.syncing"
-          title="手动同步到中继服务器"
-        >
-          <span :class="{ 'spin': settings.syncing }">⟳</span> 同步
-        </button>
-      </div>
+      <h3 style="margin: 0 0 12px 0;">设置</h3>
 
       <!-- Relay Management Section -->
       <div class="section">
