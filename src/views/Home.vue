@@ -172,7 +172,49 @@ export default defineComponent({
       return pullDistance.value > PULL_THRESHOLD ? '松开刷新' : '下拉刷新';
     });
     
+    // Helper function to find if an element or its parent is scrollable
+    function findScrollableParent(element: HTMLElement | null): HTMLElement | null {
+      if (!element) return null;
+      
+      // Skip checking HTML and BODY elements as they represent the main viewport
+      const tagName = element.tagName?.toUpperCase();
+      if (tagName === 'HTML' || tagName === 'BODY') {
+        return null;
+      }
+      
+      // Check if current element is scrollable
+      const style = window.getComputedStyle(element);
+      // Check both overflow and overflowY properties
+      const overflowY = style.overflowY;
+      const overflow = style.overflow;
+      const isScrollableY = (overflowY === 'scroll' || overflowY === 'auto' || overflow === 'scroll' || overflow === 'auto') 
+                           && element.scrollHeight > element.clientHeight;
+      
+      if (isScrollableY) {
+        return element;
+      }
+      
+      // Recursively check parent
+      if (element.parentElement) {
+        return findScrollableParent(element.parentElement);
+      }
+      
+      return null;
+    }
+    
     function handleTouchStart(e: TouchEvent) {
+      // Check if touch is on a scrollable element
+      const target = e.target as HTMLElement;
+      const scrollableParent = findScrollableParent(target);
+      
+      // If touching a scrollable element that can scroll, don't start pull-to-refresh
+      // Note: findScrollableParent returns null for HTML/BODY elements
+      if (scrollableParent) {
+        touchStartY = 0;
+        pullDistance.value = 0;
+        return;
+      }
+      
       // Only start pull-to-refresh if at the top of the page
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
       if (scrollTop === 0 && !isRefreshing.value) {
