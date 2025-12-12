@@ -127,7 +127,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, onBeforeUnmount, computed } from "vue";
+import { defineComponent, ref, onMounted, onBeforeUnmount, computed, watch } from "vue";
 import { useFriendsStore } from "@/stores/friends";
 import { useKeyStore } from "@/stores/keys";
 import { getRelaysFromStorage, subscribe } from "@/nostr/relays";
@@ -340,13 +340,54 @@ export default defineComponent({
       const displayedIds = new Set(displayedMessages.value.map(m => m.id));
       const newMessages = messagesRef.value.filter(m => !displayedIds.has(m.id));
       
-      // Add new messages to pending instead of displaying immediately
       if (newMessages.length > 0) {
-        // Sort new messages by timestamp (newest first) before adding
-        const sortedNew = newMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-        // Merge with existing pending messages and keep sorted
-        pendingMessages.value = [...sortedNew, ...pendingMessages.value].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-        logger.info(`收到 ${newMessages.length} 条新消息，等待刷新显示`);
+        // Separate own messages from others' messages
+        const ownMessages: any[] = [];
+        const othersMessages: any[] = [];
+        
+        for (const msg of newMessages) {
+          // Check if message is from the current user
+          if (msg.pubkey === keys.pkHex) {
+            ownMessages.push(msg);
+          } else {
+            othersMessages.push(msg);
+          }
+        }
+        
+        // Own messages: insert directly into displayedMessages (immediate display)
+        if (ownMessages.length > 0) {
+          logger.info(`收到 ${ownMessages.length} 条自己的新消息，立即显示`);
+          // Sort own messages first
+          const sortedOwn = ownMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+          // Merge with displayedMessages using efficient sorted merge
+          const merged: any[] = [];
+          let i = 0, j = 0;
+          while (i < sortedOwn.length || j < displayedMessages.value.length) {
+            if (i >= sortedOwn.length) {
+              merged.push(...displayedMessages.value.slice(j));
+              break;
+            }
+            if (j >= displayedMessages.value.length) {
+              merged.push(...sortedOwn.slice(i));
+              break;
+            }
+            if ((sortedOwn[i].created_at || 0) >= (displayedMessages.value[j].created_at || 0)) {
+              merged.push(sortedOwn[i++]);
+            } else {
+              merged.push(displayedMessages.value[j++]);
+            }
+          }
+          displayedMessages.value = merged;
+        }
+        
+        // Others' messages: add to pending queue (wait for explicit refresh)
+        if (othersMessages.length > 0) {
+          logger.info(`收到 ${othersMessages.length} 条其他用户的新消息，等待刷新显示`);
+          // Sort other messages by timestamp (newest first) before adding
+          const sortedOthers = othersMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+          // Merge with existing pending messages and keep sorted
+          pendingMessages.value = [...sortedOthers, ...pendingMessages.value].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        }
       }
       
       updateMessageTimeRange();
@@ -876,6 +917,15 @@ export default defineComponent({
 
     onMounted(async () => { 
       await startSub(); 
+    });
+
+    // Watch for changes to msgs.inbox to handle optimistic UI updates
+    // This ensures own messages added via PostEditorModal appear immediately
+    watch(() => msgs.inbox.length, () => {
+      // Only update if not during initial load
+      if (!isInitialLoad.value) {
+        updateLocalRefs();
+      }
     });
 
     onBeforeUnmount(() => {
