@@ -4,19 +4,15 @@
   <nav v-if="isLoggedIn" class="bottom-nav">
     <router-link class="nav-item" to="/">
       <div class="icon">🏠</div>
-      <div class="label">首页</div>
     </router-link>
     <a class="nav-item" @click.prevent="handlePostClick">
       <div class="icon">✍️</div>
-      <div class="label">发帖</div>
     </a>
     <router-link class="nav-item" to="/friends">
       <div class="icon">👥</div>
-      <div class="label">好友</div>
     </router-link>
     <router-link class="nav-item" to="/settings">
       <div class="icon">⚙️</div>
-      <div class="label">设置</div>
     </router-link>
   </nav>
 </template>
@@ -60,24 +56,18 @@ export default defineComponent({
   bottom: 0;
   left: 0;
   right: 0;
-  height: 80px;
+  height: 60px;
   display: flex;
   align-items: center;
   justify-content: space-around;
   background: #ffffff;
-  border-top: 1px solid rgba(0,0,0,0.06);
-  /* Higher z-index to stay above modals and overlays for navigation access */
+  border-top: 1px solid rgba(0,0,0,0.08);
   z-index: var(--z-bottom-nav, 9999);
-  /* Ensure the navigation creates its own stacking context and stays on top */
   isolation: isolate;
-  /* Add backdrop filter for better visual separation (reduced blur for performance) */
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  /* Ensure it's always visible and clickable */
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   pointer-events: auto;
-  /* Add shadow for better visual separation */
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
-  /* Add padding for safe area on mobile devices */
+  box-shadow: 0 -1px 8px rgba(0, 0, 0, 0.06);
   padding-bottom: env(safe-area-inset-bottom);
 }
 .nav-item {
@@ -86,25 +76,33 @@ export default defineComponent({
   align-items: center;
   justify-content: center;
   text-decoration: none;
-  color: inherit;
-  font-size: 13px;
-  padding: 8px;
+  color: #64748b;
+  padding: 10px 20px;
   cursor: pointer;
   transition: all 0.2s;
-  border-radius: 8px;
-  min-width: 64px;
+  border-radius: 12px;
+  position: relative;
 }
 .nav-item:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
+}
+.nav-item.router-link-active {
+  color: #1976d2;
+}
+.nav-item.router-link-active::after {
+  content: '';
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  background: #1976d2;
+  border-radius: 50%;
 }
 .icon { 
-  font-size: 24px; 
-  line-height: 1; 
-  margin-bottom: 4px;
-}
-.label { 
-  margin-top: 4px; 
+  font-size: 26px; 
   line-height: 1;
-  font-weight: 500;
 }
 </style>

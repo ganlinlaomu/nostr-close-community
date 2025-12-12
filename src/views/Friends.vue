@@ -16,12 +16,12 @@
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <h3 style="margin: 0;">好友列表（{{ friends.sortedList.length }}）</h3>
         <button 
-          class="btn btn-sync" 
-          @click="manualSync"
-          :disabled="friends.syncing"
-          title="手动同步到中继服务器"
+          class="btn-icon btn-add" 
+          @click="startAdd"
+          title="添加好友"
+          aria-label="添加好友"
         >
-          <span :class="{ 'spin': friends.syncing }">⟳</span> 同步
+          +
         </button>
       </div>
       <div v-if="friends.sortedList.length === 0" class="small">还没有好友</div>
@@ -38,17 +38,12 @@
             </div>
           </div>
           <div class="friend-actions">
-            <button class="btn btn-edit" @click="startEdit(f)">编辑</button>
-            <button class="btn btn-delete" @click="confirmDelete(f)">删除</button>
+            <button class="btn-icon btn-edit" @click="startEdit(f)" title="编辑" aria-label="编辑好友">✎</button>
+            <button class="btn-icon btn-delete" @click="confirmDelete(f)" title="删除" aria-label="删除好友">🗑</button>
           </div>
         </div>
       </div>
     </div>
-
-    <!-- Floating Add Button -->
-    <button class="fab" @click="startAdd" title="添加好友">
-      <span class="fab-icon">+</span>
-    </button>
 
     <!-- Modal for Add/Edit Friend -->
     <div v-if="showModal" class="modal-overlay" @click="closeModal">
@@ -294,25 +289,6 @@ export default defineComponent({
       }
     };
 
-    const manualSync = async () => {
-      if (!keys.isLoggedIn) {
-        ui.addToast("请先登录", 2000, "error");
-        return;
-      }
-      
-      try {
-        await friends.syncWithRelays();
-        if (friends.syncError) {
-          ui.addToast(`同步失败: ${friends.syncError}`, 3000, "error");
-        } else {
-          ui.addToast("同步成功", 2000, "success");
-        }
-      } catch (e) {
-        console.error("Manual sync error:", e);
-        ui.addToast("同步出错", 2000, "error");
-      }
-    };
-
     return {
       friends,
       showModal,
@@ -325,8 +301,7 @@ export default defineComponent({
       startEdit,
       closeModal,
       saveForm,
-      confirmDelete,
-      manualSync
+      confirmDelete
     };
   }
 });
@@ -373,16 +348,6 @@ export default defineComponent({
   font-weight: bold;
 }
 
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.spin {
-  display: inline-block;
-  animation: spin 1s linear infinite;
-}
-
 .friend-item {
   display: flex;
   align-items: center;
@@ -400,7 +365,8 @@ export default defineComponent({
 
 .friend-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .btn {
@@ -417,58 +383,60 @@ export default defineComponent({
   opacity: 0.9;
 }
 
-.btn-edit {
-  background: #10b981;
-}
-
-.btn-delete {
-  background: #ef4444;
-}
-
 .btn-cancel {
   background: #6b7280;
 }
 
-.btn-sync {
-  background: #10b981;
-  font-size: 13px;
-  padding: 6px 12px;
-}
-
-.btn-sync:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* Floating Action Button */
-.fab {
-  position: fixed;
-  bottom: 80px;
-  right: 24px;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: #1976d2;
-  color: white;
+.btn-icon {
+  width: 32px;
+  height: 32px;
   border: none;
-  box-shadow: 0 4px 12px rgba(25, 118, 210, 0.4);
+  border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
-  transition: all 0.3s ease;
+  font-size: 16px;
+  transition: all 0.2s;
+  background: white;
 }
 
-.fab:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 16px rgba(25, 118, 210, 0.5);
-}
-
-.fab-icon {
-  font-size: 32px;
+.btn-add {
+  color: #1976d2;
+  border: 1px solid #1976d2;
+  font-size: 20px;
   font-weight: 300;
-  line-height: 1;
+}
+
+.btn-add:hover {
+  background: #1976d2;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(25, 118, 210, 0.3);
+}
+
+.btn-edit {
+  color: #3b82f6;
+  border: 1px solid #3b82f6;
+}
+
+.btn-edit:hover {
+  background: #3b82f6;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
+}
+
+.btn-delete {
+  color: #ef4444;
+  border: 1px solid #ef4444;
+}
+
+.btn-delete:hover {
+  background: #ef4444;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.3);
 }
 
 /* Modal */

@@ -12,17 +12,7 @@
     </div>
 
     <div class="card">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-        <h3 style="margin: 0;">设置</h3>
-        <button 
-          class="btn btn-sync" 
-          @click="manualSync"
-          :disabled="settings.syncing"
-          title="手动同步到中继服务器"
-        >
-          <span :class="{ 'spin': settings.syncing }">⟳</span> 同步
-        </button>
-      </div>
+      <h3 style="margin: 0 0 12px 0;">设置</h3>
 
       <!-- Relay Management Section -->
       <div class="section">
@@ -417,32 +407,6 @@ export default defineComponent({
       location.href = "/#/login";
     };
 
-    const manualSync = async () => {
-      if (!ks.isLoggedIn) {
-        ui.addToast("请先登录", 2000, "error");
-        return;
-      }
-      
-      try {
-        await settings.syncWithRelays();
-        if (settings.syncError) {
-          ui.addToast(`同步失败: ${settings.syncError}`, 3000, "error");
-        } else {
-          ui.addToast("同步成功", 2000, "success");
-          // Update backward compatibility localStorage after sync
-          localStorage.setItem("custom-relays", settings.relayList.join("\n"));
-          localStorage.setItem("blossom_servers", JSON.stringify(settings.blossomList));
-          if (settings.blossomList.length > 0) {
-            localStorage.setItem("blossom_upload_url", settings.blossomList[0].url);
-            localStorage.setItem("blossom_token", settings.blossomList[0].token);
-          }
-        }
-      } catch (e) {
-        console.error("Manual sync error:", e);
-        ui.addToast("同步出错", 2000, "error");
-      }
-    };
-
     onMounted(() => {
       loadRelays();
       loadBlossoms();
@@ -495,7 +459,6 @@ export default defineComponent({
       reconnect,
       doLogout,
       settings,
-      manualSync,
       showSyncSuccess,
       isFadingOut
     };
@@ -537,35 +500,6 @@ export default defineComponent({
 .sync-icon {
   font-size: 16px;
   font-weight: bold;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.spin {
-  display: inline-block;
-  animation: spin 1s linear infinite;
-}
-
-.btn-sync {
-  background: #10b981;
-  color: #fff;
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.btn-sync:hover {
-  opacity: 0.9;
-}
-
-.btn-sync:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .settings-container {
