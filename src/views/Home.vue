@@ -177,6 +177,10 @@ export default defineComponent({
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
       if (scrollTop === 0 && !isRefreshing.value) {
         touchStartY = e.touches[0].clientY;
+      } else {
+        // Reset if not at the top
+        touchStartY = 0;
+        pullDistance.value = 0;
       }
     }
     
@@ -184,6 +188,7 @@ export default defineComponent({
       if (touchStartY === 0 || isRefreshing.value) return;
       
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      // If user scrolls down the page, cancel pull-to-refresh
       if (scrollTop > 0) {
         touchStartY = 0;
         pullDistance.value = 0;
@@ -193,11 +198,15 @@ export default defineComponent({
       const touchY = e.touches[0].clientY;
       const distance = touchY - touchStartY;
       
-      if (distance > 0) {
+      // Only activate pull-to-refresh when pulling down (distance > 0) AND at the top
+      if (distance > 0 && scrollTop === 0) {
         // Prevent default scrolling while pulling down
         e.preventDefault();
         // Apply resistance to pull distance for better feel
         pullDistance.value = Math.min(distance * 0.5, 100);
+      } else {
+        // Reset if moving up or not pulling
+        pullDistance.value = 0;
       }
     }
     
