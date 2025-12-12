@@ -1,5 +1,5 @@
 <template>
-  <div id="app">
+  <div class="app-root">
     <HeaderBar />
     <router-view />
     <ToastContainer />
