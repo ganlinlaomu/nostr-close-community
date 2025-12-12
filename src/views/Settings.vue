@@ -502,35 +502,6 @@ export default defineComponent({
   font-weight: bold;
 }
 
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.spin {
-  display: inline-block;
-  animation: spin 1s linear infinite;
-}
-
-.btn-sync {
-  background: #10b981;
-  color: #fff;
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.btn-sync:hover {
-  opacity: 0.9;
-}
-
-.btn-sync:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .settings-container {
   max-width: 100%;
   padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
