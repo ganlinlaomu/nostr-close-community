@@ -123,6 +123,7 @@
 
 <script lang="ts">
 import { defineComponent, ref, onBeforeUnmount, watch, nextTick, computed } from "vue";
+import { useRouter } from "vue-router";
 import { useKeyStore } from "@/stores/keys";
 import { useFriendsStore } from "@/stores/friends";
 import { usePostsStore } from "@/stores/posts";
@@ -144,6 +145,7 @@ type UploadItem = {
 export default defineComponent({
   name: "PostEditorModal",
   setup() {
+    const router = useRouter();
     const keys = useKeyStore();
     const friends = useFriendsStore();
     const posts = usePostsStore();
@@ -366,6 +368,13 @@ export default defineComponent({
       error.value = null;
       allFriends.value = true;
       selectedGroups.value = [];
+      // Clear uploads and revoke object URLs
+      for (const item of uploads.value) {
+        if (item.preview) {
+          try { URL.revokeObjectURL(item.preview); } catch {}
+        }
+      }
+      uploads.value = [];
     }
 
     // Store the element that triggered the modal for focus return
@@ -431,7 +440,9 @@ export default defineComponent({
         const { signed } = await posts.publishNip44PerMessage(recips, content.value);
         try { await msgs.load(); msgs.addInbox({ id: signed.id, pubkey: keys.pkHex, created_at: signed.created_at, content: content.value }); } catch {}
         ui.addToast("发送成功", 1200, "success");
-        setTimeout(()=>{ onClose(); }, 220);
+        onClose();
+        // Navigate to home page after modal close animation completes (220ms matches the slide-up-leave-active transition)
+        setTimeout(()=>{ router.push('/'); }, 220);
       } catch (e:any) {
         console.error("publish error", e);
         error.value = e && e.message ? e.message : "发送失败";
