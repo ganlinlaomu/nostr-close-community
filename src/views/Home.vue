@@ -182,6 +182,8 @@ export default defineComponent({
     const pullDistance = ref(0);
     const isRefreshing = ref(false);
     let touchStartY = 0;
+    let activeScrollContainer: HTMLElement | null = null;
+    const appContainer = typeof document !== "undefined" ? document.getElementById("app") : null;
     
     // Detect if device supports touch (mobile/tablet) or not (PC/desktop)
     const isTouchDevice = ref(false);
@@ -230,33 +232,42 @@ export default defineComponent({
       const target = e.target as HTMLElement;
       const scrollableParent = findScrollableParent(target);
       
-      // If touching a scrollable element that can scroll, don't start pull-to-refresh
-      // Note: findScrollableParent returns null for HTML/BODY elements
-      if (scrollableParent) {
+      // If touching a nested scrollable element (non-app container), allow its own scroll behavior
+      if (scrollableParent && scrollableParent !== appContainer) {
         touchStartY = 0;
         pullDistance.value = 0;
+        activeScrollContainer = null;
         return;
       }
       
-      // Only start pull-to-refresh if at the top of the page
-      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      // Use the app container as the primary scroll container (mobile uses #app for scrolling)
+      activeScrollContainer = scrollableParent || appContainer;
+      
+      // Only start pull-to-refresh if at the top of the scroll container
+      const scrollTop = activeScrollContainer 
+        ? activeScrollContainer.scrollTop 
+        : (window.pageYOffset || document.documentElement.scrollTop);
       if (scrollTop === 0 && !isRefreshing.value) {
         touchStartY = e.touches[0].clientY;
       } else {
         // Reset if not at the top
         touchStartY = 0;
         pullDistance.value = 0;
+        activeScrollContainer = null;
       }
     }
     
     function handleTouchMove(e: TouchEvent) {
       if (touchStartY === 0 || isRefreshing.value) return;
       
-      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-      // If user scrolls down the page, cancel pull-to-refresh
+      const scrollTop = activeScrollContainer 
+        ? activeScrollContainer.scrollTop 
+        : (window.pageYOffset || document.documentElement.scrollTop);
+      // If user scrolls down inside the container, cancel pull-to-refresh
       if (scrollTop > 0) {
         touchStartY = 0;
         pullDistance.value = 0;
+        activeScrollContainer = null;
         return;
       }
       
@@ -323,12 +334,14 @@ export default defineComponent({
             isRefreshing.value = false;
             pullDistance.value = 0;
             touchStartY = 0;
+            activeScrollContainer = null;
           }, REFRESH_ANIMATION_DURATION);
         }
       } else {
         // Animate back to zero
         pullDistance.value = 0;
         touchStartY = 0;
+        activeScrollContainer = null;
       }
     }
     
@@ -338,7 +351,8 @@ export default defineComponent({
       
       // Check for new messages that aren't currently displayed
       const displayedIds = new Set(displayedMessages.value.map(m => m.id));
-      const newMessages = messagesRef.value.filter(m => !displayedIds.has(m.id));
+      const pendingIds = new Set(pendingMessages.value.map(m => m.id));
+      const newMessages = messagesRef.value.filter(m => !displayedIds.has(m.id) && !pendingIds.has(m.id));
       
       if (newMessages.length > 0) {
         // Separate own messages from others' messages using filter for better readability
@@ -376,8 +390,10 @@ export default defineComponent({
           logger.info(`收到 ${othersMessages.length} 条其他用户的新消息，等待刷新显示`);
           // Sort other messages by timestamp (newest first) before adding
           const sortedOthers = othersMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-          // Merge with existing pending messages and keep sorted
-          pendingMessages.value = [...sortedOthers, ...pendingMessages.value].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+          // Merge with existing pending messages, de-duplicate by id, and keep sorted
+          const combined = [...sortedOthers, ...pendingMessages.value];
+          const deduped = Array.from(new Map(combined.map(m => [m.id, m])).values());
+          pendingMessages.value = deduped.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
         }
       }
       
