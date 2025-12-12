@@ -402,6 +402,8 @@ export default defineComponent({
 }
 
 .btn-add {
+  width: calc(32px * 2 + 6px);
+  height: 32px;
   color: #1976d2;
   border: 1px solid #1976d2;
   font-size: 20px;
