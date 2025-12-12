@@ -16,6 +16,21 @@
       </div>
       <div class="refresh-text">{{ pullToRefreshText }}</div>
     </div>
+    
+    <!-- New messages notification - only show on PC/desktop (non-touch devices) -->
+    <div 
+      v-if="pendingMessages.length > 0 && pullDistance === 0 && !isTouchDevice" 
+      class="new-messages-notification" 
+      role="button"
+      tabindex="0"
+      :aria-label="`有 ${pendingMessages.length} 条新消息，点击查看`"
+      @click="showPendingMessages"
+      @keyup.enter="showPendingMessages"
+      @keyup.space.prevent="showPendingMessages"
+    >
+      <span class="notification-icon">↓</span>
+      <span class="notification-text">{{ pendingMessages.length }} 条新消息</span>
+    </div>
 
     <div class="card">
     
@@ -167,6 +182,12 @@ export default defineComponent({
     const pullDistance = ref(0);
     const isRefreshing = ref(false);
     let touchStartY = 0;
+    
+    // Detect if device supports touch (mobile/tablet) or not (PC/desktop)
+    const isTouchDevice = ref(false);
+    if (typeof window !== 'undefined') {
+      isTouchDevice.value = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    }
     
     // Computed property for pull-to-refresh text
     const pullToRefreshText = computed(() => {
@@ -898,7 +919,9 @@ export default defineComponent({
       pullToRefreshText,
       handleTouchStart,
       handleTouchMove,
-      handleTouchEnd
+      handleTouchEnd,
+      showPendingMessages,
+      isTouchDevice
     };
   }
 });
@@ -945,6 +968,61 @@ export default defineComponent({
   font-size: 14px;
   color: #64748b;
   font-weight: 500;
+}
+
+.new-messages-notification {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  z-index: 999;
+  font-size: 14px;
+  font-weight: 500;
+  animation: slideDown 0.3s ease;
+  transition: all 0.2s;
+}
+
+.new-messages-notification:hover {
+  transform: translateX(-50%) translateY(2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.new-messages-notification:active {
+  transform: translateX(-50%) scale(0.95);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.notification-icon {
+  font-size: 16px;
+  animation: bounce 1s ease infinite;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.notification-text {
+  font-size: 14px;
 }
 
 .small { font-size:12px; color:#64748b; }
