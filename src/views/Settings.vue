@@ -8,7 +8,7 @@
       <span class="sync-icon">⚠</span> 同步失败: {{ settings.syncError }}
     </div>
     <div v-else-if="settings.lastSyncTimestamp > 0 && showSyncSuccess" class="sync-status success" :class="{ 'fade-out': isFadingOut }">
-      <span class="sync-icon">✓</span> 已同步
+      <span class="sync-icon icon-check-success">✓</span> 已同步
     </div>
 
     <div class="card">
@@ -40,7 +40,7 @@
                   <div class="item-status">
                     <span 
                       class="status-icon" 
-                      :class="{ 'status-connected': statuses[relay]?.ready, 'status-disconnected': !statuses[relay]?.ready }"
+                      :class="{ 'icon-check-success': statuses[relay]?.ready, 'status-disconnected': !statuses[relay]?.ready }"
                     >
                       {{ statuses[relay]?.ready ? '✓' : '✗' }}
                     </span>
@@ -98,7 +98,7 @@
                 <div v-if="editingBlossom !== index" class="item-info">
                   <div class="item-url">{{ blossom.url }}</div>
                   <div class="item-status">
-                    <span class="status-icon status-default">✓</span>
+                    <span class="status-icon icon-check-success">✓</span>
                     <span class="status-text">{{ blossom.token ? '已配置 Token' : '无 Token' }}</span>
                   </div>
                 </div>
@@ -503,6 +503,19 @@ export default defineComponent({
   font-weight: bold;
 }
 
+.icon-check-success {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid #10b981;
+  color: #10b981;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  background: transparent;
+}
+
 .settings-container {
   max-width: 100%;
   padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
@@ -620,8 +633,8 @@ export default defineComponent({
 }
 
 .status-icon {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
@@ -630,19 +643,10 @@ export default defineComponent({
   font-weight: bold;
 }
 
-.status-connected {
-  background: #10b981;
-  color: white;
-}
-
 .status-disconnected {
-  background: #ef4444;
-  color: white;
-}
-
-.status-default {
-  background: #3b82f6;
-  color: white;
+  background: transparent;
+  color: #ef4444;
+  border: 1px solid #ef4444;
 }
 
 .status-text {
