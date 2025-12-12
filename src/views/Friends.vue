@@ -288,25 +288,6 @@ export default defineComponent({
       }
     };
 
-    const manualSync = async () => {
-      if (!keys.isLoggedIn) {
-        ui.addToast("请先登录", 2000, "error");
-        return;
-      }
-      
-      try {
-        await friends.syncWithRelays();
-        if (friends.syncError) {
-          ui.addToast(`同步失败: ${friends.syncError}`, 3000, "error");
-        } else {
-          ui.addToast("同步成功", 2000, "success");
-        }
-      } catch (e) {
-        console.error("Manual sync error:", e);
-        ui.addToast("同步出错", 2000, "error");
-      }
-    };
-
     return {
       friends,
       showModal,

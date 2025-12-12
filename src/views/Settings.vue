@@ -407,32 +407,6 @@ export default defineComponent({
       location.href = "/#/login";
     };
 
-    const manualSync = async () => {
-      if (!ks.isLoggedIn) {
-        ui.addToast("请先登录", 2000, "error");
-        return;
-      }
-      
-      try {
-        await settings.syncWithRelays();
-        if (settings.syncError) {
-          ui.addToast(`同步失败: ${settings.syncError}`, 3000, "error");
-        } else {
-          ui.addToast("同步成功", 2000, "success");
-          // Update backward compatibility localStorage after sync
-          localStorage.setItem("custom-relays", settings.relayList.join("\n"));
-          localStorage.setItem("blossom_servers", JSON.stringify(settings.blossomList));
-          if (settings.blossomList.length > 0) {
-            localStorage.setItem("blossom_upload_url", settings.blossomList[0].url);
-            localStorage.setItem("blossom_token", settings.blossomList[0].token);
-          }
-        }
-      } catch (e) {
-        console.error("Manual sync error:", e);
-        ui.addToast("同步出错", 2000, "error");
-      }
-    };
-
     onMounted(() => {
       loadRelays();
       loadBlossoms();
