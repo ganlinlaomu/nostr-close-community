@@ -352,15 +352,20 @@ export default defineComponent({
         const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
         
         if (lastMessageTime > 0 && lastMessageTime >= threeDaysAgo) {
-          // Have messages within 3 days - fetch messages newer than last message, within 3 days
-          // Use lastMessageTime directly as relay will return messages with created_at >= since
-          since = lastMessageTime;
-          logger.info(`有三天内的消息，拉取晚于最后一条消息的三天内信息: ${new Date(since * 1000).toLocaleString()}`);
+          // Have messages within 3 days - fetch messages newer than last message
+          // Use lastMessageTime + 1 to avoid re-fetching the same message
+          // (relay filter: created_at >= since, so we need to exclude the last message we already have)
+          // Note: Nostr timestamps are always integer Unix timestamps (seconds), so +1 is safe
+          since = lastMessageTime + 1;
+          logger.info(`有三天内的消息，拉取晚于最后一条消息的事件: 最后消息时间=${new Date(lastMessageTime * 1000).toLocaleString()}, since=${new Date(since * 1000).toLocaleString()}`);
         } else {
           // No messages or last message is older than 3 days - fetch last 3 days
           since = threeDaysAgo;
-          logger.info(`无三天内消息，拉取最近三天的事件: ${new Date(since * 1000).toLocaleString()}`);
+          logger.info(`无三天内消息或消息已过期，拉取最近三天的事件: since=${new Date(since * 1000).toLocaleString()} (${THREE_DAYS_IN_SECONDS}秒前)`);
         }
+        
+        logger.info(`回填参数: kinds=[8964], authors数量=${friendSet.size}, since=${new Date(since * 1000).toLocaleString()}, until=${new Date(until * 1000).toLocaleString()}`);
+        logger.debug(`好友列表: ${Array.from(friendSet).slice(0, 5).map(pk => pk.slice(0, 8)).join(', ')}${friendSet.size > 5 ? `... (共${friendSet.size}个)` : ''}`);
         
         status.value = "获取历史消息中...";
         
@@ -538,22 +543,28 @@ export default defineComponent({
         const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
         if (keys.pkHex) friendSet.add(keys.pkHex);
         logger.info(`准备订阅 ${friendSet.size} 个作者（包括自己）`);
+        logger.debug(`好友公钥列表: ${Array.from(friendSet).slice(0, 5).map(pk => pk.slice(0, 8)).join(', ')}${friendSet.size > 5 ? `... (共${friendSet.size}个)` : ''}`);
         
         if (friendSet.size === 0) {
           status.value = "好友为空";
+          logger.warn("好友列表为空，无法订阅");
           return;
         }
 
         const relays = getRelaysFromStorage();
+        logger.info(`使用中继: ${relays.join(', ')}`);
         
         // First, backfill historical messages
+        logger.info("开始回填历史消息...");
         await backfillMessages(friendSet, relays);
 
         const filters = { kinds: [8964], authors: Array.from(friendSet) };
+        logger.info(`实时订阅过滤器: kinds=[8964], authors数量=${friendSet.size}`);
         status.value = "连接中";
 
         try {
           if (sub) {
+            logger.debug("关闭之前的订阅");
             if (typeof sub.close === "function") sub.close();
             else if (typeof sub.unsub === "function") sub.unsub();
             else if (typeof sub.unsubscribe === "function") sub.unsubscribe();
@@ -565,6 +576,7 @@ export default defineComponent({
         sub = null;
 
         try {
+          logger.info("开始实时订阅 kind=8964 事件...");
           const adapterSub = subscribe(relays, [filters]);
           sub = adapterSub;
           adapterSub.on("event", async (evt: any) => {
