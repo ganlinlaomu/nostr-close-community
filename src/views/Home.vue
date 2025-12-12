@@ -341,18 +341,9 @@ export default defineComponent({
       const newMessages = messagesRef.value.filter(m => !displayedIds.has(m.id));
       
       if (newMessages.length > 0) {
-        // Separate own messages from others' messages
-        const ownMessages: InboxItem[] = [];
-        const othersMessages: InboxItem[] = [];
-        
-        for (const msg of newMessages) {
-          // Check if message is from the current user
-          if (msg.pubkey === keys.pkHex) {
-            ownMessages.push(msg);
-          } else {
-            othersMessages.push(msg);
-          }
-        }
+        // Separate own messages from others' messages using filter for better readability
+        const ownMessages: InboxItem[] = newMessages.filter(msg => msg.pubkey === keys.pkHex);
+        const othersMessages: InboxItem[] = newMessages.filter(msg => msg.pubkey !== keys.pkHex);
         
         // Own messages: insert directly into displayedMessages (immediate display)
         if (ownMessages.length > 0) {
@@ -921,12 +912,13 @@ export default defineComponent({
 
     // Watch for changes to msgs.inbox to handle optimistic UI updates
     // This ensures own messages added via PostEditorModal appear immediately
+    // Using 'post' flush to batch updates and run after component updates
     watch(() => msgs.inbox.length, (newLength, oldLength) => {
       // Only update if not during initial load and if messages were added (not removed)
       if (!isInitialLoad.value && newLength > oldLength) {
         updateLocalRefs();
       }
-    });
+    }, { flush: 'post' });
 
     onBeforeUnmount(() => {
       if (sub) {
