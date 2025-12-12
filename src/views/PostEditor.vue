@@ -261,6 +261,13 @@ export default defineComponent({
     const uploadEnabled = ref(false);
     const uploadingAny = computed(() => uploads.value.some(u => u.status === "uploading"));
 
+    // Immutable update helper for upload items to ensure Vue reactivity
+    function updateUploadItem(id: string, patch: Partial<UploadItem>) {
+      const idx = uploads.value.findIndex(u => u.id === id);
+      if (idx === -1) return;
+      uploads.value.splice(idx, 1, { ...uploads.value[idx], ...patch });
+    }
+
     async function checkBlossom() {
       const cfg = await getBlossomConfig();
       uploadEnabled.value = !!cfg.url;
@@ -338,27 +345,23 @@ export default defineComponent({
     }
 
     async function startUpload(item: UploadItem) {
-      item.status = "uploading";
-      item.progress = 0;
-      item.errorShort = undefined;
-      item.errorDetails = undefined;
+      updateUploadItem(item.id, { status: "uploading", progress: 0, errorShort: undefined, errorDetails: undefined });
 
       try {
         const descriptor = await uploadImageToBlossom(item.file, {
           includeAuthIfRequired: true,
           signEvent: signEventWrapper,
-          onProgress: (p:number) => { item.progress = p; }
+          onProgress: (p:number) => { updateUploadItem(item.id, { progress: p }); }
         });
-        item.url = descriptor.url;
-        item.status = "done";
-        item.progress = 100;
+        updateUploadItem(item.id, { url: descriptor.url, status: "done", progress: 100 });
         // Don't automatically insert URL into textarea - just store it
       } catch (err:any) {
         console.error("upload error raw:", err);
-        item.status = "error";
-        item.errorShort = err && err.message ? String(err.message) : "上传失败";
-        try { item.errorDetails = err && err.details ? JSON.stringify(err.details, null, 2) : JSON.stringify(err, Object.getOwnPropertyNames(err), 2); } catch { item.errorDetails = String(err); }
-        ui.addToast(`上传失败: ${item.errorShort}`, 3000, "error");
+        const errorShort = err && err.message ? String(err.message) : "上传失败";
+        let errorDetails: string;
+        try { errorDetails = err && err.details ? JSON.stringify(err.details, null, 2) : JSON.stringify(err, Object.getOwnPropertyNames(err), 2); } catch { errorDetails = String(err); }
+        updateUploadItem(item.id, { status: "error", errorShort, errorDetails });
+        ui.addToast(`上传失败: ${errorShort}`, 3000, "error");
       }
     }
 
