@@ -36,26 +36,37 @@
             </div>
 
             <div class="previews">
-              <div v-for="(item, idx) in uploads" :key="item.id" class="preview">
-                <div class="thumb-wrap">
-                  <img v-if="item.preview" :src="item.preview" class="thumb" />
-                  <div v-else class="thumb placeholder">图片</div>
-                </div>
-                <div class="meta">
-                  <div class="name">{{ item.file.name }}</div>
-                  <div class="progress" v-if="item.status === 'uploading'">
-                    上传中 {{ item.progress }}%
+              <div v-for="(item, idx) in uploads" :key="item.id" class="preview-item">
+                <div class="thumb-container">
+                  <img v-if="item.preview" :src="item.preview" class="thumb-image" />
+                  <div v-else class="thumb-placeholder">图片</div>
+                  
+                  <!-- Upload progress overlay -->
+                  <div v-if="item.status === 'uploading'" class="upload-overlay">
+                    <div class="progress-ring">
+                      <svg viewBox="0 0 36 36" class="progress-circle">
+                        <circle cx="18" cy="18" r="16" fill="none" stroke="#e5e7eb" stroke-width="3"/>
+                        <circle cx="18" cy="18" r="16" fill="none" stroke="#3b82f6" stroke-width="3" 
+                                :stroke-dasharray="`${item.progress} ${100 - item.progress}`"
+                                stroke-dashoffset="25"
+                                stroke-linecap="round"/>
+                      </svg>
+                      <span class="progress-text">{{ item.progress }}%</span>
+                    </div>
                   </div>
-                  <div class="ok" v-if="item.status === 'done'">已上传</div>
-                  <div class="err" v-if="item.status === 'error'">错误：{{ item.errorShort }}</div>
-                  <details v-if="item.status === 'error' && item.errorDetails">
-                    <summary>查看详细错误信息</summary>
-                    <pre style="white-space:pre-wrap; font-size:12px;">{{ item.errorDetails }}</pre>
-                  </details>
-                  <div class="actions">
-                    <button type="button" @click="insertImageUrl(item)" :disabled="item.status !== 'done'">插入</button>
-                    <button type="button" @click="removeUpload(idx)">删除</button>
+                  
+                  <!-- Error overlay -->
+                  <div v-if="item.status === 'error'" class="error-overlay" :title="item.errorShort">
+                    ⚠️
                   </div>
+                  
+                  <!-- Remove button -->
+                  <button type="button" class="remove-btn" @click="removeUpload(idx)" :aria-label="`删除图片 ${item.file.name}`" :title="item.file.name">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
                 </div>
               </div>
             </div>
@@ -337,8 +348,7 @@ export default defineComponent({
         item.url = descriptor.url;
         item.status = "done";
         item.progress = 100;
-        if (content.value.length>0 && !content.value.endsWith("\n")) content.value += "\n";
-        content.value += `![](${item.url})\n`;
+        // Don't automatically insert URL into textarea - just store it
       } catch (err:any) {
         console.error("upload error raw:", err);
         item.status = "error";
@@ -437,8 +447,19 @@ export default defineComponent({
       if (recips.length === 0) { error.value = "未指定收件人"; sending.value = false; return; }
 
       try {
-        const { signed } = await posts.publishNip44PerMessage(recips, content.value);
-        try { await msgs.load(); msgs.addInbox({ id: signed.id, pubkey: keys.pkHex, created_at: signed.created_at, content: content.value }); } catch {}
+        // Build content with uploaded images appended
+        let fullContent = content.value;
+        const uploadedImages = uploads.value.filter(u => u.status === 'done' && u.url);
+        if (uploadedImages.length > 0) {
+          // Add images as markdown at the end
+          if (fullContent.length > 0 && !fullContent.endsWith("\n")) fullContent += "\n";
+          for (const img of uploadedImages) {
+            fullContent += `![](${img.url})\n`;
+          }
+        }
+        
+        const { signed } = await posts.publishNip44PerMessage(recips, fullContent);
+        try { await msgs.load(); msgs.addInbox({ id: signed.id, pubkey: keys.pkHex, created_at: signed.created_at, content: fullContent }); } catch {}
         ui.addToast("发送成功", 1200, "success");
         onClose();
         // Navigate to home page after modal close animation completes (220ms matches the slide-up-leave-active transition)
@@ -472,8 +493,8 @@ export default defineComponent({
 .editor-overlay {
   position: fixed;
   inset: 0;
-  /* Reserve space for bottom navigation (60px height) */
-  bottom: 60px;
+  /* Reserve space for bottom navigation (80px height) */
+  bottom: 80px;
   display: flex;
   align-items: flex-end; /* start from bottom */
   justify-content: center;
@@ -563,37 +584,126 @@ export default defineComponent({
 .upload-config-hint .ok { color:#16a34a; }
 .upload-config-hint .warn { color:#d97706; }
 
-/* previews */
-.previews { margin-top:12px; display:flex; flex-direction:column; gap:8px; }
-.preview { 
-  display:flex; 
-  gap:10px; 
-  align-items:center; 
-  background:#fafafa; 
-  padding:8px; 
-  border-radius:8px; 
-  border:1px solid rgba(0,0,0,0.04);
+/* previews - horizontal thumbnail layout */
+.previews { 
+  margin-top: 12px;
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
 }
-.thumb-wrap { 
-  width:64px; 
-  height:64px; 
-  min-width: 64px;
-  display:flex; 
-  align-items:center; 
-  justify-content:center; 
-  background:#fff; 
-  border-radius:6px; 
-  overflow:hidden; 
+
+.preview-item {
+  flex-shrink: 0;
 }
-.thumb { width:100%; height:100%; object-fit:cover; display:block; }
-.thumb.placeholder { display:flex; align-items:center; justify-content:center; color:#94a3b8; }
-.meta { flex:1; display:flex; flex-direction:column; gap:6px; min-width: 0; }
-.name { font-size:13px; color:#111827; word-break: break-all; overflow-wrap: break-word; }
-.progress { color:#2563eb; font-size:13px; }
-.ok { color:#16a34a; }
-.err { color:#dc2626; word-break: break-word; }
-.actions { display:flex; gap:8px; }
-.actions button { background:transparent; border:1px solid #e6edf3; padding:6px 8px; border-radius:6px; cursor:pointer; }
+
+.thumb-container {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f3f4f6;
+  border: 2px solid #e5e7eb;
+  transition: all 0.2s ease;
+}
+
+.thumb-container:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+.thumb-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.upload-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.progress-ring {
+  position: relative;
+  width: 40px;
+  height: 40px;
+}
+
+.progress-circle {
+  transform: rotate(-90deg);
+}
+
+.progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.error-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(239, 68, 68, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+}
+
+.remove-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 0.2s ease;
+  padding: 4px;
+}
+
+.remove-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+}
+
+.thumb-container:hover .remove-btn {
+  opacity: 1;
+}
+
+.remove-btn:hover {
+  background: #ef4444;
+  transform: scale(1.1);
+}
 
 /* chips UI */
 .groups { margin-top:12px; }
