@@ -183,6 +183,7 @@ export default defineComponent({
     const isRefreshing = ref(false);
     let touchStartY = 0;
     let activeScrollContainer: HTMLElement | null = null;
+    const appContainer = typeof document !== "undefined" ? document.getElementById("app") : null;
     
     // Detect if device supports touch (mobile/tablet) or not (PC/desktop)
     const isTouchDevice = ref(false);
@@ -230,7 +231,6 @@ export default defineComponent({
       // Check if touch is on a scrollable element
       const target = e.target as HTMLElement;
       const scrollableParent = findScrollableParent(target);
-      const appContainer = typeof document !== "undefined" ? document.getElementById("app") : null;
       
       // If touching a nested scrollable element (non-app container), allow its own scroll behavior
       if (scrollableParent && scrollableParent !== appContainer) {
