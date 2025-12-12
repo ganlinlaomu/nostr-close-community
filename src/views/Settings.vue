@@ -490,6 +490,7 @@ export default defineComponent({
 .sync-status.success {
   background: #dcfce7;
   color: #15803d;
+  border: 2px solid #10b981;
 }
 
 .sync-status.error {
