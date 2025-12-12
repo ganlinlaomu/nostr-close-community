@@ -61,8 +61,11 @@
                   </div>
                   
                   <!-- Remove button -->
-                  <button type="button" class="remove-btn" @click="removeUpload(idx)" :title="item.file.name">
-                    ✕
+                  <button type="button" class="remove-btn" @click="removeUpload(idx)" :aria-label="`删除图片 ${item.file.name}`" :title="item.file.name">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
                   </button>
                 </div>
               </div>
@@ -682,11 +685,15 @@ export default defineComponent({
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
-  line-height: 1;
   opacity: 0;
   transition: all 0.2s ease;
-  padding: 0;
+  padding: 4px;
+}
+
+.remove-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
 }
 
 .thumb-container:hover .remove-btn {

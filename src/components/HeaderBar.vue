@@ -28,9 +28,7 @@
     <router-link class="nav-item" to="/settings">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="3"></circle>
-        <path d="M12 1v6m0 6v6m6-12h-6m6 6h-6m-6 0H1m5 0a6 6 0 0 0 6 6m0-12a6 6 0 0 1 6 6"></path>
-        <path d="M12 1v6M12 17v6M1 12h6M17 12h6"></path>
-        <path d="M19.07 4.93l-4.24 4.24M9.17 14.83l-4.24 4.24M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24"></path>
+        <path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.25M15.54 15.54l4.24 4.25M1 12h6M17 12h6M4.22 19.78l4.24-4.25M15.54 8.46l4.24-4.25"></path>
       </svg>
       <span class="nav-label">设置</span>
     </router-link>
