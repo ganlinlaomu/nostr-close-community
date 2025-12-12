@@ -16,6 +16,12 @@
       </div>
       <div class="refresh-text">{{ pullToRefreshText }}</div>
     </div>
+    
+    <!-- New messages notification -->
+    <div v-if="pendingMessages.length > 0 && pullDistance === 0" class="new-messages-notification" @click="showPendingMessages">
+      <span class="notification-icon">↓</span>
+      <span class="notification-text">{{ pendingMessages.length }} 条新消息</span>
+    </div>
 
     <div class="card">
     
@@ -147,6 +153,7 @@ export default defineComponent({
 
     const messagesRef = ref([] as any[]);
     const displayedMessages = ref([] as any[]);
+    const pendingMessages = ref([] as any[]); // Messages fetched but not yet displayed
     
     // State for comments UI
     const showingComments = ref<Set<string>>(new Set());
@@ -252,12 +259,26 @@ export default defineComponent({
       }
     }
     
+    function showPendingMessages() {
+      if (pendingMessages.value.length > 0) {
+        logger.info(`手动显示 ${pendingMessages.value.length} 条待显示消息`);
+        // Merge pending messages with displayed messages and sort
+        const allMessages = [...pendingMessages.value, ...displayedMessages.value];
+        displayedMessages.value = allMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        pendingMessages.value = [];
+        updateMessageTimeRange();
+      }
+    }
+    
     async function handleTouchEnd() {
       if (pullDistance.value > PULL_THRESHOLD && !isRefreshing.value) {
         isRefreshing.value = true;
         pullDistance.value = REFRESH_DISPLAY_HEIGHT; // Set to fixed position while refreshing
         
         try {
+          // Move pending messages to displayed messages
+          showPendingMessages();
+          
           // Restart subscription to refresh data
           await startSub();
         } catch (e) {
@@ -281,8 +302,16 @@ export default defineComponent({
       // Sort messages by timestamp descending (newest first)
       messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
       
-      // Always show all messages directly
-      displayedMessages.value = [...messagesRef.value];
+      // Check for new messages that aren't currently displayed
+      const displayedIds = new Set(displayedMessages.value.map(m => m.id));
+      const newMessages = messagesRef.value.filter(m => !displayedIds.has(m.id));
+      
+      // Add new messages to pending instead of displaying immediately
+      if (newMessages.length > 0) {
+        // Add to pending messages (newest first)
+        pendingMessages.value = [...newMessages, ...pendingMessages.value];
+        logger.info(`收到 ${newMessages.length} 条新消息，等待刷新显示`);
+      }
       
       updateMessageTimeRange();
     }
@@ -665,7 +694,18 @@ export default defineComponent({
         }
         await msgs.load();
         await interactions.load(); // Load interactions
-        updateLocalRefs();
+        
+        // On initial load, show all messages directly
+        messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        if (displayedMessages.value.length === 0) {
+          // First time loading - show all messages
+          displayedMessages.value = [...messagesRef.value];
+          logger.info(`初始加载: 显示 ${displayedMessages.value.length} 条消息`);
+        } else {
+          // Subsequent refresh - new messages go to pending
+          updateLocalRefs();
+        }
+        updateMessageTimeRange();
 
         const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
         if (keys.pkHex) friendSet.add(keys.pkHex);
@@ -812,6 +852,7 @@ export default defineComponent({
 
     return { 
       displayedMessages,
+      pendingMessages,
       toLocalTime, 
       shortPub, 
       status, 
@@ -841,7 +882,8 @@ export default defineComponent({
       pullToRefreshText,
       handleTouchStart,
       handleTouchMove,
-      handleTouchEnd
+      handleTouchEnd,
+      showPendingMessages
     };
   }
 });
@@ -888,6 +930,61 @@ export default defineComponent({
   font-size: 14px;
   color: #64748b;
   font-weight: 500;
+}
+
+.new-messages-notification {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  z-index: 999;
+  font-size: 14px;
+  font-weight: 500;
+  animation: slideDown 0.3s ease;
+  transition: all 0.2s;
+}
+
+.new-messages-notification:hover {
+  transform: translateX(-50%) translateY(2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.new-messages-notification:active {
+  transform: translateX(-50%) scale(0.95);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.notification-icon {
+  font-size: 16px;
+  animation: bounce 1s ease infinite;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.notification-text {
+  font-size: 14px;
 }
 
 .small { font-size:12px; color:#64748b; }
