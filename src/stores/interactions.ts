@@ -231,11 +231,12 @@ export const useInteractionsStore = defineStore("interactions", {
         
         // Decrypt symmetric key
         const key = useKeyStore();
-        let symHex: string | null = null;
+        let symHex: string;
         try {
           symHex = await key.nip04Decrypt(evt.pubkey, myEntry.enc);
         } catch (e) {
           logger.warn("nip04.decrypt failed", e);
+          // Fallback: check if enc is already a hex key
           if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
             symHex = myEntry.enc;
           } else {
@@ -244,8 +245,6 @@ export const useInteractionsStore = defineStore("interactions", {
         }
         
         // Decrypt interaction
-        if (!symHex) return;
-        
         try {
           const plain = await symDecryptPackage(symHex, payload.pkg);
           const interaction: Interaction = JSON.parse(plain);

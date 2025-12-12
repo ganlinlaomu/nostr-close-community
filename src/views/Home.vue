@@ -667,7 +667,13 @@ export default defineComponent({
           // Subscribe to two types of interactions:
           // 1. Interactions where user is tagged (#p) - for notifications
           // 2. Interactions on displayed posts (#e) - for post engagement
-          const interactionFilters: any[] = [
+          interface InteractionFilter {
+            kinds: number[];
+            "#p"?: string[];
+            "#e"?: string[];
+          }
+          
+          const interactionFilters: InteractionFilter[] = [
             {
               kinds: [24243],
               "#p": [keys.pkHex] // Interactions targeted at us
