@@ -538,9 +538,9 @@ export default defineComponent({
 }
 
 .btn-primary {
-  background: var(--accent);
-  color: white;
-  border: none;
+  background: transparent;
+  color: #3b82f6;
+  border: 1px solid #3b82f6;
   padding: 8px 16px;
   border-radius: 8px;
   cursor: pointer;
@@ -549,9 +549,10 @@ export default defineComponent({
 }
 
 .btn-primary:hover {
-  background: #1565c0;
+  background: #3b82f6;
+  color: white;
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.3);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
 .btn-primary:active {
@@ -704,12 +705,12 @@ export default defineComponent({
 }
 
 .btn-cancel {
-  color: #64748b;
-  border: 1px solid #cbd5e1;
+  color: #ef4444;
+  border: 1px solid #ef4444;
 }
 
 .btn-cancel:hover {
-  background: #64748b;
+  background: #ef4444;
   color: white;
   transform: translateY(-1px);
 }
@@ -740,9 +741,9 @@ export default defineComponent({
 }
 
 .btn-danger {
-  background: #ef4444;
-  color: white;
-  border: none;
+  background: transparent;
+  color: #ef4444;
+  border: 1px solid #ef4444;
   padding: 8px 16px;
   border-radius: 8px;
   cursor: pointer;
@@ -752,7 +753,8 @@ export default defineComponent({
 }
 
 .btn-danger:hover {
-  background: #dc2626;
+  background: #ef4444;
+  color: white;
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
 }

@@ -542,17 +542,43 @@ export default defineComponent({
   flex-wrap: wrap;
 }
 .upload-btn {
-  background:#1976d2;
-  color:white;
+  background: transparent;
+  color: #3b82f6;
   padding:8px 10px;
   border-radius:8px;
   cursor:pointer;
   display:inline-block;
+  border: 1px solid #3b82f6;
+  transition: all 0.2s ease;
+}
+.upload-btn:hover {
+  background: #3b82f6;
+  color: white;
+  transform: translateY(-1px);
 }
 .upload-btn input { display:none; }
-.upload-btn.disabled { background:#bbb; cursor:not-allowed; }
-.upload-config-hint .ok { color:#16a34a; }
-.upload-config-hint .warn { color:#d97706; }
+.upload-btn.disabled { 
+  background: transparent; 
+  color: #9ca3af; 
+  border: 1px solid #cbd5e1; 
+  cursor: not-allowed; 
+}
+.check-btn {
+  background: transparent;
+  color: #3b82f6;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #3b82f6;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.check-btn:hover {
+  background: #3b82f6;
+  color: white;
+  transform: translateY(-1px);
+}
+.upload-config-hint .ok { color: #16a34a; }
+.upload-config-hint .warn { color: #d97706; }
 
 /* previews - horizontal thumbnail layout */
 .previews { 
@@ -720,31 +746,47 @@ export default defineComponent({
 }
 
 .cancel-btn {
-  background: #f3f6f9;
-  color: #374151;
+  background: transparent;
+  color: #ef4444;
   padding: 8px 20px;
   border-radius: 8px;
-  border: 1px solid #e6edf3;
+  border: 1px solid #ef4444;
   cursor: pointer;
   font-size: 14px;
+  transition: all 0.2s ease;
 }
 
 .cancel-btn:hover {
-  background: #e6edf3;
+  background: #ef4444;
+  color: white;
+  transform: translateY(-1px);
 }
 
 .send-btn {
-  background: #1976d2;
-  color: white;
+  background: transparent;
+  color: #3b82f6;
   padding: 8px 20px;
   border-radius: 8px;
-  border: none;
+  border: 1px solid #3b82f6;
   cursor: pointer;
   font-size: 14px;
+  transition: all 0.2s ease;
+}
+.send-btn:hover {
+  background: #3b82f6;
+  color: white;
+  transform: translateY(-1px);
 }
 .send-btn[disabled] {
-  opacity: 0.5;
-  cursor: default;
+  cursor: not-allowed;
+  background: transparent;
+  color: #9ca3af;
+  border-color: #cbd5e1;
+}
+.send-btn[disabled]:hover {
+  background: transparent;
+  color: #9ca3af;
+  transform: none;
 }
 
 /* footer */
