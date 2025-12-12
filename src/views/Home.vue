@@ -18,7 +18,16 @@
     </div>
     
     <!-- New messages notification -->
-    <div v-if="pendingMessages.length > 0 && pullDistance === 0" class="new-messages-notification" @click="showPendingMessages">
+    <div 
+      v-if="pendingMessages.length > 0 && pullDistance === 0" 
+      class="new-messages-notification" 
+      role="button"
+      tabindex="0"
+      :aria-label="`有 ${pendingMessages.length} 条新消息，点击查看`"
+      @click="showPendingMessages"
+      @keyup.enter="showPendingMessages"
+      @keyup.space.prevent="showPendingMessages"
+    >
       <span class="notification-icon">↓</span>
       <span class="notification-text">{{ pendingMessages.length }} 条新消息</span>
     </div>
@@ -154,6 +163,7 @@ export default defineComponent({
     const messagesRef = ref([] as any[]);
     const displayedMessages = ref([] as any[]);
     const pendingMessages = ref([] as any[]); // Messages fetched but not yet displayed
+    const isInitialLoad = ref(true); // Track if this is the first load
     
     // State for comments UI
     const showingComments = ref<Set<string>>(new Set());
@@ -262,9 +272,27 @@ export default defineComponent({
     function showPendingMessages() {
       if (pendingMessages.value.length > 0) {
         logger.info(`手动显示 ${pendingMessages.value.length} 条待显示消息`);
-        // Merge pending messages with displayed messages and sort
-        const allMessages = [...pendingMessages.value, ...displayedMessages.value];
-        displayedMessages.value = allMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        // Sort pending messages first
+        const sortedPending = [...pendingMessages.value].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        // Use efficient merge since both arrays are already sorted
+        const merged: any[] = [];
+        let i = 0, j = 0;
+        while (i < sortedPending.length || j < displayedMessages.value.length) {
+          if (i >= sortedPending.length) {
+            merged.push(...displayedMessages.value.slice(j));
+            break;
+          }
+          if (j >= displayedMessages.value.length) {
+            merged.push(...sortedPending.slice(i));
+            break;
+          }
+          if ((sortedPending[i].created_at || 0) >= (displayedMessages.value[j].created_at || 0)) {
+            merged.push(sortedPending[i++]);
+          } else {
+            merged.push(displayedMessages.value[j++]);
+          }
+        }
+        displayedMessages.value = merged;
         pendingMessages.value = [];
         updateMessageTimeRange();
       }
@@ -308,8 +336,10 @@ export default defineComponent({
       
       // Add new messages to pending instead of displaying immediately
       if (newMessages.length > 0) {
-        // Add to pending messages (newest first)
-        pendingMessages.value = [...newMessages, ...pendingMessages.value];
+        // Sort new messages by timestamp (newest first) before adding
+        const sortedNew = newMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        // Merge with existing pending messages and keep sorted
+        pendingMessages.value = [...sortedNew, ...pendingMessages.value].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
         logger.info(`收到 ${newMessages.length} 条新消息，等待刷新显示`);
       }
       
@@ -697,9 +727,10 @@ export default defineComponent({
         
         // On initial load, show all messages directly
         messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-        if (displayedMessages.value.length === 0) {
+        if (isInitialLoad.value) {
           // First time loading - show all messages
           displayedMessages.value = [...messagesRef.value];
+          isInitialLoad.value = false;
           logger.info(`初始加载: 显示 ${displayedMessages.value.length} 条消息`);
         } else {
           // Subsequent refresh - new messages go to pending
