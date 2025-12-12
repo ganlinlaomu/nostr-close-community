@@ -36,7 +36,15 @@ export default defineComponent({
   },
   setup(props) {
     const all = computed(() => extractImageUrls(props.content || ""));
-    const images = computed(() => (props.showAll ? all.value.slice(0, props.max) : all.value.slice(0, 1)));
+    const images = computed(() => {
+      if (props.showAll) {
+        // Show up to max images (default 9 for grid)
+        return all.value.slice(0, props.max);
+      } else {
+        // Show only first image
+        return all.value.slice(0, 1);
+      }
+    });
     const failed = ref<Record<number, boolean>>({});
 
     function onError(idx: number) {
@@ -58,18 +66,35 @@ export default defineComponent({
   margin: 8px 0;
 }
 .gallery {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin: 8px 0;
 }
 .gallery-item {
-  width: calc(33% - 8px);
-  max-width: 200px;
-  height: auto;
+  width: 100%;
+  aspect-ratio: 1;
   border-radius: 6px;
   object-fit: cover;
+  background: #f1f5f9;
+}
+/* Single image - full width */
+.gallery:has(.gallery-item:only-child) {
+  grid-template-columns: 1fr;
+}
+.gallery:has(.gallery-item:only-child) .gallery-item {
+  aspect-ratio: auto;
+  max-height: 400px;
+}
+/* Two images - 2 columns */
+.gallery:has(.gallery-item:nth-child(2):last-child) {
+  grid-template-columns: repeat(2, 1fr);
+}
+/* Four images - 2x2 grid */
+.gallery:has(.gallery-item:nth-child(4):last-child) {
+  grid-template-columns: repeat(2, 1fr);
 }
 @media (min-width: 720px) {
-  .gallery-item { width: calc(25% - 8px); }
+  .gallery { gap: 6px; }
 }
 </style>
