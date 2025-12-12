@@ -586,7 +586,7 @@ export default defineComponent({
         // 2. Interactions on displayed posts (#e)
         await interactions.backfillInteractions({
           relays,
-          eventIds: eventIds.length > 0 ? eventIds : undefined,
+          eventIds,
           since,
           until: now,
           maxBatches: 10,

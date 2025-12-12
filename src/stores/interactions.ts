@@ -445,13 +445,12 @@ export const useInteractionsStore = defineStore("interactions", {
           });
         }
         
-        // Fetch with each filter separately to ensure we get all interactions
-        for (let i = 0; i < filters.length; i++) {
-          const filter = filters[i];
+        // Fetch with each filter in parallel for better performance
+        const filterPromises = filters.map((filter, i) => {
           const filterType = filter["#p"] ? "targeted at user" : "on specific events";
           logger.debug(`回填互动过滤器 ${i + 1}/${filters.length}: ${filterType}`);
           
-          await backfillEvents({
+          return backfillEvents({
             relays,
             filters: filter,
             onEvent: processEvent,
@@ -465,7 +464,10 @@ export const useInteractionsStore = defineStore("interactions", {
             maxBatches,
             timeoutMs: 10000
           });
-        }
+        });
+        
+        // Wait for all filters to complete
+        await Promise.all(filterPromises);
         
         logger.info(`互动事件回填完成: 获取 ${fetchedCount} 条, 处理 ${processedCount} 条`);
         
