@@ -24,7 +24,7 @@
         <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
       </svg>
       <span class="nav-label">好友</span>
-    </a>
+    </router-link>
     <router-link class="nav-item" to="/settings">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="3"></circle>
