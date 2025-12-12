@@ -19,10 +19,10 @@
 
     <div class="card">
     
-      <div class="small">已自动订阅你添加的好友，实时解密可读消息</div>
+    
       <div class="small" style="margin-top:6px;">订阅状态: {{ status }}</div>
       <div v-if="messageTimeRange" class="small" style="margin-top:4px; color: #94a3b8;">
-        消息时间范围: {{ messageTimeRange }}
+        仅订阅三天内新消息: {{ messageTimeRange }}
       </div>
     </div>
 
