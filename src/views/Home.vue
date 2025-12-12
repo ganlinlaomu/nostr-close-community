@@ -525,6 +525,38 @@ export default defineComponent({
         logger.error("回填互动事件失败", e);
       }
     }
+    
+    async function backfillInteractionsForDisplayedPosts(relays: string[]) {
+      try {
+        // Get IDs of all displayed messages (posts)
+        const eventIds = displayedMessages.value.map(m => m.id).filter(Boolean);
+        
+        if (eventIds.length === 0) {
+          logger.info("没有显示的消息，跳过回填事件互动");
+          return;
+        }
+        
+        const now = Math.floor(Date.now() / 1000);
+        const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
+        
+        logger.info(`开始回填显示的帖子互动: ${eventIds.length} 个帖子`);
+        
+        // Backfill interactions for these specific posts
+        await interactions.backfillInteractionsForEvents({
+          relays,
+          eventIds,
+          since: threeDaysAgo,
+          until: now,
+          maxBatches: 10,
+          onProgress: (fetched, processed) => {
+            logger.debug(`回填帖子互动进度: 获取 ${fetched} 条, 处理 ${processed} 条`);
+          }
+        });
+        
+      } catch (e) {
+        logger.error("回填帖子互动失败", e);
+      }
+    }
 
     async function startSub() {
       try {
@@ -624,20 +656,45 @@ export default defineComponent({
         // Backfill historical interactions before subscribing to real-time events
         await backfillInteractions(relays);
         
+        // Backfill interactions for displayed posts (likes/comments on visible posts)
+        await backfillInteractionsForDisplayedPosts(relays);
+        
         // Subscribe to interactions (kind 24243)
         try {
-          const interactionsFilter = {
-            kinds: [24243],
-            "#p": [keys.pkHex] // Only get interactions targeted at us
-          };
+          // Get IDs of displayed messages for subscription
+          const displayedEventIds = displayedMessages.value.map(m => m.id).filter(Boolean);
           
-          interactionsSub = subscribe(relays, [interactionsFilter]);
+          // Subscribe to two types of interactions:
+          // 1. Interactions where user is tagged (#p) - for notifications
+          // 2. Interactions on displayed posts (#e) - for post engagement
+          interface InteractionFilter {
+            kinds: number[];
+            "#p"?: string[];
+            "#e"?: string[];
+          }
+          
+          const interactionFilters: InteractionFilter[] = [
+            {
+              kinds: [24243],
+              "#p": [keys.pkHex] // Interactions targeted at us
+            }
+          ];
+          
+          // Add filter for interactions on displayed posts if we have any
+          if (displayedEventIds.length > 0) {
+            interactionFilters.push({
+              kinds: [24243],
+              "#e": displayedEventIds // Interactions on displayed posts
+            });
+          }
+          
+          interactionsSub = subscribe(relays, interactionFilters);
           
           interactionsSub.on("event", async (evt: any) => {
             await interactions.processInteractionEvent(evt, keys.pkHex);
           });
           
-          logger.debug("已订阅互动事件");
+          logger.debug(`已订阅互动事件 (包括 ${displayedEventIds.length} 个显示的帖子)`);
         } catch (e) {
           logger.warn("subscribe to interactions failed", e);
         }

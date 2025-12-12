@@ -231,11 +231,12 @@ export const useInteractionsStore = defineStore("interactions", {
         
         // Decrypt symmetric key
         const key = useKeyStore();
-        let symHex: string | null = null;
+        let symHex: string;
         try {
           symHex = await key.nip04Decrypt(evt.pubkey, myEntry.enc);
         } catch (e) {
           logger.warn("nip04.decrypt failed", e);
+          // Fallback: check if enc is already a hex key
           if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
             symHex = myEntry.enc;
           } else {
@@ -455,6 +456,90 @@ export const useInteractionsStore = defineStore("interactions", {
         return { fetched: fetchedCount, processed: processedCount };
       } catch (e) {
         logger.error("回填互动事件失败", e);
+        return { fetched: fetchedCount, processed: processedCount };
+      }
+    },
+    
+    /**
+     * Backfill interactions for specific event IDs
+     * 
+     * This method fetches all interactions (likes and comments) for a given set of event IDs.
+     * It's useful for syncing interactions on posts displayed in the home feed when coming online.
+     * 
+     * @returns Object with fetched and processed counts
+     */
+    async backfillInteractionsForEvents(options: {
+      relays: string[];
+      eventIds: string[];
+      since?: number;
+      until?: number;
+      maxBatches?: number;
+      onProgress?: (fetched: number, processed: number) => void;
+    }): Promise<{ fetched: number; processed: number }> {
+      const key = useKeyStore();
+      if (!key.pkHex) {
+        logger.warn("Cannot backfill interactions for events: not logged in");
+        return { fetched: 0, processed: 0 };
+      }
+      
+      const {
+        relays,
+        eventIds,
+        since = 0,
+        until = Math.floor(Date.now() / 1000),
+        maxBatches = 10,
+        onProgress
+      } = options;
+      
+      if (!eventIds || eventIds.length === 0) {
+        logger.info("没有事件ID需要回填互动");
+        return { fetched: 0, processed: 0 };
+      }
+      
+      logger.info(`开始回填事件互动: ${eventIds.length} 个事件, since=${since ? new Date(since * 1000).toLocaleString() : 'beginning'}, until=${new Date(until * 1000).toLocaleString()}`);
+      
+      let fetchedCount = 0;
+      let processedCount = 0;
+      
+      try {
+        const processEvent = async (evt: any) => {
+          fetchedCount++;
+          try {
+            await this.processInteractionEvent(evt, key.pkHex);
+            processedCount++;
+            
+            if (onProgress) {
+              onProgress(fetchedCount, processedCount);
+            }
+          } catch (e) {
+            logger.warn("处理回填事件互动失败", e);
+          }
+        };
+        
+        // Use backfill utility with event ID filtering
+        await backfillEvents({
+          relays,
+          filters: {
+            kinds: [24243],
+            "#e": eventIds, // Get interactions for these specific events
+            since,
+            until
+          },
+          onEvent: processEvent,
+          onProgress: (stats) => {
+            logger.debug(`回填事件互动进度: ${stats.totalEvents} 条事件`);
+          },
+          onComplete: (stats) => {
+            logger.info(`事件互动回填完成: 获取 ${fetchedCount} 条, 处理 ${processedCount} 条`);
+          },
+          batchSize: 500,
+          maxBatches,
+          timeoutMs: 10000
+        });
+        
+        return { fetched: fetchedCount, processed: processedCount };
+      } catch (e) {
+        logger.error("回填事件互动失败", e);
         return { fetched: fetchedCount, processed: processedCount };
       }
     }
