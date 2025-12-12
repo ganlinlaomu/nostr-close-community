@@ -9,13 +9,13 @@
 
       <div class="login-actions">
         <!-- Browser Extension Login (NIP-07) -->
-        <button class="btn btn-primary" @click="loginWithExtension" aria-label="Login with browser extension">
+        <button class="btn" @click="loginWithExtension" aria-label="Login with browser extension">
           <span class="btn-icon" role="img" aria-label="plugin icon">🔌</span>
           浏览器插件登录
         </button>
 
         <!-- Bunker Remote Signer Login (NIP-46) -->
-        <button class="btn btn-secondary" @click="showBunker = true" aria-label="Login with remote signer">
+        <button class="btn" @click="showBunker = true" aria-label="Login with remote signer">
           <span class="btn-icon" role="img" aria-label="lock icon">🔐</span>
           远程签名器 (Bunker)
         </button>
@@ -41,7 +41,7 @@
           >
             {{ loading ? '连接中...' : '连接' }}
           </button>
-          <button class="btn" style="margin-left:8px" @click="showBunker = false" :disabled="loading">取消</button>
+          <button class="btn btn-cancel" style="margin-left:8px" @click="showBunker = false" :disabled="loading">取消</button>
         </div>
       </div>
 
@@ -158,22 +158,28 @@ export default defineComponent({
   justify-content: center;
   gap: 8px;
 }
+:is(.login-actions .btn, .form .btn) {
+  background: transparent;
+  color: #3b82f6;
+  border: 1px solid #3b82f6;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+:is(.login-actions .btn, .form .btn):hover {
+  background: #3b82f6;
+  color: white;
+  transform: translateY(-1px);
+}
 .btn-icon {
   font-size: 20px;
 }
-.btn-primary {
-  background: #1f2937;
+.btn-cancel {
+  color: #ef4444;
+  border-color: #ef4444;
+}
+.btn-cancel:hover {
+  background: #ef4444;
   color: white;
-}
-.btn-primary:hover {
-  background: #111827;
-}
-.btn-secondary {
-  background: #6b7280;
-  color: white;
-}
-.btn-secondary:hover {
-  background: #4b5563;
 }
 .form .input {
   margin-top: 8px;
