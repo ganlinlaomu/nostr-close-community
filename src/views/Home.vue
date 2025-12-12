@@ -14,7 +14,7 @@
       <div class="refresh-icon" :class="{ spinning: isRefreshing }">
         {{ isRefreshing ? '⟳' : '↓' }}
       </div>
-      <div class="refresh-text">{{ isRefreshing ? '刷新中...' : pullDistance > 60 ? '松开刷新' : '下拉刷新' }}</div>
+      <div class="refresh-text">{{ pullToRefreshText }}</div>
     </div>
 
     <div class="card">
@@ -157,18 +157,26 @@ export default defineComponent({
     // State for message time range display
     const messageTimeRange = ref<string>("");
     
-    // Pull-to-refresh state
+    // Pull-to-refresh state and constants
+    const PULL_THRESHOLD = 60; // Pull distance required to trigger refresh
+    const REFRESH_DISPLAY_HEIGHT = 80; // Height to show while refreshing
+    const REFRESH_ANIMATION_DURATION = 500; // Animation duration in ms
+    
     const pullDistance = ref(0);
     const isRefreshing = ref(false);
     let touchStartY = 0;
-    let touchStartTime = 0;
+    
+    // Computed property for pull-to-refresh text
+    const pullToRefreshText = computed(() => {
+      if (isRefreshing.value) return '刷新中...';
+      return pullDistance.value > PULL_THRESHOLD ? '松开刷新' : '下拉刷新';
+    });
     
     function handleTouchStart(e: TouchEvent) {
       // Only start pull-to-refresh if at the top of the page
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
       if (scrollTop === 0 && !isRefreshing.value) {
         touchStartY = e.touches[0].clientY;
-        touchStartTime = Date.now();
       }
     }
     
@@ -194,9 +202,9 @@ export default defineComponent({
     }
     
     async function handleTouchEnd() {
-      if (pullDistance.value > 60 && !isRefreshing.value) {
+      if (pullDistance.value > PULL_THRESHOLD && !isRefreshing.value) {
         isRefreshing.value = true;
-        pullDistance.value = 80; // Set to fixed position while refreshing
+        pullDistance.value = REFRESH_DISPLAY_HEIGHT; // Set to fixed position while refreshing
         
         try {
           // Restart subscription to refresh data
@@ -209,7 +217,7 @@ export default defineComponent({
             isRefreshing.value = false;
             pullDistance.value = 0;
             touchStartY = 0;
-          }, 500);
+          }, REFRESH_ANIMATION_DURATION);
         }
       } else {
         // Animate back to zero
@@ -801,6 +809,7 @@ export default defineComponent({
       // Pull-to-refresh
       pullDistance,
       isRefreshing,
+      pullToRefreshText,
       handleTouchStart,
       handleTouchMove,
       handleTouchEnd

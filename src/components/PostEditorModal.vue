@@ -441,7 +441,7 @@ export default defineComponent({
         try { await msgs.load(); msgs.addInbox({ id: signed.id, pubkey: keys.pkHex, created_at: signed.created_at, content: content.value }); } catch {}
         ui.addToast("发送成功", 1200, "success");
         onClose();
-        // Navigate to home page to show the new post
+        // Navigate to home page after modal close animation completes (220ms matches the slide-up-leave-active transition)
         setTimeout(()=>{ router.push('/'); }, 220);
       } catch (e:any) {
         console.error("publish error", e);
