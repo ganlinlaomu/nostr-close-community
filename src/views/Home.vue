@@ -1,5 +1,22 @@
 <template>
-  <div>
+  <div 
+    class="home-container"
+    @touchstart="handleTouchStart"
+    @touchmove="handleTouchMove"
+    @touchend="handleTouchEnd"
+  >
+    <!-- Pull to refresh indicator -->
+    <div 
+      v-if="pullDistance > 0" 
+      class="pull-to-refresh-indicator"
+      :style="{ transform: `translateY(${Math.min(pullDistance, 80)}px)`, opacity: Math.min(pullDistance / 80, 1) }"
+    >
+      <div class="refresh-icon" :class="{ spinning: isRefreshing }">
+        {{ isRefreshing ? '⟳' : '↓' }}
+      </div>
+      <div class="refresh-text">{{ isRefreshing ? '刷新中...' : pullDistance > 60 ? '松开刷新' : '下拉刷新' }}</div>
+    </div>
+
     <div class="card">
     
       <div class="small">已自动订阅你添加的好友，实时解密可读消息</div>
@@ -139,6 +156,67 @@ export default defineComponent({
     
     // State for message time range display
     const messageTimeRange = ref<string>("");
+    
+    // Pull-to-refresh state
+    const pullDistance = ref(0);
+    const isRefreshing = ref(false);
+    let touchStartY = 0;
+    let touchStartTime = 0;
+    
+    function handleTouchStart(e: TouchEvent) {
+      // Only start pull-to-refresh if at the top of the page
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      if (scrollTop === 0 && !isRefreshing.value) {
+        touchStartY = e.touches[0].clientY;
+        touchStartTime = Date.now();
+      }
+    }
+    
+    function handleTouchMove(e: TouchEvent) {
+      if (touchStartY === 0 || isRefreshing.value) return;
+      
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      if (scrollTop > 0) {
+        touchStartY = 0;
+        pullDistance.value = 0;
+        return;
+      }
+      
+      const touchY = e.touches[0].clientY;
+      const distance = touchY - touchStartY;
+      
+      if (distance > 0) {
+        // Prevent default scrolling while pulling down
+        e.preventDefault();
+        // Apply resistance to pull distance for better feel
+        pullDistance.value = Math.min(distance * 0.5, 100);
+      }
+    }
+    
+    async function handleTouchEnd() {
+      if (pullDistance.value > 60 && !isRefreshing.value) {
+        isRefreshing.value = true;
+        pullDistance.value = 80; // Set to fixed position while refreshing
+        
+        try {
+          // Restart subscription to refresh data
+          await startSub();
+        } catch (e) {
+          logger.error("Refresh failed", e);
+        } finally {
+          // Animate out
+          setTimeout(() => {
+            isRefreshing.value = false;
+            pullDistance.value = 0;
+            touchStartY = 0;
+          }, 500);
+        }
+      } else {
+        // Animate back to zero
+        pullDistance.value = 0;
+        touchStartY = 0;
+      }
+    }
     
     function updateLocalRefs() {
       // Sort messages by timestamp descending (newest first)
@@ -719,13 +797,61 @@ export default defineComponent({
       getReplies,
       replyingTo,
       replyingToAuthor,
-      messageTimeRange
+      messageTimeRange,
+      // Pull-to-refresh
+      pullDistance,
+      isRefreshing,
+      handleTouchStart,
+      handleTouchMove,
+      handleTouchEnd
     };
   }
 });
 </script>
 
 <style scoped>
+.home-container {
+  position: relative;
+  min-height: 100vh;
+}
+
+.pull-to-refresh-indicator {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.95), transparent);
+  z-index: 1000;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.refresh-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+  transition: transform 0.3s ease;
+}
+
+.refresh-icon.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.refresh-text {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 500;
+}
+
 .small { font-size:12px; color:#64748b; }
 .card { background: #fff; padding:12px; border-radius:10px; margin-bottom:12px; box-shadow: 0 4px 10px rgba(0,0,0,0.04); }
 .list { display:flex; flex-direction:column; gap:8px; }
