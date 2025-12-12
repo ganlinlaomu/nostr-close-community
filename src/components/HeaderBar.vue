@@ -60,7 +60,7 @@ export default defineComponent({
   bottom: 0;
   left: 0;
   right: 0;
-  height: 60px;
+  height: 80px;
   display: flex;
   align-items: center;
   justify-content: space-around;
@@ -77,15 +77,34 @@ export default defineComponent({
   pointer-events: auto;
   /* Add shadow for better visual separation */
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+  /* Add padding for safe area on mobile devices */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 .nav-item {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   text-decoration: none;
   color: inherit;
-  font-size: 12px;
+  font-size: 13px;
+  padding: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-radius: 8px;
+  min-width: 64px;
 }
-.icon { font-size: 18px; line-height: 1; }
-.label { margin-top: 2px; line-height: 1; }
+.nav-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+.icon { 
+  font-size: 24px; 
+  line-height: 1; 
+  margin-bottom: 4px;
+}
+.label { 
+  margin-top: 4px; 
+  line-height: 1;
+  font-weight: 500;
+}
 </style>

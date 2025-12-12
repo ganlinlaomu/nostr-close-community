@@ -437,8 +437,8 @@ export default defineComponent({
 .editor-overlay {
   position: fixed;
   inset: 0;
-  /* Reserve space for bottom navigation (60px height) */
-  bottom: 60px;
+  /* Reserve space for bottom navigation (80px height + safe area) */
+  bottom: 80px;
   display: flex;
   align-items: flex-end; /* start from bottom */
   justify-content: center;

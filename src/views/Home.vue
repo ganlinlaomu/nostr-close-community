@@ -10,12 +10,6 @@
     </div>
 
     <div class="card">
-      <!-- New message notification banner -->
-      <div v-if="newMessageCount > 0" class="new-message-banner" @click="showNewMessages">
-        <span class="new-message-text">{{ newMessageCount }} 条新消息</span>
-        <span class="new-message-icon">↓</span>
-      </div>
-      
       <h4 style="margin: 0 0 12px 0;">好友动态</h4>
       <div v-if="displayedMessages.length === 0" class="small">还没有消息</div>
       <div class="list">
@@ -25,8 +19,8 @@
             <span class="muted"> · {{ toLocalTime(m.created_at) }}</span>
           </div>
 
-          <!-- 图片预览（方案 B：直接从内容抽取图片 URL 并渲染） -->
-          <PostImagePreview :content="m.content" :showAll="false" style="margin-top:8px;" />
+          <!-- 图片预览（9宫格展示多图） -->
+          <PostImagePreview :content="m.content" :showAll="true" :max="9" style="margin-top:8px;" />
 
           <!-- 如果仍需显示文本（去除了图片 URL/Markdown），使用 textWithoutImages -->
           <div v-if="textWithoutImages(m.content)" class="message-text">{{ textWithoutImages(m.content) }}</div>
@@ -136,8 +130,6 @@ export default defineComponent({
 
     const messagesRef = ref([] as any[]);
     const displayedMessages = ref([] as any[]);
-    const newMessageCount = ref(0);
-    const initialLoadComplete = ref(false);
     
     // State for comments UI
     const showingComments = ref<Set<string>>(new Set());
@@ -148,26 +140,12 @@ export default defineComponent({
     // State for message time range display
     const messageTimeRange = ref<string>("");
     
-    function showNewMessages() {
-      // Move all messages to displayed messages, sorted by timestamp
-      displayedMessages.value = [...messagesRef.value];
-      newMessageCount.value = 0;
-    }
-
     function updateLocalRefs() {
       // Sort messages by timestamp descending (newest first)
       messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
       
-      if (!initialLoadComplete.value) {
-        // Initial load - show all messages sorted
-        displayedMessages.value = [...messagesRef.value];
-        initialLoadComplete.value = true;
-      } else {
-        // After initial load - count new messages but don't display
-        const currentDisplayedIds = new Set(displayedMessages.value.map(m => m.id));
-        const newMessages = messagesRef.value.filter(m => !currentDisplayedIds.has(m.id));
-        newMessageCount.value = newMessages.length;
-      }
+      // Always show all messages directly
+      displayedMessages.value = [...messagesRef.value];
       
       updateMessageTimeRange();
     }
@@ -719,8 +697,6 @@ export default defineComponent({
 
     return { 
       displayedMessages,
-      newMessageCount,
-      showNewMessages,
       toLocalTime, 
       shortPub, 
       status, 
@@ -761,46 +737,6 @@ export default defineComponent({
   word-break: break-word;
   overflow-wrap: break-word;
   max-width: 100%;
-}
-
-.new-message-banner {
-  background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%);
-  color: #1976d2;
-  padding: 8px 16px;
-  border-radius: 8px;
-  margin-bottom: 12px;
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.2s;
-  box-shadow: 0 2px 4px rgba(25, 118, 210, 0.1);
-}
-
-.new-message-banner:hover {
-  background: linear-gradient(135deg, #bae6fd 0%, #bfdbfe 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(25, 118, 210, 0.15);
-}
-
-.new-message-text {
-  flex: 1;
-}
-
-.new-message-icon {
-  font-size: 16px;
-  animation: bounce 2s infinite;
-}
-
-@keyframes bounce {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-3px);
-  }
 }
 
 .message-actions {
