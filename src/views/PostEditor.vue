@@ -174,7 +174,11 @@ export default defineComponent({
     const allFriends = ref(true);
     const selectedGroups = ref<Array<string>>([]);
 
-    const canSend = computed(() => content.value.trim().length > 0);
+    const canSend = computed(() => {
+      const hasText = content.value.trim().length > 0;
+      const hasUploadedImages = uploads.value.some(u => u.status === 'done' && u.url);
+      return hasText || hasUploadedImages;
+    });
 
     // groups derived from friends list
     const groups = computed(() => {

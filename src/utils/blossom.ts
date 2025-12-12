@@ -204,9 +204,11 @@ export async function uploadImageToBlossom(
       }
 
       xhr.upload.onprogress = (ev) => {
-        if (ev.lengthComputable && typeof options?.onProgress === "function") {
-          const p = Math.round((ev.loaded / ev.total) * 100);
-          try { options!.onProgress!(p); } catch {}
+        if (typeof options?.onProgress === "function") {
+          if (ev.lengthComputable) {
+            const p = Math.round((ev.loaded / ev.total) * 100);
+            try { options!.onProgress!(p); } catch {}
+          }
         }
       };
 
@@ -216,6 +218,10 @@ export async function uploadImageToBlossom(
         const text = xhr.responseText || "";
         const respHeaders = xhr.getAllResponseHeaders ? xhr.getAllResponseHeaders() : undefined;
         if (status >= 200 && status < 300) {
+          // Ensure progress is set to 100% on success
+          if (typeof options?.onProgress === "function") {
+            try { options!.onProgress!(100); } catch {}
+          }
           let json: any = null;
           try { json = text ? JSON.parse(text) : null; } catch (e) {
             return finish(makeDetailedError("上传成功但服务器返回无法解析的 JSON 描述", { responseText: text, responseHeaders: respHeaders }));
