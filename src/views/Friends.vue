@@ -19,6 +19,7 @@
           class="btn-icon btn-add" 
           @click="startAdd"
           title="添加好友"
+          aria-label="添加好友"
         >
           +
         </button>
@@ -37,8 +38,8 @@
             </div>
           </div>
           <div class="friend-actions">
-            <button class="btn-icon btn-edit" @click="startEdit(f)" title="编辑">✎</button>
-            <button class="btn-icon btn-delete" @click="confirmDelete(f)" title="删除">🗑</button>
+            <button class="btn-icon btn-edit" @click="startEdit(f)" title="编辑" aria-label="编辑好友">✎</button>
+            <button class="btn-icon btn-delete" @click="confirmDelete(f)" title="删除" aria-label="删除好友">🗑</button>
           </div>
         </div>
       </div>
