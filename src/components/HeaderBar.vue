@@ -64,8 +64,8 @@ export default defineComponent({
   border-top: 1px solid rgba(0,0,0,0.08);
   z-index: var(--z-bottom-nav, 9999);
   isolation: isolate;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   pointer-events: auto;
   box-shadow: 0 -1px 8px rgba(0, 0, 0, 0.06);
   padding-bottom: env(safe-area-inset-bottom);
