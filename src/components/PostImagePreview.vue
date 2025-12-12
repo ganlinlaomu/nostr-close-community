@@ -30,7 +30,7 @@ export default defineComponent({
   name: "PostImagePreview",
   props: {
     content: { type: String, required: true },
-    max: { type: Number, default: 3 },
+    max: { type: Number, default: 9 },
     showAll: { type: Boolean, default: false },
     altText: { type: String, default: "image" }
   },
