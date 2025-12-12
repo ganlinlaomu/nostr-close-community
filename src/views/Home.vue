@@ -132,7 +132,7 @@ import { useFriendsStore } from "@/stores/friends";
 import { useKeyStore } from "@/stores/keys";
 import { getRelaysFromStorage, subscribe } from "@/nostr/relays";
 import { symDecryptPackage } from "@/nostr/crypto";
-import { useMessagesStore } from "@/stores/messages";
+import { useMessagesStore, type InboxItem } from "@/stores/messages";
 import { useInteractionsStore } from "@/stores/interactions";
 import { logger } from "@/utils/logger";
 import { formatRelativeTime } from "@/utils/format";
@@ -342,8 +342,8 @@ export default defineComponent({
       
       if (newMessages.length > 0) {
         // Separate own messages from others' messages
-        const ownMessages: any[] = [];
-        const othersMessages: any[] = [];
+        const ownMessages: InboxItem[] = [];
+        const othersMessages: InboxItem[] = [];
         
         for (const msg of newMessages) {
           // Check if message is from the current user
@@ -360,7 +360,7 @@ export default defineComponent({
           // Sort own messages first
           const sortedOwn = ownMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
           // Merge with displayedMessages using efficient sorted merge
-          const merged: any[] = [];
+          const merged: InboxItem[] = [];
           let i = 0, j = 0;
           while (i < sortedOwn.length || j < displayedMessages.value.length) {
             if (i >= sortedOwn.length) {
@@ -921,9 +921,9 @@ export default defineComponent({
 
     // Watch for changes to msgs.inbox to handle optimistic UI updates
     // This ensures own messages added via PostEditorModal appear immediately
-    watch(() => msgs.inbox.length, () => {
-      // Only update if not during initial load
-      if (!isInitialLoad.value) {
+    watch(() => msgs.inbox.length, (newLength, oldLength) => {
+      // Only update if not during initial load and if messages were added (not removed)
+      if (!isInitialLoad.value && newLength > oldLength) {
         updateLocalRefs();
       }
     });
