@@ -162,18 +162,18 @@ export default defineComponent({
   font-size: 20px;
 }
 .btn-primary {
-  background: #7c3aed;
+  background: #1f2937;
   color: white;
 }
 .btn-primary:hover {
-  background: #6d28d9;
+  background: #111827;
 }
 .btn-secondary {
-  background: #10b981;
+  background: #6b7280;
   color: white;
 }
 .btn-secondary:hover {
-  background: #059669;
+  background: #4b5563;
 }
 .form .input {
   margin-top: 8px;
