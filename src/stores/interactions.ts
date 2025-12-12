@@ -365,9 +365,9 @@ export const useInteractionsStore = defineStore("interactions", {
     /**
      * Backfill interactions from relays for multi-device sync
      * 
-     * This method fetches interactions in two ways:
-     * 1. Interactions targeted at the user (#p tag) - for notifications and comments on user's posts
-     * 2. Interactions on specific event IDs - when provided, fetches all interactions on those events
+     * This method fetches interactions using two filters for comprehensive coverage:
+     * 1. Inbox: Interactions targeted at the user (#p tag) - for notifications and comments on user's posts
+     * 2. Outbox: Interactions authored by the user - for cross-device sync of own interactions
      * 
      * For comprehensive sync, always fetches the last 3 days of data to ensure no interactions
      * are missed across devices with different online durations.
@@ -376,7 +376,6 @@ export const useInteractionsStore = defineStore("interactions", {
      */
     async backfillInteractions(options: {
       relays: string[];
-      eventIds?: string[]; // Optional: specific event IDs to fetch interactions for
       since?: number;
       until?: number;
       maxBatches?: number;
@@ -390,14 +389,13 @@ export const useInteractionsStore = defineStore("interactions", {
       
       const {
         relays,
-        eventIds,
         since = 0,
         until = Math.floor(Date.now() / 1000),
         maxBatches = 10,
         onProgress
       } = options;
       
-      logger.info(`开始回填互动事件: since=${since ? new Date(since * 1000).toLocaleString() : 'beginning'}, until=${new Date(until * 1000).toLocaleString()}${eventIds ? `, eventIds=${eventIds.length}个` : ''}`);
+      logger.info(`开始回填互动事件: since=${since ? new Date(since * 1000).toLocaleString() : 'beginning'}, until=${new Date(until * 1000).toLocaleString()}`);
       
       let fetchedCount = 0;
       let processedCount = 0;
@@ -423,31 +421,27 @@ export const useInteractionsStore = defineStore("interactions", {
           }
         };
         
-        // Build filters - we need to fetch interactions in two ways:
-        // 1. Interactions where user is mentioned (#p tag)
-        // 2. Interactions on specific events (#e tag) if eventIds provided
+        // Build filters - we fetch interactions in two ways for privacy and comprehensive sync:
+        // 1. Inbox: Interactions where user is mentioned (#p tag) - others' interactions sent to us
+        // 2. Outbox: Interactions authored by user - our own interactions (for cross-device sync)
         const filters: any[] = [
           {
             kinds: [24243],
-            "#p": [key.pkHex], // Get interactions targeted at us
+            "#p": [key.pkHex], // Inbox: interactions targeted at us
+            since,
+            until
+          },
+          {
+            kinds: [24243],
+            authors: [key.pkHex], // Outbox: our own interactions
             since,
             until
           }
         ];
         
-        // If we have specific event IDs, also fetch all interactions on those events
-        if (eventIds && eventIds.length > 0) {
-          filters.push({
-            kinds: [24243],
-            "#e": eventIds, // Get all interactions on these events
-            since,
-            until
-          });
-        }
-        
         // Fetch with each filter in parallel for better performance
         const filterPromises = filters.map((filter, i) => {
-          const filterType = filter["#p"] ? "targeted at user" : "on specific events";
+          const filterType = filter["#p"] ? "收件箱 (#p)" : "发件箱 (authors)";
           logger.debug(`回填互动过滤器 ${i + 1}/${filters.length}: ${filterType}`);
           
           return backfillEvents({
@@ -455,10 +449,10 @@ export const useInteractionsStore = defineStore("interactions", {
             filters: filter,
             onEvent: processEvent,
             onProgress: (stats) => {
-              logger.debug(`回填互动进度 (过滤器 ${i + 1}): ${stats.totalEvents} 条事件`);
+              logger.debug(`回填互动进度 (${filterType}): ${stats.totalEvents} 条事件`);
             },
             onComplete: (stats) => {
-              logger.info(`互动过滤器 ${i + 1} 完成: ${stats.totalEvents} 条事件`);
+              logger.info(`互动过滤器 ${filterType} 完成: ${stats.totalEvents} 条事件`);
             },
             batchSize: 500,
             maxBatches,
