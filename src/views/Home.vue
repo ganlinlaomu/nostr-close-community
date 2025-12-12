@@ -176,11 +176,21 @@ export default defineComponent({
     function findScrollableParent(element: HTMLElement | null): HTMLElement | null {
       if (!element) return null;
       
+      // Skip checking HTML and BODY elements as they represent the main viewport
+      const tagName = element.tagName?.toUpperCase();
+      if (tagName === 'HTML' || tagName === 'BODY') {
+        return null;
+      }
+      
       // Check if current element is scrollable
       const style = window.getComputedStyle(element);
-      const isScrollable = (style.overflowY === 'scroll' || style.overflowY === 'auto') && element.scrollHeight > element.clientHeight;
+      // Check both overflow and overflowY properties
+      const overflowY = style.overflowY;
+      const overflow = style.overflow;
+      const isScrollableY = (overflowY === 'scroll' || overflowY === 'auto' || overflow === 'scroll' || overflow === 'auto') 
+                           && element.scrollHeight > element.clientHeight;
       
-      if (isScrollable) {
+      if (isScrollableY) {
         return element;
       }
       
@@ -198,7 +208,8 @@ export default defineComponent({
       const scrollableParent = findScrollableParent(target);
       
       // If touching a scrollable element that can scroll, don't start pull-to-refresh
-      if (scrollableParent && scrollableParent !== document.documentElement && scrollableParent !== document.body) {
+      // Note: findScrollableParent returns null for HTML/BODY elements
+      if (scrollableParent) {
         touchStartY = 0;
         pullDistance.value = 0;
         return;
