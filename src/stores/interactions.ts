@@ -365,14 +365,18 @@ export const useInteractionsStore = defineStore("interactions", {
     /**
      * Backfill interactions from relays for multi-device sync
      * 
-     * This method implements incremental sync by fetching interactions
-     * since the last synced timestamp, ensuring no interactions are missed
-     * across devices.
+     * This method fetches interactions in two ways:
+     * 1. Interactions targeted at the user (#p tag) - for notifications and comments on user's posts
+     * 2. Interactions on specific event IDs - when provided, fetches all interactions on those events
+     * 
+     * For comprehensive sync, always fetches the last 3 days of data to ensure no interactions
+     * are missed across devices with different online durations.
      * 
      * @returns Object with fetched and processed counts
      */
     async backfillInteractions(options: {
       relays: string[];
+      eventIds?: string[]; // Optional: specific event IDs to fetch interactions for
       since?: number;
       until?: number;
       maxBatches?: number;
@@ -384,19 +388,16 @@ export const useInteractionsStore = defineStore("interactions", {
         return { fetched: 0, processed: 0 };
       }
       
-      // Calculate default 'since' value for incremental sync
-      // Use lastSyncedAt + 1 to avoid re-fetching events with the same timestamp
-      const defaultSince = this.lastSyncedAt > 0 ? this.lastSyncedAt + 1 : 0;
-      
       const {
         relays,
-        since = defaultSince,
+        eventIds,
+        since = 0,
         until = Math.floor(Date.now() / 1000),
         maxBatches = 10,
         onProgress
       } = options;
       
-      logger.info(`开始回填互动事件: since=${since ? new Date(since * 1000).toLocaleString() : 'beginning'}, until=${new Date(until * 1000).toLocaleString()}`);
+      logger.info(`开始回填互动事件: since=${since ? new Date(since * 1000).toLocaleString() : 'beginning'}, until=${new Date(until * 1000).toLocaleString()}${eventIds ? `, eventIds=${eventIds.length}个` : ''}`);
       
       let fetchedCount = 0;
       let processedCount = 0;
@@ -422,26 +423,53 @@ export const useInteractionsStore = defineStore("interactions", {
           }
         };
         
-        // Use backfill utility with time-based pagination
-        await backfillEvents({
-          relays,
-          filters: {
+        // Build filters - we need to fetch interactions in two ways:
+        // 1. Interactions where user is mentioned (#p tag)
+        // 2. Interactions on specific events (#e tag) if eventIds provided
+        const filters: any[] = [
+          {
             kinds: [24243],
-            "#p": [key.pkHex], // Only get interactions targeted at us
+            "#p": [key.pkHex], // Get interactions targeted at us
             since,
             until
-          },
-          onEvent: processEvent,
-          onProgress: (stats) => {
-            logger.debug(`回填互动进度: ${stats.totalEvents} 条事件`);
-          },
-          onComplete: (stats) => {
-            logger.info(`互动事件回填完成: 获取 ${fetchedCount} 条, 处理 ${processedCount} 条`);
-          },
-          batchSize: 500,
-          maxBatches,
-          timeoutMs: 10000
+          }
+        ];
+        
+        // If we have specific event IDs, also fetch all interactions on those events
+        if (eventIds && eventIds.length > 0) {
+          filters.push({
+            kinds: [24243],
+            "#e": eventIds, // Get all interactions on these events
+            since,
+            until
+          });
+        }
+        
+        // Fetch with each filter in parallel for better performance
+        const filterPromises = filters.map((filter, i) => {
+          const filterType = filter["#p"] ? "targeted at user" : "on specific events";
+          logger.debug(`回填互动过滤器 ${i + 1}/${filters.length}: ${filterType}`);
+          
+          return backfillEvents({
+            relays,
+            filters: filter,
+            onEvent: processEvent,
+            onProgress: (stats) => {
+              logger.debug(`回填互动进度 (过滤器 ${i + 1}): ${stats.totalEvents} 条事件`);
+            },
+            onComplete: (stats) => {
+              logger.info(`互动过滤器 ${i + 1} 完成: ${stats.totalEvents} 条事件`);
+            },
+            batchSize: 500,
+            maxBatches,
+            timeoutMs: 10000
+          });
         });
+        
+        // Wait for all filters to complete
+        await Promise.all(filterPromises);
+        
+        logger.info(`互动事件回填完成: 获取 ${fetchedCount} 条, 处理 ${processedCount} 条`);
         
         // Update lastSyncedAt after successful sync
         // If we found events, use the max timestamp; otherwise use 'until'
@@ -456,90 +484,6 @@ export const useInteractionsStore = defineStore("interactions", {
         return { fetched: fetchedCount, processed: processedCount };
       } catch (e) {
         logger.error("回填互动事件失败", e);
-        return { fetched: fetchedCount, processed: processedCount };
-      }
-    },
-    
-    /**
-     * Backfill interactions for specific event IDs
-     * 
-     * This method fetches all interactions (likes and comments) for a given set of event IDs.
-     * It's useful for syncing interactions on posts displayed in the home feed when coming online.
-     * 
-     * @returns Object with fetched and processed counts
-     */
-    async backfillInteractionsForEvents(options: {
-      relays: string[];
-      eventIds: string[];
-      since?: number;
-      until?: number;
-      maxBatches?: number;
-      onProgress?: (fetched: number, processed: number) => void;
-    }): Promise<{ fetched: number; processed: number }> {
-      const key = useKeyStore();
-      if (!key.pkHex) {
-        logger.warn("Cannot backfill interactions for events: not logged in");
-        return { fetched: 0, processed: 0 };
-      }
-      
-      const {
-        relays,
-        eventIds,
-        since = 0,
-        until = Math.floor(Date.now() / 1000),
-        maxBatches = 10,
-        onProgress
-      } = options;
-      
-      if (!eventIds || eventIds.length === 0) {
-        logger.info("没有事件ID需要回填互动");
-        return { fetched: 0, processed: 0 };
-      }
-      
-      logger.info(`开始回填事件互动: ${eventIds.length} 个事件, since=${since ? new Date(since * 1000).toLocaleString() : 'beginning'}, until=${new Date(until * 1000).toLocaleString()}`);
-      
-      let fetchedCount = 0;
-      let processedCount = 0;
-      
-      try {
-        const processEvent = async (evt: any) => {
-          fetchedCount++;
-          try {
-            await this.processInteractionEvent(evt, key.pkHex);
-            processedCount++;
-            
-            if (onProgress) {
-              onProgress(fetchedCount, processedCount);
-            }
-          } catch (e) {
-            logger.warn("处理回填事件互动失败", e);
-          }
-        };
-        
-        // Use backfill utility with event ID filtering
-        await backfillEvents({
-          relays,
-          filters: {
-            kinds: [24243],
-            "#e": eventIds, // Get interactions for these specific events
-            since,
-            until
-          },
-          onEvent: processEvent,
-          onProgress: (stats) => {
-            logger.debug(`回填事件互动进度: ${stats.totalEvents} 条事件`);
-          },
-          onComplete: (stats) => {
-            logger.info(`事件互动回填完成: 获取 ${fetchedCount} 条, 处理 ${processedCount} 条`);
-          },
-          batchSize: 500,
-          maxBatches,
-          timeoutMs: 10000
-        });
-        
-        return { fetched: fetchedCount, processed: processedCount };
-      } catch (e) {
-        logger.error("回填事件互动失败", e);
         return { fetched: fetchedCount, processed: processedCount };
       }
     }
