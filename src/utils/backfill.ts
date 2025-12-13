@@ -139,7 +139,7 @@ export async function backfillEvents(options: BackfillOptions): Promise<Backfill
       }
 
       // Log the actual filter being sent for debugging
-      const filterSummary: any = {
+      const filterSummary: Record<string, any> = {
         kinds: batchFilter.kinds,
         since: new Date(targetSince * 1000).toISOString(),
         until: new Date(currentUntil * 1000).toISOString(),
