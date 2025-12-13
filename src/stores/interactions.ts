@@ -306,7 +306,7 @@ export const useInteractionsStore = defineStore("interactions", {
         
         // Add to state
         this._addInteraction(interaction.messageId, interaction);
-        logger.info(`[互动事件] 已写入store: ${interaction.type} on messageId=${interaction.messageId.substring(0, 8)}... by ${interaction.author.substring(0, 8)}...`);
+        logger.info(`[互动事件] 已写入store: ${interaction.type} on messageId=${interaction.messageId.slice(0, 8)}... by ${interaction.author.slice(0, 8)}...`);
         
         // Update lastSyncedAt to track the most recent event
         if (evt.created_at && evt.created_at > this.lastSyncedAt) {
@@ -331,7 +331,7 @@ export const useInteractionsStore = defineStore("interactions", {
         
         if (existingLike) {
           // User has already liked this message, don't add duplicate
-          logger.debug(`[互动存储] 跳过重复点赞: messageId=${messageId.substring(0, 8)}... author=${interaction.author.substring(0, 8)}...`);
+          logger.debug(`[互动存储] 跳过重复点赞: messageId=${messageId.slice(0, 8)}... author=${interaction.author.slice(0, 8)}...`);
           return;
         }
       } else if (interaction.type === 'comment') {
@@ -344,7 +344,7 @@ export const useInteractionsStore = defineStore("interactions", {
         );
         
         if (isDuplicate) {
-          logger.debug(`[互动存储] 跳过重复评论: messageId=${messageId.substring(0, 8)}... author=${interaction.author.substring(0, 8)}...`);
+          logger.debug(`[互动存储] 跳过重复评论: messageId=${messageId.slice(0, 8)}... author=${interaction.author.slice(0, 8)}...`);
           return;
         }
       }
@@ -353,7 +353,7 @@ export const useInteractionsStore = defineStore("interactions", {
       items.push(interaction);
       this.interactions.set(messageId, items);
       this._saveToStorage();
-      logger.debug(`[互动存储] 已保存到Map: ${interaction.type} on messageId=${messageId.substring(0, 8)}..., 该消息共有 ${items.length} 个互动`);
+      logger.debug(`[互动存储] 已保存到Map: ${interaction.type} on messageId=${messageId.slice(0, 8)}..., 该消息共有 ${items.length} 个互动`);
     },
     
     /**
