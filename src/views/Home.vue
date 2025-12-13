@@ -738,19 +738,10 @@ export default defineComponent({
         
         logger.info(`开始回填互动事件 (最近3天): since=${new Date(since * 1000).toLocaleString()}`);
         
-        // Get IDs of all displayed messages (posts) to fetch their interactions
-        const eventIds = displayedMessages.value.map(m => m.id).filter(Boolean);
-        
-        if (eventIds.length > 0) {
-          logger.info(`将回填 ${eventIds.length} 个帖子的互动`);
-        }
-        
-        // Use the updated backfillInteractions that fetches both:
-        // 1. Interactions targeted at user (#p)
-        // 2. Interactions on displayed posts (#e)
+        // Fetch using inbox (#p) and outbox (authors) filters
+        // No longer using #e to avoid privacy issues
         await interactions.backfillInteractions({
           relays,
-          eventIds,
           since,
           until: now,
           maxBatches: 10,
@@ -874,37 +865,24 @@ export default defineComponent({
         }
         
         // Backfill historical interactions before subscribing to real-time events
-        // This now includes both interactions targeted at user and on displayed posts
+        // Now uses inbox (#p) and outbox (authors) filters for privacy compliance
         await backfillInteractions(relays);
         
         // Subscribe to interactions (kind 24243)
         try {
-          // Get IDs of displayed messages for subscription
-          const displayedEventIds = displayedMessages.value.map(m => m.id).filter(Boolean);
-          
-          // Subscribe to two types of interactions:
-          // 1. Interactions where user is tagged (#p) - for notifications
-          // 2. Interactions on displayed posts (#e) - for post engagement
-          interface InteractionFilter {
-            kinds: number[];
-            "#p"?: string[];
-            "#e"?: string[];
-          }
-          
-          const interactionFilters: InteractionFilter[] = [
+          // Subscribe to two types of interactions for comprehensive coverage:
+          // 1. Inbox: Interactions where user is tagged (#p) - for notifications
+          // 2. Outbox: Interactions authored by user - for cross-device sync
+          const interactionFilters = [
             {
               kinds: [24243],
-              "#p": [keys.pkHex] // Interactions targeted at us
+              "#p": [keys.pkHex] // Inbox: interactions targeted at us
+            },
+            {
+              kinds: [24243],
+              authors: [keys.pkHex] // Outbox: our own interactions
             }
           ];
-          
-          // Add filter for interactions on displayed posts if we have any
-          if (displayedEventIds.length > 0) {
-            interactionFilters.push({
-              kinds: [24243],
-              "#e": displayedEventIds // Interactions on displayed posts
-            });
-          }
           
           interactionsSub = subscribe(relays, interactionFilters);
           
@@ -912,7 +890,7 @@ export default defineComponent({
             await interactions.processInteractionEvent(evt, keys.pkHex);
           });
           
-          logger.debug(`已订阅互动事件 (包括 ${displayedEventIds.length} 个显示的帖子)`);
+          logger.debug("已订阅互动事件 (收件箱+发件箱)");
         } catch (e) {
           logger.warn("subscribe to interactions failed", e);
         }
