@@ -868,6 +868,20 @@ export default defineComponent({
         // Now uses inbox (#p) and outbox (authors) filters for privacy compliance
         await backfillInteractions(relays);
         
+        // Close existing interactions subscription before creating a new one
+        try {
+          if (interactionsSub) {
+            logger.debug("关闭之前的互动订阅");
+            if (typeof interactionsSub.close === "function") interactionsSub.close();
+            else if (typeof interactionsSub.unsub === "function") interactionsSub.unsub();
+            else if (typeof interactionsSub.unsubscribe === "function") interactionsSub.unsubscribe();
+            else if (typeof interactionsSub === "function") interactionsSub();
+          }
+        } catch (e) {
+          logger.warn("close prev interactions sub error", e);
+        }
+        interactionsSub = null;
+        
         // Subscribe to interactions (kind 24243)
         try {
           // Subscribe to two types of interactions for comprehensive coverage:
