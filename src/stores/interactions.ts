@@ -11,6 +11,82 @@ import { backfillEvents } from "@/utils/backfill";
  * Uses kind 24243 for encrypted interactions (likes/comments)
  */
 
+/**
+ * Decode an encrypted interaction event (kind 24243)
+ * Standalone helper function to avoid 'this' binding issues
+ * 
+ * @param evt - The Nostr event to decode
+ * @param myPubkey - The public key of the current user
+ * @param keyStore - The key store instance for decryption
+ * @returns The decoded Interaction object, or null if decoding failed
+ */
+async function decodeInteractionEvent(
+  evt: any,
+  myPubkey: string,
+  keyStore: ReturnType<typeof useKeyStore>
+): Promise<Interaction | null> {
+  try {
+    logger.info(`[互动事件] 收到事件 ${evt.id} pubkey=${evt.pubkey} created_at=${evt.created_at}`);
+    
+    // Parse payload
+    let payload: any;
+    try {
+      payload = JSON.parse(evt.content);
+    } catch (e) {
+      logger.warn(`[互动事件] 解析失败 ${evt.id}: 无效的JSON内容`, e);
+      return null;
+    }
+    
+    if (!payload?.keys || !payload?.pkg) {
+      logger.warn(`[互动事件] 解析失败 ${evt.id}: 缺少keys或pkg字段`);
+      return null;
+    }
+    
+    // Find our key entry
+    const myEntry = payload.keys.find((k: any) => k.to === myPubkey);
+    if (!myEntry) {
+      logger.debug(`[互动事件] 跳过事件 ${evt.id}: 不是发给当前用户的`);
+      return null;
+    }
+    
+    // Decrypt symmetric key
+    let symHex: string;
+    try {
+      symHex = await keyStore.nip04Decrypt(evt.pubkey, myEntry.enc);
+    } catch (e) {
+      logger.warn(`[互动事件] nip04解密失败 ${evt.id}`, e);
+      // Fallback: check if enc is already a hex key
+      if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
+        symHex = myEntry.enc;
+        logger.debug(`[互动事件] 使用回退方式：enc字段已是hex密钥`);
+      } else {
+        return null;
+      }
+    }
+    
+    // Decrypt interaction payload
+    try {
+      const plain = await symDecryptPackage(symHex, payload.pkg);
+      const interaction: Interaction = JSON.parse(plain);
+      
+      // Validate interaction structure
+      if (!interaction.messageId || !interaction.type) {
+        logger.warn(`[互动事件] 解码失败 ${evt.id}: 缺少必需字段 (messageId或type)`);
+        return null;
+      }
+      
+      logger.info(`[互动事件] 解码成功 ${evt.id}: type=${interaction.type}, messageId=${interaction.messageId}, author=${interaction.author}`);
+      return interaction;
+    } catch (e) {
+      logger.warn(`[互动事件] 解密包失败 ${evt.id}`, e);
+      return null;
+    }
+  } catch (e) {
+    logger.warn(`[互动事件] 解码/处理失败 ${evt.id}`, e);
+    return null;
+  }
+}
+
 export interface Like {
   id: string;
   messageId: string;
@@ -208,64 +284,36 @@ export const useInteractionsStore = defineStore("interactions", {
     
     /**
      * Process received interaction event
+     * Uses standalone decode helper to avoid 'this' binding issues
      */
     async processInteractionEvent(evt: any, myPubkey: string) {
       try {
         // Avoid processing duplicates
-        if (this.processedEvents.has(evt.id)) return;
+        if (this.processedEvents.has(evt.id)) {
+          logger.debug(`[互动事件] 跳过重复事件 ${evt.id}`);
+          return;
+        }
         this.processedEvents.add(evt.id);
         
-        // Parse payload
-        let payload: any;
-        try {
-          payload = JSON.parse(evt.content);
-        } catch {
+        // Decode the interaction using standalone helper
+        const key = useKeyStore();
+        const interaction = await decodeInteractionEvent(evt, myPubkey, key);
+        
+        if (!interaction) {
+          // Decoding failed or event not relevant - already logged by helper
           return;
         }
         
-        if (!payload?.keys || !payload?.pkg) return;
+        // Add to state
+        this._addInteraction(interaction.messageId, interaction);
+        logger.info(`[互动事件] 已写入store: ${interaction.type} on messageId=${interaction.messageId.slice(0, 8)}... by ${interaction.author.slice(0, 8)}...`);
         
-        // Find our key entry
-        const myEntry = payload.keys.find((k: any) => k.to === myPubkey);
-        if (!myEntry) return;
-        
-        // Decrypt symmetric key
-        const key = useKeyStore();
-        let symHex: string;
-        try {
-          symHex = await key.nip04Decrypt(evt.pubkey, myEntry.enc);
-        } catch (e) {
-          logger.warn("nip04.decrypt failed", e);
-          // Fallback: check if enc is already a hex key
-          if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
-            symHex = myEntry.enc;
-          } else {
-            return;
-          }
-        }
-        
-        // Decrypt interaction
-        try {
-          const plain = await symDecryptPackage(symHex, payload.pkg);
-          const interaction: Interaction = JSON.parse(plain);
-          
-          // Validate interaction
-          if (!interaction.messageId || !interaction.type) return;
-          
-          // Add to state
-          this._addInteraction(interaction.messageId, interaction);
-          
-          // Update lastSyncedAt to track the most recent event
-          if (evt.created_at && evt.created_at > this.lastSyncedAt) {
-            this.lastSyncedAt = evt.created_at;
-          }
-          
-          logger.debug("processed interaction", { interaction });
-        } catch (e) {
-          logger.warn("symDecryptPackage failed", e);
+        // Update lastSyncedAt to track the most recent event
+        if (evt.created_at && evt.created_at > this.lastSyncedAt) {
+          this.lastSyncedAt = evt.created_at;
         }
       } catch (e) {
-        logger.warn("process interaction event failed", e);
+        logger.warn(`[互动事件] 处理事件失败 ${evt.id}`, e);
       }
     },
     
@@ -283,6 +331,7 @@ export const useInteractionsStore = defineStore("interactions", {
         
         if (existingLike) {
           // User has already liked this message, don't add duplicate
+          logger.debug(`[互动存储] 跳过重复点赞: messageId=${messageId.slice(0, 8)}... author=${interaction.author.slice(0, 8)}...`);
           return;
         }
       } else if (interaction.type === 'comment') {
@@ -295,6 +344,7 @@ export const useInteractionsStore = defineStore("interactions", {
         );
         
         if (isDuplicate) {
+          logger.debug(`[互动存储] 跳过重复评论: messageId=${messageId.slice(0, 8)}... author=${interaction.author.slice(0, 8)}...`);
           return;
         }
       }
@@ -303,6 +353,7 @@ export const useInteractionsStore = defineStore("interactions", {
       items.push(interaction);
       this.interactions.set(messageId, items);
       this._saveToStorage();
+      logger.debug(`[互动存储] 已保存到Map: ${interaction.type} on messageId=${messageId.slice(0, 8)}..., 该消息共有 ${items.length} 个互动`);
     },
     
     /**
