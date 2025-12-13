@@ -439,6 +439,11 @@ export const useInteractionsStore = defineStore("interactions", {
           }
         ];
         
+        // Log the filters being used for debugging
+        logger.info(`互动回填过滤器详情:`);
+        logger.info(`  收件箱 (#p): kinds=[24243], #p=[${key.pkHex.substring(0, 8)}...], since=${new Date(since * 1000).toLocaleString()}, until=${new Date(until * 1000).toLocaleString()}`);
+        logger.info(`  发件箱 (authors): kinds=[24243], authors=[${key.pkHex.substring(0, 8)}...], since=${new Date(since * 1000).toLocaleString()}, until=${new Date(until * 1000).toLocaleString()}`);
+        
         // Fetch with each filter in parallel for better performance
         const filterPromises = filters.map((filter, i) => {
           const filterType = filter["#p"] ? "收件箱 (#p)" : "发件箱 (authors)";

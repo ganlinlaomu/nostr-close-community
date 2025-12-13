@@ -81,20 +81,39 @@ export async function backfillEvents(options: BackfillOptions): Promise<Backfill
     completed: false
   };
 
-  // If authors are provided, batch them
-  const authorBatches = filters.authors 
-    ? batchAuthors(filters.authors, authorBatchSize)
+  // Check if authors field exists and has values
+  const hasAuthors = Array.isArray(filters.authors) && filters.authors.length > 0;
+  
+  // If authors are provided, batch them; otherwise, use a single batch with no authors
+  const authorBatches = hasAuthors 
+    ? batchAuthors(filters.authors!, authorBatchSize)
     : [undefined];
 
   const targetSince = filters.since || 0;
   const initialUntil = filters.until || Math.floor(Date.now() / 1000);
-  logger.info(`开始回填: kinds=[${filters.kinds.join(',')}], 作者批次数=${authorBatches.length}, 每批作者数=${authorBatches.length > 0 && authorBatches[0] ? authorBatches[0].length : 0}`);
+  
+  // Log differently based on whether we have authors or not
+  if (hasAuthors) {
+    logger.info(`开始回填: kinds=[${filters.kinds.join(',')}], 作者批次数=${authorBatches.length}, 每批作者数=${authorBatches[0]!.length}`);
+  } else {
+    // For non-author filters (e.g., #p, #e, #g), log the actual filter keys
+    const filterKeys = Object.keys(filters).filter(k => k.startsWith('#')).join(', ');
+    logger.info(`开始回填: kinds=[${filters.kinds.join(',')}], 过滤条件=${filterKeys || '无标签过滤'}`);
+  }
   logger.info(`时间范围: since=${new Date(targetSince * 1000).toLocaleString()} (${targetSince}), until=${new Date(initialUntil * 1000).toLocaleString()} (${initialUntil})`);
 
-  // Process each author batch
+  // Process each author batch (or single batch for non-author filters)
   for (let authorBatchIdx = 0; authorBatchIdx < authorBatches.length; authorBatchIdx++) {
     const authorBatch = authorBatches[authorBatchIdx];
-    logger.info(`处理作者批次 ${authorBatchIdx + 1}/${authorBatches.length}${authorBatch ? ` (${authorBatch.length}个作者)` : ''}`);
+    
+    // Log batch processing - differentiate between author and non-author filters
+    if (hasAuthors && authorBatch) {
+      logger.info(`处理作者批次 ${authorBatchIdx + 1}/${authorBatches.length} (${authorBatch.length}个作者)`);
+    } else if (authorBatches.length === 1) {
+      // Single batch for non-author filters (e.g., #p)
+      logger.info(`处理回填批次 (非作者过滤)`);
+    }
+    
     // Each author batch starts from the initial until time and pages backward
     let currentUntil = initialUntil;
     let batchCount = 0;
@@ -119,7 +138,26 @@ export async function backfillEvents(options: BackfillOptions): Promise<Backfill
         batchFilter.authors = authorBatch;
       }
 
-      logger.debug(`获取批次 #${batchCount + 1}: since=${new Date(targetSince * 1000).toISOString()}, until=${new Date(currentUntil * 1000).toISOString()}, limit=${batchSize}`);
+      // Log the actual filter being sent for debugging
+      const filterSummary: any = {
+        kinds: batchFilter.kinds,
+        since: new Date(targetSince * 1000).toISOString(),
+        until: new Date(currentUntil * 1000).toISOString(),
+        limit: batchSize
+      };
+      
+      // Add author count or tag filters to summary
+      if (batchFilter.authors) {
+        filterSummary.authors = `${batchFilter.authors.length} authors`;
+      }
+      Object.keys(batchFilter).forEach(key => {
+        if (key.startsWith('#')) {
+          const tagValues = batchFilter[key];
+          filterSummary[key] = Array.isArray(tagValues) ? `${tagValues.length} values` : tagValues;
+        }
+      });
+      
+      logger.debug(`发送批次 #${batchCount + 1} REQ:`, JSON.stringify(filterSummary));
 
       // Fetch events for this batch
       const batchEvents: any[] = [];
