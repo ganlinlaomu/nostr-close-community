@@ -752,12 +752,12 @@ export default defineComponent({
           const interactionFilters = [
             {
               kinds: [8965],
-              "#p": [keys.pkHex] // Inbox: interactions targeted at us
+              "#p": [keys.pkHex], // Inbox: interactions targeted at us
               since: interactionBreakpoint + 1 // ⭐ inbox
             },
             {
               kinds: [8965],
-              authors: [keys.pkHex] // Outbox: our own interactions
+              authors: [keys.pkHex], // Outbox: our own interactions
               since: interactionBreakpoint + 1 // ⭐ outbox
             }
           ];
