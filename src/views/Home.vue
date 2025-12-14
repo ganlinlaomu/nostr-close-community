@@ -583,7 +583,7 @@ export default defineComponent({
             `pull from three days: since=${new Date(since * 1000).toLocaleString()}`
           );
         }
-      saveBackfillBreakpoint(`interactions_${key.pkHex}`, now);  
+      saveBackfillBreakpoint(`interactions_${keys.pkHex}`, now);  
         
         
         // Fetch using inbox (#p) and outbox (authors) filters
