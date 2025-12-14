@@ -648,9 +648,23 @@ export default defineComponent({
         // First, backfill historical messages
         logger.info("开始回填历史消息...");
         await backfillMessages(friendSet, relays);
+        // ⭐ 从本地取回填断点（关键）
+        const messageBreakpoint =
+        loadBackfillBreakpoint(`messages_${keys.pkHex}`) || 0;
 
-        const filters = { kinds: [8964], authors: Array.from(friendSet) };
-        logger.info(`实时订阅过滤器: kinds=[8964], authors数量=${friendSet.size}`);
+        const filters = {
+          kinds: [8964],
+          authors: Array.from(friendSet),
+          since: messageBreakpoint + 1 // ⭐ 关键符号就在这里
+        };
+
+        logger.info(
+          `实时订阅过滤器: kinds=[8964], authors数量=${friendSet.size}, since=${
+            messageBreakpoint > 0
+            ? new Date(messageBreakpoint * 1000).toLocaleString()
+            : "0"
+         }`
+       );
         status.value = "连接中";
 
         try {
