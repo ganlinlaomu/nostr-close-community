@@ -426,7 +426,7 @@ export default defineComponent({
         } else {
           since = now - THREE_DAYS_IN_SECONDS;
           logger.info(
-          'no backfillpoint,pull three days: since=${new Date(since * 1000).toLocaleString()}'
+          `no backfillpoint,pull three days: since=${new Date(since * 1000).toLocaleString()}`
           );
         }
         
@@ -580,10 +580,10 @@ export default defineComponent({
         } else {
           since = now - THREE_DAYS_IN_SECONDS;
           logger.info(
-            'pull from three days: since=${new Date(since * 1000).toLocaleString()}'
+            `pull from three days: since=${new Date(since * 1000).toLocaleString()}`
           );
         }
-      saveBackfillBreakpoint('interactions_${key.pkHex}', now);  
+      saveBackfillBreakpoint(`interactions_${key.pkHex}`, now);  
         
         
         // Fetch using inbox (#p) and outbox (authors) filters
