@@ -749,6 +749,9 @@ export default defineComponent({
           // Subscribe to two types of interactions for comprehensive coverage:
           // 1. Inbox: Interactions where user is tagged (#p) - for notifications
           // 2. Outbox: Interactions authored by user - for cross-device sync
+          const interactionBreakpoint =
+          loadBackfillBreakpoint(`interactions_${keys.pkHex}`) || 0;
+          
           const interactionFilters = [
             {
               kinds: [8965],
