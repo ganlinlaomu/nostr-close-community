@@ -8,11 +8,11 @@ import { backfillEvents } from "@/utils/backfill";
 
 /**
  * Interactions store - handles encrypted likes and comments
- * Uses kind 24243 for encrypted interactions (likes/comments)
+ * Uses kind 8965 for encrypted interactions (likes/comments)
  */
 
 /**
- * Decode an encrypted interaction event (kind 24243)
+ * Decode an encrypted interaction event (kind 8965)
  * Standalone helper function to avoid 'this' binding issues
  * 
  * @param evt - The Nostr event to decode
@@ -257,9 +257,9 @@ export const useInteractionsStore = defineStore("interactions", {
       
       const contentStr = JSON.stringify(payload);
       
-      // Create event with kind 24243 for interactions
+      // Create event with kind 8965 for interactions
       const event: any = {
-        kind: 24243,
+        kind: 8965,
         pubkey: key.pkHex,
         created_at: Math.floor(Date.now() / 1000),
         tags: [
@@ -288,12 +288,8 @@ export const useInteractionsStore = defineStore("interactions", {
      */
     async processInteractionEvent(evt: any, myPubkey: string) {
       try {
-        // Avoid processing duplicates
-        if (this.processedEvents.has(evt.id)) {
-          logger.debug(`[互动事件] 跳过重复事件 ${evt.id}`);
-          return;
-        }
         this.processedEvents.add(evt.id);
+  
         
         // Decode the interaction using standalone helper
         const key = useKeyStore();
@@ -303,7 +299,8 @@ export const useInteractionsStore = defineStore("interactions", {
           // Decoding failed or event not relevant - already logged by helper
           return;
         }
-        
+        // 👇 只有成功解密 + 即将写入 store，才算真正 processed
+        this.processedEvents.add(evt.id); 
         // Add to state
         this._addInteraction(interaction.messageId, interaction);
         logger.info(`[互动事件] 已写入store: ${interaction.type} on messageId=${interaction.messageId.slice(0, 8)}... by ${interaction.author.slice(0, 8)}...`);
@@ -477,13 +474,13 @@ export const useInteractionsStore = defineStore("interactions", {
         // 2. Outbox: Interactions authored by user - our own interactions (for cross-device sync)
         const filters: any[] = [
           {
-            kinds: [24243],
+            kinds: [8965],
             "#p": [key.pkHex], // Inbox: interactions targeted at us
             since,
             until
           },
           {
-            kinds: [24243],
+            kinds: [8965],
             authors: [key.pkHex], // Outbox: our own interactions
             since,
             until
@@ -492,8 +489,8 @@ export const useInteractionsStore = defineStore("interactions", {
         
         // Log the filters being used for debugging
         logger.info(`互动回填过滤器详情:`);
-        logger.info(`  收件箱 (#p): kinds=[24243], #p=[${key.pkHex.substring(0, 8)}...], since=${new Date(since * 1000).toLocaleString()}, until=${new Date(until * 1000).toLocaleString()}`);
-        logger.info(`  发件箱 (authors): kinds=[24243], authors=[${key.pkHex.substring(0, 8)}...], since=${new Date(since * 1000).toLocaleString()}, until=${new Date(until * 1000).toLocaleString()}`);
+        logger.info(`  收件箱 (#p): kinds8965], #p=[${key.pkHex.substring(0, 8)}...], since=${new Date(since * 1000).toLocaleString()}, until=${new Date(until * 1000).toLocaleString()}`);
+        logger.info(`  发件箱 (authors): kinds8965], authors=[${key.pkHex.substring(0, 8)}...], since=${new Date(since * 1000).toLocaleString()}, until=${new Date(until * 1000).toLocaleString()}`);
         
         // Fetch with each filter in parallel for better performance
         const filterPromises = filters.map((filter, i) => {

@@ -412,32 +412,22 @@ export default defineComponent({
     async function backfillMessages(friendSet: Set<string>, relays: string[]) {
       try {
         const now = Math.floor(Date.now() / 1000);
-        
+        const breakpointKey = `messages_${keys.pkHex}`;
+        const savedBreakpoint = loadBackfillBreakpoint(breakpointKey); 
         // Determine time range for backfill - always use 3-day window
         let since: number;
         let until: number = now;
         
-        // Get the newest message timestamp from the already sorted messagesRef
-        // (messagesRef is sorted descending in updateLocalRefs, so first element is newest)
-        let lastMessageTime = 0;
-        if (messagesRef.value.length > 0) {
-          lastMessageTime = messagesRef.value[0]?.created_at || 0;
-        }
-        
-        // Check if we have messages and if the last message is within 3 days
-        const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
-        
-        if (lastMessageTime > 0 && lastMessageTime >= threeDaysAgo) {
-          // Have messages within 3 days - fetch messages newer than last message
-          // Use lastMessageTime + 1 to avoid re-fetching the same message
-          // (relay filter: created_at >= since, so we need to exclude the last message we already have)
-          // Note: Nostr timestamps are always integer Unix timestamps (seconds), so +1 is safe
-          since = lastMessageTime + 1;
-          logger.info(`有三天内的消息，拉取晚于最后一条消息的事件: 最后消息时间=${new Date(lastMessageTime * 1000).toLocaleString()}, since=${new Date(since * 1000).toLocaleString()}`);
+        if (savedBreakpoint && savedBreakpoint > 0) {
+          since = savedBreakpoint + 1;
+          logger.info(
+            `use backfillpoint to pull: since=${new Date(since * 1000).toLocaleString()}`
+          );
         } else {
-          // No messages or last message is older than 3 days - fetch last 3 days
-          since = threeDaysAgo;
-          logger.info(`无三天内消息或消息已过期，拉取最近三天的事件: since=${new Date(since * 1000).toLocaleString()} (${THREE_DAYS_IN_SECONDS}秒前)`);
+          since = now - THREE_DAYS_IN_SECONDS;
+          logger.info(
+          'no backfillpoint,pull three days: since=${new Date(since * 1000).toLocaleString()}'
+          );
         }
         
         logger.info(`回填参数: kinds=[8964], authors数量=${friendSet.size}, since=${new Date(since * 1000).toLocaleString()}, until=${new Date(until * 1000).toLocaleString()}`);
@@ -578,13 +568,23 @@ export default defineComponent({
     async function backfillInteractions(relays: string[]) {
       try {
         const now = Math.floor(Date.now() / 1000);
-        const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
+        const breakpointKey = `interactions_${keys.pkHex}`;
+        const savedBreakpoint = loadBackfillBreakpoint(breakpointKey);
+        let since: number;
+
+        if (savedBreakpoint && savedBreakpoint > 0) {
+          since = savedBreakpoint + 1;
+          logger.info (
+            `backfill use breakpoint: since=${new Date(since * 1000).toLocaleString()}`
+          );
+        } else {
+          since = now - THREE_DAYS_IN_SECONDS;
+          logger.info(
+            'pull from three days: since=${new Date(since * 1000).toLocaleString()}'
+          );
+        }
+      saveBackfillBreakpoint('interactions_${key.pkHex}', now);  
         
-        // Always fetch 3 days of interactions to ensure comprehensive sync
-        // This is important for devices that have been offline for extended periods
-        const since = threeDaysAgo;
-        
-        logger.info(`开始回填互动事件 (最近3天): since=${new Date(since * 1000).toLocaleString()}`);
         
         // Fetch using inbox (#p) and outbox (authors) filters
         // No longer using #e to avoid privacy issues
@@ -730,18 +730,18 @@ export default defineComponent({
         }
         interactionsSub = null;
         
-        // Subscribe to interactions (kind 24243)
+        // Subscribe to interactions (kind 8965)
         try {
           // Subscribe to two types of interactions for comprehensive coverage:
           // 1. Inbox: Interactions where user is tagged (#p) - for notifications
           // 2. Outbox: Interactions authored by user - for cross-device sync
           const interactionFilters = [
             {
-              kinds: [24243],
+              kinds: [8965],
               "#p": [keys.pkHex] // Inbox: interactions targeted at us
             },
             {
-              kinds: [24243],
+              kinds: [8965],
               authors: [keys.pkHex] // Outbox: our own interactions
             }
           ];
@@ -749,9 +749,27 @@ export default defineComponent({
           interactionsSub = subscribe(relays, interactionFilters);
           
           interactionsSub.on("event", async (evt: any) => {
-            await interactions.processInteractionEvent(evt, keys.pkHex);
-          });
-          
+           // ① 只处理互动事件
+           if (evt.kind !== 8965) return;
+
+           // ② 确保 key 已就绪（PWA 这里很关键）
+           if (!keys.pkHex) {
+           logger.warn("[互动事件] 收到但 pkHex 未就绪，跳过", evt.id);
+           return;
+           }
+
+           // ③ 打点日志（现在你最需要的是“确定有没有进来”）
+           logger.info(
+             "[互动事件] Home.vue 收到",
+             evt.id.slice(0, 8),
+             "from",
+             evt.pubkey.slice(0, 8)
+           );
+
+           // ④ 真正交给 interactions 处理
+           await interactions.processInteractionEvent(evt, keys.pkHex);
+         });
+
           logger.debug("已订阅互动事件 (收件箱+发件箱)");
         } catch (e) {
           logger.warn("subscribe to interactions failed", e);
