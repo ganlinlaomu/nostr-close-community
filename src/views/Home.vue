@@ -1,25 +1,12 @@
 <template>
   <div 
     class="home-container"
-    @touchstart="handleTouchStart"
-    @touchmove="handleTouchMove"
-    @touchend="handleTouchEnd"
   >
-    <!-- Pull to refresh indicator -->
-    <div 
-      v-if="pullDistance > 0" 
-      class="pull-to-refresh-indicator"
-      :style="{ transform: `translateY(${Math.min(pullDistance, 80)}px)`, opacity: Math.min(pullDistance / 80, 1) }"
-    >
-      <div class="refresh-icon" :class="{ spinning: isRefreshing }">
-        {{ isRefreshing ? '⟳' : '↓' }}
-      </div>
-      <div class="refresh-text">{{ pullToRefreshText }}</div>
-    </div>
+    
     
     <!-- New messages notification - only show on PC/desktop (non-touch devices) -->
     <div 
-      v-if="pendingMessages.length > 0 && pullDistance === 0 && !isTouchDevice" 
+      v-if="pendingMessages.length > 0" 
       class="new-messages-notification" 
       role="button"
       tabindex="0"
@@ -174,117 +161,6 @@ export default defineComponent({
     // State for message time range display
     const messageTimeRange = ref<string>("");
     
-    // Pull-to-refresh state and constants
-    const PULL_THRESHOLD = 60; // Pull distance required to trigger refresh
-    const REFRESH_DISPLAY_HEIGHT = 80; // Height to show while refreshing
-    const REFRESH_ANIMATION_DURATION = 500; // Animation duration in ms
-    
-    const pullDistance = ref(0);
-    const isRefreshing = ref(false);
-    let touchStartY = 0;
-    let activeScrollContainer: HTMLElement | null = null;
-    const appContainer = typeof document !== "undefined" ? document.getElementById("app") : null;
-    
-    // Detect if device supports touch (mobile/tablet) or not (PC/desktop)
-    const isTouchDevice = ref(false);
-    if (typeof window !== 'undefined') {
-      isTouchDevice.value = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    }
-    
-    // Computed property for pull-to-refresh text
-    const pullToRefreshText = computed(() => {
-      if (isRefreshing.value) return '刷新中...';
-      return pullDistance.value > PULL_THRESHOLD ? '松开刷新' : '下拉刷新';
-    });
-    
-    // Helper function to find if an element or its parent is scrollable
-    function findScrollableParent(element: HTMLElement | null): HTMLElement | null {
-      if (!element) return null;
-      
-      // Skip checking HTML and BODY elements as they represent the main viewport
-      const tagName = element.tagName?.toUpperCase();
-      if (tagName === 'HTML' || tagName === 'BODY') {
-        return null;
-      }
-      
-      // Check if current element is scrollable
-      const style = window.getComputedStyle(element);
-      // Check both overflow and overflowY properties
-      const overflowY = style.overflowY;
-      const overflow = style.overflow;
-      const isScrollableY = (overflowY === 'scroll' || overflowY === 'auto' || overflow === 'scroll' || overflow === 'auto') 
-                           && element.scrollHeight > element.clientHeight;
-      
-      if (isScrollableY) {
-        return element;
-      }
-      
-      // Recursively check parent
-      if (element.parentElement) {
-        return findScrollableParent(element.parentElement);
-      }
-      
-      return null;
-    }
-    
-    function handleTouchStart(e: TouchEvent) {
-      // Check if touch is on a scrollable element
-      const target = e.target as HTMLElement;
-      const scrollableParent = findScrollableParent(target);
-      
-      // If touching a nested scrollable element (non-app container), allow its own scroll behavior
-      if (scrollableParent && scrollableParent !== appContainer) {
-        touchStartY = 0;
-        pullDistance.value = 0;
-        activeScrollContainer = null;
-        return;
-      }
-      
-      // Use the app container as the primary scroll container (mobile uses #app for scrolling)
-      activeScrollContainer = scrollableParent || appContainer;
-      
-      // Only start pull-to-refresh if at the top of the scroll container
-      const scrollTop = activeScrollContainer 
-        ? activeScrollContainer.scrollTop 
-        : (window.pageYOffset || document.documentElement.scrollTop);
-      if (scrollTop === 0 && !isRefreshing.value) {
-        touchStartY = e.touches[0].clientY;
-      } else {
-        // Reset if not at the top
-        touchStartY = 0;
-        pullDistance.value = 0;
-        activeScrollContainer = null;
-      }
-    }
-    
-    function handleTouchMove(e: TouchEvent) {
-      if (touchStartY === 0 || isRefreshing.value) return;
-      
-      const scrollTop = activeScrollContainer 
-        ? activeScrollContainer.scrollTop 
-        : (window.pageYOffset || document.documentElement.scrollTop);
-      // If user scrolls down inside the container, cancel pull-to-refresh
-      if (scrollTop > 0) {
-        touchStartY = 0;
-        pullDistance.value = 0;
-        activeScrollContainer = null;
-        return;
-      }
-      
-      const touchY = e.touches[0].clientY;
-      const distance = touchY - touchStartY;
-      
-      // Only activate pull-to-refresh when pulling down (distance > 0) AND at the top
-      if (distance > 0 && scrollTop === 0) {
-        // Prevent default scrolling while pulling down
-        e.preventDefault();
-        // Apply resistance to pull distance for better feel
-        pullDistance.value = Math.min(distance * 0.5, 100);
-      } else {
-        // Reset if moving up or not pulling
-        pullDistance.value = 0;
-      }
-    }
     
     function showPendingMessages() {
       if (pendingMessages.value.length > 0) {
@@ -315,35 +191,7 @@ export default defineComponent({
       }
     }
     
-    async function handleTouchEnd() {
-      if (pullDistance.value > PULL_THRESHOLD && !isRefreshing.value) {
-        isRefreshing.value = true;
-        pullDistance.value = REFRESH_DISPLAY_HEIGHT; // Set to fixed position while refreshing
-        
-        try {
-          // Move pending messages to displayed messages
-          showPendingMessages();
-          
-          // Restart subscription to refresh data
-          await startSub();
-        } catch (e) {
-          logger.error("Refresh failed", e);
-        } finally {
-          // Animate out
-          setTimeout(() => {
-            isRefreshing.value = false;
-            pullDistance.value = 0;
-            touchStartY = 0;
-            activeScrollContainer = null;
-          }, REFRESH_ANIMATION_DURATION);
-        }
-      } else {
-        // Animate back to zero
-        pullDistance.value = 0;
-        touchStartY = 0;
-        activeScrollContainer = null;
-      }
-    }
+    
     
     function updateLocalRefs() {
       // Sort messages by timestamp descending (newest first)
@@ -964,14 +812,9 @@ export default defineComponent({
       replyingToAuthor,
       messageTimeRange,
       // Pull-to-refresh
-      pullDistance,
       isRefreshing,
-      pullToRefreshText,
-      handleTouchStart,
-      handleTouchMove,
-      handleTouchEnd,
       showPendingMessages,
-      isTouchDevice
+      
     };
   }
 });
