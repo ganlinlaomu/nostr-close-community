@@ -287,32 +287,36 @@ export const useInteractionsStore = defineStore("interactions", {
      * Uses standalone decode helper to avoid 'this' binding issues
      */
     async processInteractionEvent(evt: any, myPubkey: string) {
-      try {
-        this.processedEvents.add(evt.id);
-  
-        
-        // Decode the interaction using standalone helper
-        const key = useKeyStore();
-        const interaction = await decodeInteractionEvent(evt, myPubkey, key);
-        
-        if (!interaction) {
-          // Decoding failed or event not relevant - already logged by helper
-          return;
-        }
-        // 👇 只有成功解密 + 即将写入 store，才算真正 processed
-        this.processedEvents.add(evt.id); 
-        // Add to state
-        this._addInteraction(interaction.messageId, interaction);
-        logger.info(`[互动事件] 已写入store: ${interaction.type} on messageId=${interaction.messageId.slice(0, 8)}... by ${interaction.author.slice(0, 8)}...`);
-        
-        // Update lastSyncedAt to track the most recent event
-        if (evt.created_at && evt.created_at > this.lastSyncedAt) {
-          this.lastSyncedAt = evt.created_at;
-        }
-      } catch (e) {
-        logger.warn(`[互动事件] 处理事件失败 ${evt.id}`, e);
+     try {
+     // ⭐⭐⭐【关键】入口第一行做硬去重
+      if (this.processedEvents.has(evt.id)) {
+        return;
+       }
+
+      const key = useKeyStore();
+      const interaction = await decodeInteractionEvent(evt, myPubkey, key);
+
+      if (!interaction) {
+        return;
       }
-    },
+
+      // ⭐ 只有「成功解码 + 即将写入」才标记为 processed
+      this.processedEvents.add(evt.id);
+
+      this._addInteraction(interaction.messageId, interaction);
+
+      logger.info(
+        `[互动事件] 已写入store: ${interaction.type} on messageId=${interaction.messageId.slice(0, 8)}... by ${interaction.author.slice(0, 8)}...`
+      );
+
+      if (evt.created_at && evt.created_at > this.lastSyncedAt) {
+        this.lastSyncedAt = evt.created_at;
+       }
+      } catch (e) {
+      logger.warn(`[互动事件] 处理事件失败 ${evt.id}`, e);
+     }
+   },
+
     
     /**
      * Private: Add interaction to state
