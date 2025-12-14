@@ -811,8 +811,6 @@ export default defineComponent({
       replyingTo,
       replyingToAuthor,
       messageTimeRange,
-      // Pull-to-refresh
-      isRefreshing,
       showPendingMessages,
       
     };
