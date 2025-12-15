@@ -135,7 +135,6 @@ export default defineComponent({
     const msgs = useMessagesStore();
     const interactions = useInteractionsStore();
     const readyForPending = ref(false);
-    const interactionsBackfilling = ref(true);
 
     const status = ref("未连接");
     let sub: any = null;
@@ -577,6 +576,7 @@ export default defineComponent({
             `pull from three days: since=${new Date(since * 1000).toLocaleString()}`
           );
         }
+      saveBackfillBreakpoint(`interactions_${keys.pkHex}`, now);  
         
         
         // Fetch using inbox (#p) and outbox (authors) filters
@@ -590,8 +590,6 @@ export default defineComponent({
             logger.debug(`回填互动进度: 获取 ${fetched} 条, 处理 ${processed} 条`);
           }
         });
-        interactionsBackfilling.value = false;
-
         saveBackfillBreakpoint(`interactions_${keys.pkHex}`, now); 
         logger.info("互动事件回填完成");
         
@@ -602,9 +600,8 @@ export default defineComponent({
 
     async function startSub() {
       try {
-        interactionsBackfilling.value = true;
         logger.info("开始订阅流程");
-        await friends.load();
+        friends.load().catch(console.error);
         logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
         
         if (!keys.isLoggedIn) {
@@ -615,6 +612,7 @@ export default defineComponent({
           msgs.load(),
           interactions.load()
         ]);
+        readyForPending.value = true;
         
         // On initial load, show all messages directly
         messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
@@ -623,7 +621,6 @@ export default defineComponent({
           displayedMessages.value = [...messagesRef.value];
           isInitialLoad.value = false;
           logger.info(`初始加载: 显示 ${displayedMessages.value.length} 条消息`);
-          readyForPending.value = true;
         } else {
           // Subsequent refresh - new messages go to pending
           updateLocalRefs();
@@ -686,7 +683,6 @@ export default defineComponent({
           sub = adapterSub;
           adapterSub.on("event", async (evt: any) => {
             try {
-              if (!readyForPending.value) return;
               if (!friendSet.has(evt.pubkey)) return;
               let payload: any;
               try { 
@@ -766,15 +762,12 @@ export default defineComponent({
               since: interactionBreakpoint + 1 // ⭐ outbox
             }
           ];
- 
+          
           interactionsSub = subscribe(relays, interactionFilters);
           
           interactionsSub.on("event", async (evt: any) => {
            // ① 只处理互动事件
            if (evt.kind !== 8965) return;
-           if (interactionsBackfilling.value) {
-             return;
-           }
 
            // ② 确保 key 已就绪（PWA 这里很关键）
            if (!keys.pkHex) {
@@ -805,13 +798,6 @@ export default defineComponent({
     }
 
     onMounted(() => { 
-      // ✅ 直接用本地 inbox 画首屏（不等任何 await）
-      messagesRef.value = [...msgs.inbox].sort(
-        (a, b) => (b.created_at || 0) - (a.created_at || 0)
-      );
-      displayedMessages.value = [...messagesRef.value];
-      isInitialLoad.value = false;
-
       startSub().catch(console.error); 
     });
 
