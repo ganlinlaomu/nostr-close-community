@@ -609,15 +609,17 @@ export default defineComponent({
     async function startSub() {
       try {
         logger.info("开始订阅流程");
-        await friends.load();
+        friends.load().catch(console.error);
         logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
         
         if (!keys.isLoggedIn) {
           status.value = "未登录";
           return;
         }
-        await msgs.load();
-        await interactions.load(); // Load interactions
+        await Promise.all([
+          msgs.load(),
+          interactions.load()
+        ]);
         readyForPending.value = true;
         
         // On initial load, show all messages directly
@@ -649,7 +651,8 @@ export default defineComponent({
         
         // First, backfill historical messages
         logger.info("开始回填历史消息...");
-        await backfillMessages(friendSet, relays);
+        // await backfillMessages(friendSet, relays);
+        backfillMessages(friendSet, relays).catch(console.error);
         // ⭐ 从本地取回填断点（关键）
         const messageBreakpoint =
         loadBackfillBreakpoint(`messages_${keys.pkHex}`) || 0;
@@ -730,7 +733,8 @@ export default defineComponent({
         
         // Backfill historical interactions before subscribing to real-time events
         // Now uses inbox (#p) and outbox (authors) filters for privacy compliance
-        await backfillInteractions(relays);
+        // await backfillInteractions(relays);
+        backfillInteractions(relays).catch(console.error);
         
         // Close existing interactions subscription before creating a new one
         try {
@@ -801,8 +805,8 @@ export default defineComponent({
       }
     }
 
-    onMounted(async () => { 
-      await startSub(); 
+    onMounted(() => { 
+      startSub().catch(console.error); 
     });
 
     // Watch for changes to msgs.inbox to handle optimistic UI updates
