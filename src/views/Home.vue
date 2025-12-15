@@ -19,14 +19,6 @@
       <span class="notification-text">{{ pendingMessages.length }} 条新消息</span>
     </div>
 
-    <div class="card">
-    
-    
-      <div class="small" style="margin-top:6px;">订阅状态: {{ status }}</div>
-      <div v-if="messageTimeRange" class="small" style="margin-top:4px; color: #94a3b8;">
-        仅订阅三天内新消息: {{ messageTimeRange }}
-      </div>
-    </div>
 
     <div class="card">
       <h4 style="margin: 0 0 12px 0;">好友动态</h4>

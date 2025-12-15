@@ -7,15 +7,26 @@
         <p>與家人同樂</p>
       </div>
 
+      <!-- Login Actions -->
       <div class="login-actions">
         <!-- Browser Extension Login (NIP-07) -->
-        <button class="btn" @click="loginWithExtension" aria-label="Login with browser extension">
+        <button
+          class="btn"
+          @click="loginWithExtension"
+          :disabled="loading"
+          aria-label="Login with browser extension"
+        >
           <span class="btn-icon" role="img" aria-label="plugin icon">🔌</span>
-          浏览器插件登录
+          {{ loading ? "处理中..." : "浏览器插件登录" }}
         </button>
 
-        <!-- Bunker Remote Signer Login (NIP-46) -->
-        <button class="btn" @click="showBunker = true" aria-label="Login with remote signer">
+        <!-- Bunker Login -->
+        <button
+          class="btn"
+          @click="showBunker = true"
+          :disabled="loading"
+          aria-label="Login with remote signer"
+        >
           <span class="btn-icon" role="img" aria-label="lock icon">🔐</span>
           远程签名器 (Bunker)
         </button>
@@ -24,24 +35,38 @@
       <!-- Bunker Login Form -->
       <div v-if="showBunker" class="form card" style="margin-top:12px;">
         <label>Bunker URL 或 NIP-05</label>
-        <input 
-          v-model="bunkerInput" 
-          class="input" 
-          placeholder="bunker://... 或 name@domain.com" 
+
+        <input
+          ref="bunkerInputEl"
+          v-model="bunkerInput"
+          class="input"
+          placeholder="bunker://... 或 name@domain.com"
+          :disabled="loading"
+          @keyup.enter="doLoginBunker"
         />
-        <div class="small" style="margin-top:8px; text-align: left;">
-          输入 bunker:// URL 或 NIP-05 地址 (例如: user@nsec.app)
+
+        <div class="small" style="margin-top:8px; text-align:left;">
+          输入 bunker:// URL 或 NIP-05 地址（如 user@nsec.app）
         </div>
+
         <div style="margin-top:12px;">
-          <button 
-            class="btn" 
-            @click="doLoginBunker" 
+          <button
+            class="btn"
+            @click="doLoginBunker"
             :disabled="loading"
             :aria-label="loading ? 'Connecting to remote signer' : 'Connect to remote signer'"
           >
-            {{ loading ? '连接中...' : '连接' }}
+            {{ loading ? "连接中..." : "连接" }}
           </button>
-          <button class="btn btn-cancel" style="margin-left:8px" @click="showBunker = false" :disabled="loading">取消</button>
+
+          <button
+            class="btn btn-cancel"
+            style="margin-left:8px"
+            @click="cancelBunker"
+            :disabled="loading"
+          >
+            取消
+          </button>
         </div>
       </div>
 
@@ -52,15 +77,15 @@
 
       <!-- Help Text -->
       <div class="help-text" style="margin-top:24px;">
-      
-       
+        <p><strong>浏览器插件</strong>：适合桌面用户（NIP-07）</p>
+        <p><strong>Bunker</strong>：适合手机 / PWA / 跨设备（NIP-46）</p>
       </div>
     </div>
   </div>
 </template>
 
 <script lang="ts">
-import { defineComponent, ref } from "vue";
+import { defineComponent, ref, onMounted, watch, nextTick } from "vue";
 import { useKeyStore } from "@/stores/keys";
 import { useRouter } from "vue-router";
 
@@ -74,46 +99,97 @@ export default defineComponent({
     const errorMessage = ref("");
     const loading = ref(false);
 
-    const loginWithExtension = async () => {
+    const bunkerInputEl = ref<HTMLInputElement | null>(null);
+
+    /* ---------------------------
+     * 自动跳转（已登录）
+     * --------------------------- */
+    onMounted(() => {
+      if (ks.isLoggedIn) {
+        router.replace("/");
+      }
+    });
+
+    /* ---------------------------
+     * Bunker 展开自动 focus
+     * --------------------------- */
+    watch(showBunker, async (v) => {
+      if (v) {
+        await nextTick();
+        bunkerInputEl.value?.focus();
+      }
+    });
+
+    /* ---------------------------
+     * 通用登录处理器
+     * --------------------------- */
+    async function handleLogin(fn: () => Promise<void>) {
       errorMessage.value = "";
       loading.value = true;
-      
+
       try {
-        await ks.loginWithExtension();
-        router.push("/");
+        await fn();
+
+        if (!ks.isLoggedIn) {
+          throw new Error("登录未完成");
+        }
+
+        router.replace("/");
       } catch (e: any) {
-        errorMessage.value = e.message || "浏览器插件登录失败";
+        if (e?.name === "TimeoutError") {
+          errorMessage.value = "远程签名器无响应";
+        } else if (e?.message?.includes("reject")) {
+          errorMessage.value = "用户拒绝签名";
+        } else {
+          errorMessage.value = e?.message || "登录失败";
+        }
       } finally {
         loading.value = false;
       }
-    };
+    }
 
-    const doLoginBunker = async () => {
-      if (!bunkerInput.value.trim()) {
+    /* ---------------------------
+     * 登录方式
+     * --------------------------- */
+    const loginWithExtension = () =>
+      handleLogin(() => ks.loginWithExtension());
+
+    function isValidBunkerInput(v: string) {
+      return v.startsWith("bunker://") || v.includes("@");
+    }
+
+    const doLoginBunker = () => {
+      const v = bunkerInput.value.trim();
+
+      if (!v) {
         errorMessage.value = "请输入 Bunker URL 或 NIP-05 地址";
         return;
       }
 
-      errorMessage.value = "";
-      loading.value = true;
-
-      try {
-        await ks.loginWithBunker(bunkerInput.value);
-        router.push("/");
-      } catch (e: any) {
-        errorMessage.value = e.message || "Bunker 登录失败";
-      } finally {
-        loading.value = false;
+      if (!isValidBunkerInput(v)) {
+        errorMessage.value = "格式不正确，请输入 bunker:// 或 NIP-05";
+        return;
       }
+
+      handleLogin(() => ks.loginWithBunker(v));
+    };
+
+    const cancelBunker = () => {
+      if (loading.value) return;
+      showBunker.value = false;
+      bunkerInput.value = "";
+      errorMessage.value = "";
     };
 
     return {
       showBunker,
       bunkerInput,
+      bunkerInputEl,
       errorMessage,
       loading,
       loginWithExtension,
-      doLoginBunker
+      doLoginBunker,
+      cancelBunker
     };
   }
 });
@@ -121,34 +197,38 @@ export default defineComponent({
 
 <style scoped>
 .login-card {
-  min-height: calc(100vh - 88px); /* leave room for bottom nav */
+  min-height: calc(100vh - 88px);
   display: flex;
   align-items: center;
   justify-content: center;
 }
+
 .login-center {
   width: 100%;
   max-width: 420px;
   text-align: center;
   padding: 24px;
 }
+
 .title {
   font-size: 48px;
   margin: 0;
   letter-spacing: 6px;
 }
+
 .login-info {
   margin-top: 12px;
   font-size: 16px;
   color: #666;
 }
+
 .login-actions {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  justify-content: center;
   margin-top: 24px;
 }
+
 .login-actions .btn {
   width: 100%;
   padding: 12px;
@@ -158,6 +238,7 @@ export default defineComponent({
   justify-content: center;
   gap: 8px;
 }
+
 :is(.login-actions .btn, .form .btn) {
   background: transparent;
   color: #3b82f6;
@@ -165,25 +246,36 @@ export default defineComponent({
   border-radius: 8px;
   transition: all 0.2s ease;
 }
-:is(.login-actions .btn, .form .btn):hover {
+
+:is(.login-actions .btn, .form .btn):hover:not(:disabled) {
   background: #3b82f6;
   color: white;
   transform: translateY(-1px);
 }
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .btn-icon {
   font-size: 20px;
 }
+
 .btn-cancel {
   color: #ef4444;
   border-color: #ef4444;
 }
-.btn-cancel:hover {
+
+.btn-cancel:hover:not(:disabled) {
   background: #ef4444;
   color: white;
 }
+
 .form .input {
   margin-top: 8px;
 }
+
 .error-message {
   background: #fee2e2;
   color: #991b1b;
@@ -191,16 +283,20 @@ export default defineComponent({
   border-radius: 8px;
   border: 1px solid #fca5a5;
 }
+
 .help-text {
   font-size: 14px;
   color: #666;
   text-align: left;
   line-height: 1.6;
 }
+
 .help-text p {
   margin: 8px 0;
 }
+
 .help-text strong {
   color: #333;
 }
 </style>
+
