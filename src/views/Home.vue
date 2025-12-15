@@ -604,7 +604,7 @@ export default defineComponent({
       try {
         interactionsBackfilling.value = true;
         logger.info("开始订阅流程");
-        friends.load().catch(console.error);
+        await friends.load();
         logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
         
         if (!keys.isLoggedIn) {
@@ -615,7 +615,6 @@ export default defineComponent({
           msgs.load(),
           interactions.load()
         ]);
-        readyForPending.value = true;
         
         // On initial load, show all messages directly
         messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
@@ -624,6 +623,7 @@ export default defineComponent({
           displayedMessages.value = [...messagesRef.value];
           isInitialLoad.value = false;
           logger.info(`初始加载: 显示 ${displayedMessages.value.length} 条消息`);
+          readyForPending.value = true;
         } else {
           // Subsequent refresh - new messages go to pending
           updateLocalRefs();
@@ -686,6 +686,7 @@ export default defineComponent({
           sub = adapterSub;
           adapterSub.on("event", async (evt: any) => {
             try {
+              if (!readyForPending.value) return;
               if (!friendSet.has(evt.pubkey)) return;
               let payload: any;
               try { 
@@ -804,6 +805,13 @@ export default defineComponent({
     }
 
     onMounted(() => { 
+      // ✅ 直接用本地 inbox 画首屏（不等任何 await）
+      messagesRef.value = [...msgs.inbox].sort(
+        (a, b) => (b.created_at || 0) - (a.created_at || 0)
+      );
+      displayedMessages.value = [...messagesRef.value];
+      isInitialLoad.value = false;
+
       startSub().catch(console.error); 
     });
 
