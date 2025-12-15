@@ -135,6 +135,7 @@ export default defineComponent({
     const msgs = useMessagesStore();
     const interactions = useInteractionsStore();
     const readyForPending = ref(false);
+    const interactionsBackfilling = ref(true);
 
     const status = ref("未连接");
     let sub: any = null;
@@ -576,7 +577,6 @@ export default defineComponent({
             `pull from three days: since=${new Date(since * 1000).toLocaleString()}`
           );
         }
-      saveBackfillBreakpoint(`interactions_${keys.pkHex}`, now);  
         
         
         // Fetch using inbox (#p) and outbox (authors) filters
@@ -590,6 +590,8 @@ export default defineComponent({
             logger.debug(`回填互动进度: 获取 ${fetched} 条, 处理 ${processed} 条`);
           }
         });
+        interactionsBackfilling.value = false;
+
         saveBackfillBreakpoint(`interactions_${keys.pkHex}`, now); 
         logger.info("互动事件回填完成");
         
@@ -762,7 +764,8 @@ export default defineComponent({
               since: interactionBreakpoint + 1 // ⭐ outbox
             }
           ];
-          
+          const interactionsBackfilling = ref(true);
+ 
           interactionsSub = subscribe(relays, interactionFilters);
           
           interactionsSub.on("event", async (evt: any) => {
