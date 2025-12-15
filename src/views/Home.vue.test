@@ -765,7 +765,25 @@ updateMessageTimeRange();
     // Watch for changes to msgs.inbox to handle optimistic UI updates
     // This ensures own messages added via PostEditorModal appear immediately
     // Using 'post' flush to batch updates and run after component updates
-  
+    watch(
+      () => msgs.inbox.length,
+      () => {
+        if (!keys.pkHex) return;
+
+      // 已经显示过的消息 id
+        const shown = new Set(displayedMessages.value.map(m => m.id));
+
+        for (const m of msgs.inbox) {
+         // 只处理「自己发的」且「还没显示的」
+         if (m.pubkey === keys.pkHex && !shown.has(m.id)) {
+           insertSorted(displayedMessages.value, m);
+        }
+      }
+
+      updateMessageTimeRange();
+    }
+  );
+
 
     onBeforeUnmount(() => {
       if (sub) {
