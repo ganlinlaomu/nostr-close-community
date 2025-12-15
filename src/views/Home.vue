@@ -602,6 +602,7 @@ export default defineComponent({
 
     async function startSub() {
       try {
+        interactionsBackfilling.value = true;
         logger.info("开始订阅流程");
         friends.load().catch(console.error);
         logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
@@ -764,13 +765,15 @@ export default defineComponent({
               since: interactionBreakpoint + 1 // ⭐ outbox
             }
           ];
-          const interactionsBackfilling = ref(true);
  
           interactionsSub = subscribe(relays, interactionFilters);
           
           interactionsSub.on("event", async (evt: any) => {
            // ① 只处理互动事件
            if (evt.kind !== 8965) return;
+           if (interactionsBackfilling.value) {
+             return;
+           }
 
            // ② 确保 key 已就绪（PWA 这里很关键）
            if (!keys.pkHex) {
