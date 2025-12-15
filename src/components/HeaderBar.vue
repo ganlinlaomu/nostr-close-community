@@ -1,7 +1,7 @@
 <template>
 
   <!-- bottom nav moved into Headbar file for simplicity; only shown when logged in -->
-  <nav v-if="isLoggedIn" class="bottom-nav">
+  <nav v-show="isLoggedIn" class="bottom-nav">
     <router-link class="nav-item" to="/">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>

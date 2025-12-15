@@ -142,6 +142,7 @@ export default defineComponent({
     const keys = useKeyStore();
     const msgs = useMessagesStore();
     const interactions = useInteractionsStore();
+    const readyForPending = ref(false);
 
     const status = ref("未连接");
     let sub: any = null;
@@ -202,7 +203,7 @@ export default defineComponent({
       const pendingIds = new Set(pendingMessages.value.map(m => m.id));
       const newMessages = messagesRef.value.filter(m => !displayedIds.has(m.id) && !pendingIds.has(m.id));
       
-      if (newMessages.length > 0) {
+      if (newMessages.length > 0 && readyForPending.value) {
         // Separate own messages from others' messages using filter for better readability
         const ownMessages: InboxItem[] = newMessages.filter(msg => msg.pubkey === keys.pkHex);
         const othersMessages: InboxItem[] = newMessages.filter(msg => msg.pubkey !== keys.pkHex);
@@ -597,7 +598,7 @@ export default defineComponent({
             logger.debug(`回填互动进度: 获取 ${fetched} 条, 处理 ${processed} 条`);
           }
         });
-        
+        saveBackfillBreakpoint(`interactions_${keys.pkHex}`, now); 
         logger.info("互动事件回填完成");
         
       } catch (e) {
@@ -617,6 +618,7 @@ export default defineComponent({
         }
         await msgs.load();
         await interactions.load(); // Load interactions
+        readyForPending.value = true;
         
         // On initial load, show all messages directly
         messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
