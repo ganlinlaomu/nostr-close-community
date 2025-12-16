@@ -433,7 +433,7 @@ export default defineComponent({
         }
         
         const { signed } = await posts.publishNip44PerMessage(recips, fullContent);
-        try { await msgs.load(); msgs.addInbox({ id: signed.id, pubkey: keys.pkHex, created_at: signed.created_at, content: fullContent }); } catch {}
+        try { await msgs.load(); msgs.addInbox({ id: signed.id, pubkey: keys.pkHex, created_at: signed.created_at, content: fullContent,myGroups: allFriends.value ? ["全部好友"] : selectedGroups.value.slice() }); } catch {}
         ui.addToast("发送成功", 1200, "success");
         setTimeout(()=>{ visible.value = false; router.replace("/"); }, 220);
       } catch (e:any) {
