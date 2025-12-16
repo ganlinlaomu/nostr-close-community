@@ -47,29 +47,34 @@
               <span class="action-text">{{ getCommentCount(m.id) }}</span>
             </button>
             <!-- 📤 发送对象（作者自己可见） -->
-            <div
-            v-if="m.pubkey === myPkHex && getMyGroupsSimple(m)"
-            class="send-info-wrapper"
-            >
-              <button
-                class="action-btn"
-                @click.stop="m._showGroups = !m._showGroups"
-                title="查看发送对象"
-              >
-                <span class="action-icon">📤</span>
-                <span class="action-text">{{ getMyGroupsSimple(m).length }}</span>
-               </button>
+<div
+  v-if="m.pubkey === myPkHex"
+  class="send-info-wrapper"
+>
+  <template v-if="getMyGroupsSimple(m)">
+    <button
+      class="action-btn"
+      @click.stop="m._showGroups = !m._showGroups"
+      title="查看发送对象"
+    >
+      <span class="action-icon">📤</span>
+      <span class="action-text">
+        {{ getMyGroupsSimple(m).length }}
+      </span>
+    </button>
 
-               <div v-if="m._showGroups" class="send-tooltip">
-                 <div
-                   v-for="g in getMyGroupsSimple(m)"
-                   :key="g.name"
-                   class="send-item"
-                 >
-                  {{ g.name }}（{{ g.count }}）
-               </div>
-             </div>
+    <div v-if="m._showGroups" class="send-tooltip">
+      <div
+        v-for="g in getMyGroupsSimple(m)"
+        :key="g.name"
+        class="send-item"
+      >
+        {{ g.name }}（{{ g.count }}）
+      </div>
+    </div>
+  </template>
 </div>
+
 
           </div>
 
