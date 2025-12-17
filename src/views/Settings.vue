@@ -21,7 +21,7 @@
           <input 
             v-model="newRelay" 
             class="input" 
-            placeholder="输入 relay 地址（例如：wss://relay.example.com）"
+            placeholder="例如：wss://relay.example.com"
             @keyup.enter="addRelay"
           />
           <button class="btn btn-primary" @click="addRelay">添加</button>
@@ -81,7 +81,7 @@
           <input 
             v-model="newBlossomUrl" 
             class="input" 
-            placeholder="输入 Blossom 图床地址（例如：https://blossom.example/upload）"
+            placeholder="例如：https://blossom.example"
             @keyup.enter="addBlossom"
           />
           <button class="btn btn-primary" @click="addBlossom">添加</button>
