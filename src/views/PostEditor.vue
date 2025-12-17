@@ -322,6 +322,15 @@ async function resizeImageFile(
   if (Math.max(width, height) <= maxSize) {
     bitmap.close();
     return file;
+  console.log(
+  "resize:",
+  width, "x", height,
+  "→",
+  targetW, "x", targetH,
+  "size:",
+  (file.size / 1024).toFixed(1), "KB"
+);
+
   }
 
   const scale = maxSize / Math.max(width, height);
