@@ -1,7 +1,7 @@
 <template>
   <div class="card login-card">
     <div class="login-center">
-      <h1 class="title">Share</h1>
+      <h1 class="title">share</h1>
 
       <div class="login-info">
         <p>with friends</p> 
