@@ -15,6 +15,20 @@
 //   import { uploadImageToBlossom, getBlossomConfig } from "@/utils/blossom";
 //   await uploadImageToBlossom(file, { signEvent: async evt => signedEvt, onProgress(p){}, timeoutMs: 60000 })
 
+function normalizeBlossomUploadUrl(input: string): string {
+  let url = input.trim();
+
+  // 去掉末尾 /
+  url = url.replace(/\/+$/, "");
+
+  // 如果已经是 /upload，直接返回
+  if (url.endsWith("/upload")) return url;
+
+  // 否则统一补 /upload
+  return url + "/upload";
+}
+
+
 export async function getBlossomConfig(): Promise<{
   url: string | null;
   token: string | null;
@@ -22,10 +36,11 @@ export async function getBlossomConfig(): Promise<{
   authHeaderName: string; // header name to send signed auth event; default "Authorization"
 }> {
   try {
-    const url = (localStorage.getItem("blossom_upload_url") || "").trim();
+    const rawUrl = (localStorage.getItem("blossom_upload_url") || "").trim();
     const token = (localStorage.getItem("blossom_token") || "").trim();
     const timeoutMs = parseInt(localStorage.getItem("blossom_timeout_ms") || "") || 60000;
     const authHeaderName = (localStorage.getItem("blossom_auth_header") || "Authorization").trim() || "Authorization";
+    const url = rawUrl ? normalizeBlossomUploadUrl(rawUrl) : null;
     return { url: url || null, token: token || null, timeoutMs, authHeaderName };
   } catch {
     return { url: null, token: null, timeoutMs: 60000, authHeaderName: "Authorization" };
