@@ -17,7 +17,7 @@
           aria-label="Login with browser extension"
         >
           <span class="btn-icon" role="img" aria-label="plugin icon">🔌</span>
-          {{ loading ? "处理中..." : "浏览器插件登录" }}
+          {{ loading ? "处理中..." : "插件登录" }}
         </button>
 
         <!-- Bunker Login -->
@@ -28,7 +28,7 @@
           aria-label="Login with remote signer"
         >
           <span class="btn-icon" role="img" aria-label="lock icon">🔐</span>
-          远程签名器 (Bunker)
+          Bunker登录
         </button>
       </div>
 
