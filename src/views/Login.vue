@@ -4,7 +4,7 @@
       <h1 class="title">知己>zhi 
 
       <div class="login-info">
-        <p>真正的朋友圈>zp>
+        <p>真正的朋友圈<p>
       </div>
 
       <!-- Login Actions -->
