@@ -322,6 +322,12 @@ async function resizeImageFile(
   if (Math.max(width, height) <= maxSize) {
     bitmap.close();
     return file;
+
+  }
+
+  const scale = maxSize / Math.max(width, height);
+  const targetW = Math.round(width * scale);
+  const targetH = Math.round(height * scale);
   console.log(
   "resize:",
   width, "x", height,
@@ -330,12 +336,6 @@ async function resizeImageFile(
   "size:",
   (file.size / 1024).toFixed(1), "KB"
 );
-
-  }
-
-  const scale = maxSize / Math.max(width, height);
-  const targetW = Math.round(width * scale);
-  const targetH = Math.round(height * scale);
 
   const canvas = document.createElement("canvas");
   canvas.width = targetW;
