@@ -17,6 +17,11 @@
 
 function normalizeBlossomUploadUrl(input: string): string {
   let url = input.trim();
+  
+  // 1️⃣ 如果没写 scheme，默认补 https://
+  if (!/^https?:\/\//i.test(url)) {
+    url = "https://" + url;
+  }
 
   // 去掉末尾 /
   url = url.replace(/\/+$/, "");
