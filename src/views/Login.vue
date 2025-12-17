@@ -1,10 +1,10 @@
 <template>
   <div class="card login-card">
     <div class="login-center">
-      <h1 class="title">日白>chui
+      <h1 class="title">日白</p>
 
       <div class="login-info">
-        <p>与家人朋友分享>yp>
+        <p>与家人朋友分享></p>
       </div>
 
       <!-- Login Actions -->
