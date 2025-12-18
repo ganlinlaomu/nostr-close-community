@@ -141,6 +141,7 @@ import { usePostsStore } from "@/stores/posts";
 import { useMessagesStore } from "@/stores/messages";
 import { useUIStore } from "@/stores/ui";
 import { uploadImageToBlossom, getBlossomConfig } from "@/utils/blossom";
+import { resizeImageFile } from "@utils/imageResize";
 
 type UploadItem = {
   id: string;
