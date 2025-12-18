@@ -416,7 +416,12 @@ async function resizeImageFile(
       updateUploadItem(item.id, { status: "uploading", progress: 0, errorShort: undefined, errorDetails: undefined });
 
       try {
-        const descriptor = await uploadImageToBlossom(item.file, {
+        // 👇 关键：上传前 resize
+        const resizedFile = await resizeImageFile(item.file, {
+          maxSize: 1920,
+          quality: 0.82
+       });
+        const descriptor = await uploadImageToBlossom(resizedFile, {
           includeAuthIfRequired: true,
           signEvent: signEventWrapper,
           onProgress: (p:number) => { updateUploadItem(item.id, { progress: p }); }
