@@ -4,7 +4,7 @@
  * - quality: jpeg quality (0~1)
  * - outputType: usually image/jpeg (faster & smaller)
  */
-async function resizeImageFile(
+export async function resizeImageFile(
   file: File,
   {
     maxSize = 1920,
