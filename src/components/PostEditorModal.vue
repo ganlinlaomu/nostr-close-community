@@ -394,7 +394,7 @@ export default defineComponent({
       encryptedFile,
       imageKey
     } = await encryptImageBytes(resizedFile, {
-      postId: currentPostId,      // 当前帖子 id
+      postId,      // 当前帖子 id
       imageIndex: item.index      // 第几张图
     });
 
