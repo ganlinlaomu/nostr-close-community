@@ -473,6 +473,21 @@ export default defineComponent({
         
         const { signed } = await posts.publishNip44PerMessage(recips, fullContent);
         try { await msgs.load(); msgs.addInbox({ id: signed.id, pubkey: keys.pkHex, created_at: signed.created_at, content: fullContent }); } catch {}
+        try {
+  const groupsMeta = allFriends.value
+    ? [{ name: "全部好友", count: recipientsCount.value }]
+    : selectedGroups.value.map(g => ({
+        name: g,
+        count: countByGroup.value[g] || 0
+      }));
+
+  const msgs = useMessagesStore();
+  await msgs.load();
+  msgs.attachLocalMeta?.(signed.id, {
+    groups: groupsMeta,
+    groupCount: groupsMeta.length
+  });
+} catch {}
         ui.addToast("发送成功", 1200, "success");
         onClose();
         // Navigate to home page after modal close animation completes (220ms matches the slide-up-leave-active transition)
