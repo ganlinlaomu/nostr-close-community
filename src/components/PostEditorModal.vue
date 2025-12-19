@@ -113,7 +113,7 @@
             </div>
           </div>
 
-          <!-- 发送和取消按钮移到这里 -->
+          <!-- 发送和取消按钮 -->
           <div class="action-buttons">
             <button class="cancel-btn" @click="onClose">取消</button>
             <button class="send-btn" :disabled="sending || !canSend" @click="onSend">
@@ -145,7 +145,6 @@ import { resizeImageFile } from "@/utils/imageResize";
 import { deriveImageKey } from "@/nostr/crypto";
 import { encryptImageBytes } from "@/utils/imageCrypto";
 
-
 type UploadItem = {
   id: string;
   file: File;
@@ -155,6 +154,7 @@ type UploadItem = {
   url?: string;
   errorShort?: string;
   errorDetails?: string;
+  index?: number;
 };
 
 export default defineComponent({
@@ -174,6 +174,15 @@ export default defineComponent({
     const textarea = ref<HTMLTextAreaElement | null>(null);
     const overlay = ref<HTMLElement | null>(null);
 
+    // 当前帖子 ID
+    const currentPostId = ref<string | null>(null);
+    function initPost(id?: string) {
+      if (id) currentPostId.value = id;
+      else currentPostId.value = crypto.randomUUID();
+      // 可选同步到 store
+      posts.setCurrentPostId && posts.setCurrentPostId(currentPostId.value);
+    }
+
     // recipients selection state
     const allFriends = ref(true);
     const selectedGroups = ref<Array<string>>([]);
@@ -184,7 +193,6 @@ export default defineComponent({
       return hasText || hasUploadedImages;
     });
 
-    // groups derived from friends list
     const groups = computed(() => {
       const list = friends.list || [];
       const order: string[] = [];
@@ -215,7 +223,6 @@ export default defineComponent({
 
     const selectedSet = computed(() => new Set(selectedGroups.value || []));
 
-    // Helper function to extract tags from a friend object
     function getFriendTags(friend: { groups?: string[]; group?: string }): string[] {
       return friend.groups && Array.isArray(friend.groups) && friend.groups.length > 0 
         ? friend.groups 
@@ -227,14 +234,10 @@ export default defineComponent({
       if (list.length === 0) return [] as string[];
       if (allFriends.value) return list.map((f: any) => f.pubkey).filter(Boolean);
       const sel = selectedSet.value;
-      // Collect all matching friends, using Set to ensure each person is counted only once
       const uniquePubkeys = new Set<string>();
       for (const f of list) {
         const tags = getFriendTags(f);
-        // If any tag of the friend is selected, include this friend
-        if (tags.some(tag => sel.has(tag))) {
-          uniquePubkeys.add(f.pubkey);
-        }
+        if (tags.some(tag => sel.has(tag))) uniquePubkeys.add(f.pubkey);
       }
       return Array.from(uniquePubkeys);
     });
@@ -245,320 +248,147 @@ export default defineComponent({
       return set.size;
     });
 
-    function gLabel(g: string) {
-      return g === "未分组" ? "未分组" : g;
-    }
-
-    function toggleAll() {
-      allFriends.value = !allFriends.value;
-      if (allFriends.value) selectedGroups.value = [];
-    }
-
-    function toggleGroup(g: string) {
-      if (allFriends.value) return;
-      const idx = selectedGroups.value.indexOf(g);
-      if (idx === -1) selectedGroups.value.push(g);
-      else selectedGroups.value.splice(idx, 1);
-    }
+    function gLabel(g: string) { return g === "未分组" ? "未分组" : g; }
+    function toggleAll() { allFriends.value = !allFriends.value; if (allFriends.value) selectedGroups.value = []; }
+    function toggleGroup(g: string) { if (allFriends.value) return; const idx = selectedGroups.value.indexOf(g); if (idx === -1) selectedGroups.value.push(g); else selectedGroups.value.splice(idx, 1); }
 
     const uploads = ref<UploadItem[]>([]);
     const uploadEnabled = ref(false);
     const uploadingAny = computed(() => uploads.value.some(u => u.status === "uploading"));
 
-    // Immutable update helper for upload items to ensure Vue reactivity
     function updateUploadItem(id: string, patch: Partial<UploadItem>) {
       const idx = uploads.value.findIndex(u => u.id === id);
       if (idx === -1) return;
       uploads.value.splice(idx, 1, { ...uploads.value[idx], ...patch });
     }
 
-    async function checkBlossom() {
-      const cfg = await getBlossomConfig();
-      uploadEnabled.value = !!cfg.url;
-    }
-
-    function toId() {
-      return Math.random().toString(36).slice(2, 9);
-    }
-
-    function makePreview(file: File): string | null {
-      try { return URL.createObjectURL(file); } catch { return null; }
-    }
+    async function checkBlossom() { const cfg = await getBlossomConfig(); uploadEnabled.value = !!cfg.url; }
+    function toId() { return Math.random().toString(36).slice(2, 9); }
+    function makePreview(file: File): string | null { try { return URL.createObjectURL(file); } catch { return null; } }
 
     function onFilesSelected(e: Event) {
       const input = e.target as HTMLInputElement;
       const files = input.files;
       if (!files || files.length === 0) return;
-      for (let i=0;i<files.length;i++){
+      if (!currentPostId.value) initPost();
+      for (let i = 0; i < files.length; i++) {
         const f = files[i];
-        const item: UploadItem = { id: toId(), file: f, preview: makePreview(f), status: "pending", progress: 0 };
+        const item: UploadItem = { id: toId(), file: f, preview: makePreview(f), status: "pending", progress: 0, index: i };
         uploads.value.push(item);
-        void startUpload(item);
+        void startUpload(item, currentPostId.value!);
       }
       input.value = "";
     }
-    
-  // 加密图片
-    async function encryptImageForPost(
-  file: File,
-  sharedSecret: Uint8Array,
-  postId: string,
-  index: number
-): Promise<Blob> {
-  // 1️⃣ resize
-  const resized = await resizeImageFile(file);
 
-  // 2️⃣ 读取 bytes
-  const buf = await resized.arrayBuffer();
-  const bytes = new Uint8Array(buf);
+    async function startUpload(item: UploadItem, postId: string) {
+      updateUploadItem(item.id, { status: "uploading", progress: 0, errorShort: undefined, errorDetails: undefined });
+      try {
+        const resizedFile = await resizeImageFile(item.file, { maxSize: 1920, quality: 0.82 });
+        const { encryptedFile, imageKey } = await encryptImageBytes(resizedFile, { postId, imageIndex: item.index });
+        const descriptor = await uploadImageToBlossom(encryptedFile, { signEvent: signEventWrapper, onProgress: (p) => updateUploadItem(item.id, { progress: p }) });
+        updateUploadItem(item.id, { url: descriptor.url, status: "done", progress: 100, imageKey });
+      } catch (err: any) {
+        const errorShort = err?.message ?? "上传失败";
+        let errorDetails: string;
+        try { errorDetails = err?.details ? JSON.stringify(err.details, null, 2) : JSON.stringify(err, Object.getOwnPropertyNames(err), 2); } catch { errorDetails = String(err); }
+        updateUploadItem(item.id, { status: "error", errorShort, errorDetails });
+        ui.addToast(`上传失败: ${errorShort}`, 3000, "error");
+      }
+    }
 
-  // 3️⃣ 派生 key
-  const key = await deriveImageKey(sharedSecret, postId, index);
-
-  // 4️⃣ AES-GCM
-  const encrypted = await encryptImageBytes(key, bytes);
-
-  // 5️⃣ 打包成 blob（JSON）
-  const json = JSON.stringify(encrypted);
-
-  return new Blob([json], { type: "application/octet-stream" });
-}
-
-    // signEvent wrapper: prefer keys.signEvent -> window.nostr.signEvent -> nostr-tools v2 local signing (skHex)
     async function signEventWrapper(evt: any) {
-      // prefer keys store
-      if ((keys as any).signEvent && typeof (keys as any).signEvent === "function") {
-        return await (keys as any).signEvent(evt);
-      }
-      // try injected extension
-      if ((window as any).nostr && typeof (window as any).nostr.signEvent === "function") {
-        return await (window as any).nostr.signEvent(evt);
-      }
-      // fallback: local nostr-tools v2 using skHex (not recommended on public sites)
-      if ((keys as any).skHex && typeof (keys as any).skHex === "string" && (keys as any).skHex.trim().length === 64) {
+      if ((keys as any).signEvent) return await (keys as any).signEvent(evt);
+      if ((window as any).nostr?.signEvent) return await (window as any).nostr.signEvent(evt);
+      if ((keys as any).skHex) {
         try {
           const nt = await import("nostr-tools");
           const sk = (keys as any).skHex as string;
-          if (typeof nt.getPublicKey === "function") evt.pubkey = nt.getPublicKey(sk);
-          if (typeof nt.getEventHash === "function") evt.id = nt.getEventHash(evt);
-          // prefer nt.signEvent if available
-          if (typeof nt.signEvent === "function") {
-            const maybe = nt.signEvent(evt, sk);
-            if (maybe && typeof maybe.then === "function") {
-              const res = await maybe;
-              return res;
-            }
-            return maybe;
-          }
-          // try nt.schnorr.sign (v2)
-          if (nt.schnorr && typeof nt.schnorr.sign === "function") {
-            const msgHex = evt.id || nt.getEventHash(evt);
-            const sig = await nt.schnorr.sign(msgHex, sk);
-            evt.sig = typeof sig === "string" ? sig : Array.from(sig).map((b:number)=>b.toString(16).padStart(2,"0")).join("");
-            return evt;
-          }
-          // try nt.secp256k1.sign
-          if (nt.secp256k1 && typeof nt.secp256k1.sign === "function") {
-            const idHex = evt.id || nt.getEventHash(evt);
-            const r = await nt.secp256k1.sign(idHex, sk);
-            if (r && typeof r === "object" && (r as any).signature) evt.sig = (r as any).signature;
-            else if (typeof r === "string") evt.sig = r;
-            else evt.sig = String(r);
-            return evt;
-          }
-          throw new Error("nostr-tools v2 没有可用签名函数");
-        } catch (e: any) {
-          throw new Error("本地签名失败: " + (e && e.message ? e.message : String(e)));
-        }
+          evt.pubkey = nt.getPublicKey(sk);
+          evt.id = nt.getEventHash(evt);
+          if (nt.signEvent) return await nt.signEvent(evt, sk);
+          if (nt.schnorr) { const sig = await nt.schnorr.sign(evt.id, sk); evt.sig = typeof sig === "string" ? sig : Array.from(sig).map((b:number)=>b.toString(16).padStart(2,"0")).join(""); return evt; }
+          if (nt.secp256k1) { const r = await nt.secp256k1.sign(evt.id, sk); evt.sig = (typeof r === "string" ? r : (r as any).signature || String(r)); return evt; }
+        } catch (e:any) { throw new Error("本地签名失败: " + (e?.message||String(e))); }
       }
       throw new Error("未找到可用签名器（keys.signEvent / window.nostr / 本地 skHex）");
     }
 
-    async function startUpload(item: UploadItem) {
-  updateUploadItem(item.id, {
-    status: "uploading",
-    progress: 0,
-    errorShort: undefined,
-    errorDetails: undefined
-  });
-
-  try {
-    // 1️⃣ 上传前 resize（保持不变）
-    const resizedFile = await resizeImageFile(item.file, {
-      maxSize: 1920,
-      quality: 0.82
-    });
-
-    // 2️⃣ 图片加密（新增）
-    const {
-      encryptedFile,
-      imageKey
-    } = await encryptImageBytes(resizedFile, {
-      postId,      // 当前帖子 id
-      imageIndex: item.index      // 第几张图
-    });
-
-    // 3️⃣ 上传「加密后的文件」
-    const descriptor = await uploadImageToBlossom(encryptedFile, {
-      signEvent: signEventWrapper,
-      onProgress: (p: number) => {
-        updateUploadItem(item.id, { progress: p });
-      }
-    });
-
-    // 4️⃣ 保存结果（URL + key）
-    updateUploadItem(item.id, {
-      url: descriptor.url,
-      status: "done",
-      progress: 100,
-      imageKey // ⚠️ 这个 key 后面要进 nostr 事件
-    });
-
-  } catch (err: any) {
-    console.error("upload error raw:", err);
-    const errorShort = err?.message ?? "上传失败";
-    let errorDetails: string;
-    try {
-      errorDetails = err?.details
-        ? JSON.stringify(err.details, null, 2)
-        : JSON.stringify(err, Object.getOwnPropertyNames(err), 2);
-    } catch {
-      errorDetails = String(err);
-    }
-    updateUploadItem(item.id, {
-      status: "error",
-      errorShort,
-      errorDetails
-    });
-    ui.addToast(`上传失败: ${errorShort}`, 3000, "error");
-  }
-}
-
-
-    function insertImageUrl(item: UploadItem) {
-      if (item.status === "done" && item.url) {
-        if (content.value.length>0 && !content.value.endsWith("\n")) content.value += "\n";
-        content.value += `![](${item.url})\n`;
-      }
-    }
-
     function removeUpload(idx:number) {
       const item = uploads.value[idx];
-      if (item && item.preview) { try { URL.revokeObjectURL(item.preview) } catch {} }
+      if (item && item.preview) { try { URL.revokeObjectURL(item.preview); } catch {} }
       uploads.value.splice(idx, 1);
     }
 
     function onClose() {
       ui.closePostEditor();
-      // Clear form data
-      content.value = "";
-      error.value = null;
-      allFriends.value = true;
-      selectedGroups.value = [];
-      // Clear uploads and revoke object URLs
-      for (const item of uploads.value) {
-        if (item.preview) {
-          try { URL.revokeObjectURL(item.preview); } catch {}
-        }
-      }
+      content.value = ""; error.value = null; allFriends.value = true; selectedGroups.value = [];
+      for (const item of uploads.value) { if (item.preview) { try { URL.revokeObjectURL(item.preview) } catch {} } }
       uploads.value = [];
     }
 
-    // Store the element that triggered the modal for focus return
     let triggerElement: HTMLElement | null = null;
 
-    // Initialize when modal opens
     watch(() => ui.showPostEditor, async (show) => {
       if (show) {
-        // Store currently focused element to return focus later
         triggerElement = document.activeElement as HTMLElement;
-        
+        if (!currentPostId.value) initPost();
         await checkBlossom();
-        if (!keys.pkHex) {
-          ui.closePostEditor();
-          ui.addToast("请先登录", 2000, "error");
-          return;
-        }
+        if (!keys.pkHex) { ui.closePostEditor(); ui.addToast("请先登录", 2000, "error"); return; }
         await friends.load();
         await msgs.load();
-        allFriends.value = true;
-        selectedGroups.value = [];
-        await nextTick();
-        // Focus overlay to enable keyboard events (ESC key)
-        if (overlay.value) {
-          overlay.value.focus();
-        }
-        // Then focus textarea for immediate typing
-        if (textarea.value) {
-          textarea.value.focus();
-        }
+        allFriends.value = true; selectedGroups.value = [];
+        await nextTick(); overlay.value?.focus(); textarea.value?.focus();
       } else {
-        // Return focus to trigger element when modal closes
-        if (triggerElement && typeof triggerElement.focus === 'function') {
-          setTimeout(() => {
-            triggerElement?.focus();
-          }, 100);
-        }
+        if (triggerElement?.focus) setTimeout(() => { triggerElement?.focus(); }, 100);
       }
     });
 
     onBeforeUnmount(()=>{
-      for (const it of uploads.value) {
-        if (it.preview) { try { URL.revokeObjectURL(it.preview) } catch {} }
-      }
+      for (const it of uploads.value) { if (it.preview) { try { URL.revokeObjectURL(it.preview) } catch {} } }
     });
 
     watch(()=>groups.value, (g)=>{ if (g.length===0) { allFriends.value = true; selectedGroups.value = [] } });
 
     async function onSend() {
-      // Use pkHex check for consistency with onMounted and reliability
       if (!keys.pkHex) { error.value = "请先登录"; return; }
       if (!canSend.value) { error.value = "请输入内容"; return; }
-      sending.value = true;
-      error.value = null;
+      sending.value = true; error.value = null;
 
       let recips = recipients.value.slice();
       if (keys.pkHex && !recips.includes(keys.pkHex)) recips.push(keys.pkHex);
       recips = Array.from(new Set(recips.filter(Boolean)));
-
       if (recips.length === 0) { error.value = "未指定收件人"; sending.value = false; return; }
 
       try {
-        // Build content with uploaded images appended
         let fullContent = content.value;
         const uploadedImages = uploads.value.filter(u => u.status === 'done' && u.url);
         if (uploadedImages.length > 0) {
-          // Add images as markdown at the end
           if (fullContent.length > 0 && !fullContent.endsWith("\n")) fullContent += "\n";
-          for (const img of uploadedImages) {
-            fullContent += `![](${img.url})\n`;
-          }
+          for (const img of uploadedImages) { fullContent += `![](${img.url})\n`; }
         }
-        
+
         const { signed } = await posts.publishNip44PerMessage(recips, fullContent);
         try { await msgs.load(); msgs.addInbox({ id: signed.id, pubkey: keys.pkHex, created_at: signed.created_at, content: fullContent }); } catch {}
         ui.addToast("发送成功", 1200, "success");
         onClose();
-        // Navigate to home page after modal close animation completes (220ms matches the slide-up-leave-active transition)
         setTimeout(()=>{ router.push('/'); }, 220);
       } catch (e:any) {
         console.error("publish error", e);
-        error.value = e && e.message ? e.message : "发送失败";
+        error.value = e?.message ?? "发送失败";
         ui.addToast("发送失败", 2000, "error");
-      } finally {
-        sending.value = false;
-      }
+      } finally { sending.value = false; }
     }
 
     return {
       visible, content, sending, allFriends, selectedGroups, groups, countByGroup,
       canSend, textarea, overlay, error, onSend, onClose, toggleAll, toggleGroup,
       recipientsCount, selectedSet, gLabel, friends, uploads, uploadEnabled, uploadingAny,
-      onFilesSelected, insertImageUrl, removeUpload, checkBlossom
+      onFilesSelected, removeUpload, checkBlossom
     };
   }
 });
 </script>
+
 
 <style scoped>
 /* Global box-sizing for all elements to prevent width issues */
