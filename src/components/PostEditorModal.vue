@@ -393,7 +393,7 @@ export default defineComponent({
     const {
       encryptedFile,
       imageKey
-    } = await encryptImageBites(resizedFile, {
+    } = await encryptImageBytes(resizedFile, {
       postId: currentPostId,      // 当前帖子 id
       imageIndex: item.index      // 第几张图
     });
