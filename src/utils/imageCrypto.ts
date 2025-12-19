@@ -1,4 +1,4 @@
-import { bytesToBase64, base64ToBytes } from "./crypto";
+import { bytesToBase64, base64ToBytes } from "@/nostr/crypto";
 
 /* ========================
  * 图片 AES-GCM 加密
