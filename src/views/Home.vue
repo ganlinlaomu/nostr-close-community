@@ -49,7 +49,7 @@
             <!-- SEND META (only author) -->
             <div
               v-if="m._localMeta?.groupCount"
-              class="send-meta"
+              class="action-btn"
               ref="sendIcon"
             >
               <span
