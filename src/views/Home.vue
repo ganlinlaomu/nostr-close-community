@@ -58,8 +58,11 @@
               >
               📤 {{ m._localMeta.groupCount }}
               </span>
+            
+        </div>
+          </div>
 
-             <!-- SEND META EXPANDED (like comments) -->
+           <!-- SEND META EXPANDED (like comments) -->
 <div
   v-if="showingSendMeta.has(m.id)"
   class="send-meta-panel"
@@ -77,10 +80,6 @@
     </div>
   </div>
 </div>
-
-            
-        </div>
-          </div>
 
           <!-- 评论区域 -->
           <div v-if="showingComments.has(m.id)" class="comments-section">
