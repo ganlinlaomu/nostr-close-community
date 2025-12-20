@@ -53,7 +53,7 @@
               ref="sendIcon"
             >
               <span
-              class="send-icon"
+              class="action-icon"
                @click="toggleSendMeta(m.id)"
               >
               📤 {{ m._localMeta.groupCount }}
