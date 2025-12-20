@@ -899,8 +899,47 @@ export default defineComponent({
 
     onMounted(() => { 
       startSub().catch(console.error); 
-      handleNotificationJump();
     });
+
+    watch(
+  () => [route.query.mid, displayedMessages.value.length],
+  async () => {
+    const mid = route.query.mid as string | undefined;
+    const iid = route.query.iid as string | undefined;
+    const type = route.query.type as string | undefined;
+
+    if (!mid) return;
+
+    // ① 确保这条消息已经真的渲染出来
+    const msgExists = displayedMessages.value.some(m => m.id === mid);
+    if (!msgExists) return;
+
+    // ② 如果是评论，展开评论区
+    if (type === "comment") {
+      showingComments.value.add(mid);
+      showingComments.value = new Set(showingComments.value);
+    }
+
+    // ③ 等 v-if / v-for / 评论 DOM
+    await nextTick();
+    await nextTick();
+
+    const targetId = iid ? `comment-${iid}` : `msg-${mid}`;
+    const el = document.getElementById(targetId);
+
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      el.classList.add("highlight");
+      setTimeout(() => el.classList.remove("highlight"), 1500);
+
+      // ⭐ 跳完清 query，防止反复触发
+      history.replaceState({}, "", location.pathname + location.hash.split("?")[0]);
+    }
+  },
+  { immediate: true }
+);
+
 
     // Watch for changes to msgs.inbox to handle optimistic UI updates
     // This ensures own messages added via PostEditorModal appear immediately
