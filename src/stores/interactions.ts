@@ -3,6 +3,7 @@ import { pool } from "@/nostr/relays";
 import { getRelaysFromStorage } from "@/nostr/relays";
 import { useKeyStore } from "@/stores/keys";
 import { genSymHex, symEncryptPackage, symDecryptPackage } from "@/nostr/crypto";
+import { useNotificationsStore } from "@/stores/notifications";
 import { logger } from "@/utils/logger";
 import { backfillEvents } from "@/utils/backfill";
 
