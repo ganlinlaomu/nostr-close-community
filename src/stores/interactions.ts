@@ -336,10 +336,8 @@ export const useInteractionsStore = defineStore("interactions", {
     type: interaction.type,            // 'like' | 'comment'
     from: interaction.author,           // 谁点的
     messageId: interaction.messageId,   // 哪条消息
-    commentId:
-      interaction.type === "comment"
-        ? interaction.id
-        : undefined,
+    commentId: isReply ? comment.parentCommentId! : comment.id,
+      replyId: isReply ? comment.id : undefined,
     created_at: interaction.timestamp,
     read: false,
   });
