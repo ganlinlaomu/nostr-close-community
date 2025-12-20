@@ -382,13 +382,18 @@ export default defineComponent({
 
     // Comment functionality
     function toggleComments(messageId: string) {
-      if (showingComments.value.has(messageId)) {
+     // ⭐ 关闭 send-meta
+     showingSendMeta.value.delete(messageId);
+
+     if (showingComments.value.has(messageId)) {
         showingComments.value.delete(messageId);
-      } else {
-        showingComments.value.add(messageId);
-      }
-      // Trigger reactivity
-      showingComments.value = new Set(showingComments.value);
+     } else {
+       showingComments.value.clear();
+       showingComments.value.add(messageId);
+     }
+
+     showingComments.value = new Set(showingComments.value);
+     showingSendMeta.value = new Set(showingSendMeta.value);
     }
 
     async function addComment(messageId: string) {
