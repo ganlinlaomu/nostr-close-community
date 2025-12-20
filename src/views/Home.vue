@@ -882,7 +882,7 @@ export default defineComponent({
       isLiked,
       getLikeCount,
       toggleComments,
-      togglePopover，
+      togglePopover,
       addComment,
       getComments,
       getCommentCount,
