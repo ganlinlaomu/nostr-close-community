@@ -4,8 +4,7 @@ import path from "path";
 
 const DEFAULT_PORT = 5173;
 
-// 允许的主机列表，来自环境变量 ALLOWED_HOSTS，逗号分隔。
-// 默认包含本机与你的域名 pwa.lostr.space。
+
 const rawAllowed = (process.env.ALLOWED_HOSTS ?? "localhost,127.0.0.1,pwa.lostr.space").trim();
 const ALLOWED_HOSTS = rawAllowed === "" ? [] : rawAllowed.split(",").map(s => s.trim());
 
