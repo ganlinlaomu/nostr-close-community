@@ -58,6 +58,7 @@
           </div>
 
           </div>
+<div class="message-expanded">
 
            <!-- SEND META EXPANDED (like comments) -->
 <div
@@ -129,6 +130,7 @@
               </div>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>
