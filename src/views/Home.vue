@@ -67,7 +67,7 @@
   v-if="showingSendMeta.has(m.id)"
   class="send-meta-panel"
 >
-  <div class="send-meta-title">发送到</div>
+  <div class="send-meta-title">对谁可见:</div>
 
   <div class="send-meta-groups">
     <div
