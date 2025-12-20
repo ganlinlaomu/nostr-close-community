@@ -938,7 +938,7 @@ export default defineComponent({
     });
 
    watch(
-     () => interactions.getComments,
+     () => interactions.interactions,
      () => {
        if (notificationJumpDone.value) return;
        handleNotificationJump();
