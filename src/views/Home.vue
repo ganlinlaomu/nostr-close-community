@@ -65,7 +65,7 @@
               class="send-popover"
               @click.stop
             >
-            <div class="popover-title">发送到</div>
+            <div class="popover-title">对谁可见:</div>
             <div class="popover-groups">
               <span
                 v-for="g in m._localMeta.groups"
