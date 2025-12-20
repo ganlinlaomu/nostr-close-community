@@ -914,6 +914,12 @@ export default defineComponent({
     const msgExists = displayedMessages.value.some(m => m.id === mid);
     if (!msgExists) return;
 
+    /* ⭐ A. 如果消息还在 pending，先强制显示 */
+    if (pendingMessages.value.some(m => m.id === mid)) {
+      showPendingMessages();     // 把它并入 displayedMessages
+      await nextTick();          // 等消息 DOM
+    }
+
     // ② 如果是评论，展开评论区
     if (type === "comment") {
       showingComments.value.add(mid);
