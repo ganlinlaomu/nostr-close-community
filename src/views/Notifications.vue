@@ -29,7 +29,7 @@
 
         <div class="content">
           <div class="text">
-            <span class="from">{{ short(n.from) }}</span>
+            <span class="from">{{ displayName(n.from) }}</span>
             {{ n.type === 'like' ? '点赞了你' : '评论了你' }}
           </div>
           <div class="time">
@@ -46,12 +46,16 @@
 <script setup lang="ts">
 import { useNotificationsStore } from "@/stores/notifications";
 import { useRouter } from "vue-router";
+import { useFriendsStore } from "@/stores/friends";
+
 
 const notifications = useNotificationsStore();
 const router = useRouter();
+const friends = useFriendsStore();
 
-function short(pk: string) {
-  return pk.slice(0, 8) + "...";
+function displayName(pk: string) {
+  const f = friends.sortedList.find(f => f.pubkey === pk);
+  return f?.name || pk.slice(0, 8) + "...";
 }
 
 function go(n: any) {
