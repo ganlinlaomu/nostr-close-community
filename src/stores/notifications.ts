@@ -6,6 +6,7 @@ export interface NotificationItem {
   from: string;
   messageId: string;
   commentId?: string;
+  replyId?: string;
   created_at: number;
   read: boolean;
 }
