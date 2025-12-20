@@ -886,6 +886,7 @@ export default defineComponent({
       getComments,
       getCommentCount,
       showingComments,
+      showingSendMeta,
       commentInputs,
       // Reply functions
       startReply,
@@ -1199,7 +1200,12 @@ export default defineComponent({
   position: relative;
   width: 100%;        
 }
-  
+
+.send-meta {
+  margin-left: auto;   /* ⭐ 推到最右 */
+  position: relative;
+}
+
 .send-meta-panel {
   margin-top: 8px;
   padding: 10px 12px;
