@@ -54,7 +54,7 @@
             >
               <span
                class="send-icon"
-               @click="togglePopover(m.id)"
+               @click.stop="togglePopover(m.id)"
             >
             📤 {{ m._localMeta.groupCount }}
              </span>
@@ -63,6 +63,7 @@
             <div
               v-if="openPopover === m.id"
               class="send-popover"
+              @click.stop
             >
             <div class="popover-title">发送到</div>
             <div class="popover-groups">
@@ -882,6 +883,7 @@ export default defineComponent({
       isLiked,
       getLikeCount,
       toggleComments,
+      openPopover,
       togglePopover,
       addComment,
       getComments,
