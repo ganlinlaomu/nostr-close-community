@@ -1,14 +1,14 @@
 import { defineStore } from "pinia";
 
-export type NotificationItem = {
+export interface NotificationItem {
   id: string;
-  type: "like" | "comment" | "reply";
-  from: string;          // pubkey
-  postId: string;        // 被点赞 / 评论的帖子 id
-  commentId?: string;    // 如果是回复
+  type: "like" | "comment";
+  from: string;
+  messageId: string;
+  commentId?: string;
   created_at: number;
   read: boolean;
-};
+}
 
 export const useNotificationsStore = defineStore("notifications", {
   state: () => ({
@@ -16,17 +16,17 @@ export const useNotificationsStore = defineStore("notifications", {
   }),
 
   getters: {
-    unreadCount: (s) => s.list.filter(n => !n.read).length,
-    unreadExists: (s) => s.list.some(n => !n.read),
+    unreadCount: (state) => state.list.filter(n => !n.read).length,
   },
 
   actions: {
-    add(n: NotificationItem) {
+    addNotification(n: NotificationItem) {
+      // 去重（非常重要）
       if (this.list.find(x => x.id === n.id)) return;
       this.list.unshift(n);
     },
 
-    markRead(id: string) {
+    markAsRead(id: string) {
       const n = this.list.find(x => x.id === id);
       if (n) n.read = true;
     },
