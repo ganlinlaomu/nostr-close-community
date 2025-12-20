@@ -1033,6 +1033,12 @@ export default defineComponent({
   border-top: 1px solid #f1f5f9;
 }
 
+.message-expanded {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
 
 .action-btn {
   display: flex;
