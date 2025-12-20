@@ -49,11 +49,11 @@
             <!-- SEND META (only author) -->
             <div
               v-if="m._localMeta?.groupCount"
-              class="action-btn"
+              class="send-meta"
               ref="sendIcon"
             >
               <span
-              class="action-icon"
+              class="send-icon"
                @click="toggleSendMeta(m.id)"
               >
               📤 {{ m._localMeta.groupCount }}
@@ -1014,11 +1014,14 @@ export default defineComponent({
 
 .message-actions {
   display: flex;
-  gap: 16px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
   margin-top: 12px;
   padding-top: 8px;
   border-top: 1px solid #f1f5f9;
 }
+
 
 .action-btn {
   display: flex;
@@ -1191,13 +1194,6 @@ export default defineComponent({
 .comment-input-wrapper {
   display: flex;
   gap: 8px;
-}
-.message-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  position: relative;
-  width: 100%;        
 }
 
 .send-meta {
