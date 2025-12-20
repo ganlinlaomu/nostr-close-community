@@ -4,6 +4,7 @@ import Home from "@/views/Home.vue";
 import PostEditor from "@/views/PostEditor.vue";
 import Friends from "@/views/Friends.vue";
 import Settings from "@/views/Settings.vue";
+import Notifications from "@/views/Notifications.vue";
 import { useKeyStore } from "@/stores/keys";
 
 /**
@@ -39,11 +40,17 @@ const routes: Array<RouteRecordRaw> = [
     meta: { requiresAuth: true }
   },
   {
-    path: "/friends",
-    name: "Friends",
-    component: Friends,
+    path: "/notifications",
+    name: "Notifications",
+    component: Notifications,
     meta: { requiresAuth: true }
   },
+
+  {
+  path: "/notifications",
+  name: "notifications",
+  component: () => import("@/views/Notifications.vue"),
+},
   {
     path: "/settings",
     name: "Settings",
