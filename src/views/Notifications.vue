@@ -61,8 +61,8 @@ function go(n: any) {
   router.push({
     path: "/",
     query: {
-      post: n.messageId,
-      comment: n.commentId
+      mid: n.messageId,
+      iid: n.commentId
     }
   });
 }
