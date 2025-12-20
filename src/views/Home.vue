@@ -1201,6 +1201,11 @@ export default defineComponent({
   gap: 12px;
   position: relative;
 }
+  
+.send-meta {
+  margin-left: auto;   /* ⭐ 核心：推到最右 */
+  position: relative;  /* ⭐ 给 popover 做定位基准 */
+}
 
 .send-icon {
   cursor: pointer;
