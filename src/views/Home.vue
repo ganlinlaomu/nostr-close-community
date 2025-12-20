@@ -53,29 +53,32 @@
               ref="sendIcon"
             >
               <span
-               class="send-icon"
-               @click.stop="togglePopover(m.id)"
-            >
-            📤 {{ m._localMeta.groupCount }}
-             </span>
-
-            <!-- popover -->
-            <div
-              v-if="openPopover === m.id"
-              class="send-popover"
-              @click.stop
-            >
-            <div class="popover-title">对谁可见:</div>
-            <div class="popover-groups">
-              <span
-                v-for="g in m._localMeta.groups"
-                :key="g.name"
-                class="group-chip"
+              class="send-icon"
+               @click="toggleSendMeta(m.id)"
               >
-                {{ g.name }} · {{ g.count }}
+              📤 {{ m._localMeta.groupCount }}
               </span>
-            </div>
-          </div>
+
+             <!-- SEND META EXPANDED (like comments) -->
+<div
+  v-if="showingSendMeta.has(m.id)"
+  class="send-meta-panel"
+>
+  <div class="send-meta-title">发送到</div>
+
+  <div class="send-meta-groups">
+    <div
+      v-for="g in m._localMeta.groups"
+      :key="g.name"
+      class="send-meta-row"
+    >
+      <span class="group-name">{{ g.name }}</span>
+      <span class="group-count">{{ g.count }} 人</span>
+    </div>
+  </div>
+</div>
+
+            
         </div>
           </div>
 
@@ -175,7 +178,8 @@ export default defineComponent({
     const displayedMessages = ref([] as any[]);
     const pendingMessages = ref([] as any[]); // Messages fetched but not yet displayed
     const isInitialLoad = ref(true); // Track if this is the first load
-    const openPopover = ref<string | null>(null);
+    const showingSendMeta = ref<Set<string>>(new Set());
+
     
     
     // State for comments UI
@@ -361,21 +365,15 @@ export default defineComponent({
       return interactions.getLikeCount(messageId);
     }
 
-    function togglePopover(id: string) {
-      openPopover.value = openPopover.value === id ? null : id;
-    }
+    function toggleSendMeta(messageId: string) {
+  if (showingSendMeta.value.has(messageId)) {
+    showingSendMeta.value.delete(messageId);
+  } else {
+    showingSendMeta.value.add(messageId);
+  }
+  showingSendMeta.value = new Set(showingSendMeta.value);
+}
 
-    function closeAll() {
-      openPopover.value = null;
-    }
-
-    onMounted(() => {
-     document.addEventListener("click", closeAll);
-    });
-
-    onBeforeUnmount(() => {
-     document.removeEventListener("click", closeAll);
-    });
 
     // Comment functionality
     function toggleComments(messageId: string) {
@@ -883,8 +881,7 @@ export default defineComponent({
       isLiked,
       getLikeCount,
       toggleComments,
-      openPopover,
-      togglePopover,
+      toggleSendMeta,
       addComment,
       getComments,
       getCommentCount,
@@ -1203,47 +1200,39 @@ export default defineComponent({
   width: 100%;        
 }
   
-.send-meta {
-  margin-left: auto;   /* ⭐ 核心：推到最右 */
-  position: relative;  /* ⭐ 给 popover 做定位基准 */
-}
-
-.send-icon {
-  cursor: pointer;
-  font-size: 13px;
-  color: #64748b;
-}
-
-.send-popover {
-  position: absolute;
-  bottom: 26px;
-  right: 0;
-  background: white;
+.send-meta-panel {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: #f8fafc;
   border-radius: 12px;
   border: 1px solid #e5e7eb;
-  box-shadow: 0 8px 24px rgba(0,0,0,.12);
-  padding: 8px 10px;
-  z-index: 50;
-  min-width: 160px;
 }
 
-.popover-title {
+.send-meta-title {
   font-size: 12px;
   color: #64748b;
   margin-bottom: 6px;
 }
 
-.popover-groups {
+.send-meta-groups {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 6px;
 }
 
-.group-chip {
-  font-size: 12px;
-  background: #f1f5f9;
-  padding: 4px 8px;
-  border-radius: 999px;
+.send-meta-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
 }
+
+.group-name {
+  color: #0f172a;
+}
+
+.group-count {
+  color: #64748b;
+}
+
 
 </style>
