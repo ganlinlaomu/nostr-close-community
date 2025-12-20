@@ -82,7 +82,7 @@ export default defineComponent({
       ui.openPostEditor();
     }
     
-    return { isLoggedIn, shortPk, handlePostClick，notifications, };
+    return { isLoggedIn, shortPk, handlePostClick, notifications, };
   }
 });
 </script>
@@ -155,7 +155,7 @@ export default defineComponent({
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.02em;
-}，
+}
 .icon-wrapper {
   position: relative;
   display: inline-flex;
