@@ -45,12 +45,12 @@ const routes: Array<RouteRecordRaw> = [
     component: Notifications,
     meta: { requiresAuth: true }
   },
-
   {
-  path: "/notifications",
-  name: "notifications",
-  component: () => import("@/views/Notifications.vue"),
-},
+    path: "/friends",
+    name: "Friends",
+    component: Friends,
+    meta: { requiresAuth: true }
+  },
   {
     path: "/settings",
     name: "Settings",
