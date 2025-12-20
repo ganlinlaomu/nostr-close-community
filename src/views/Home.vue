@@ -47,19 +47,16 @@
               <span class="action-text">{{ getCommentCount(m.id) }}</span>
             </button>
             <!-- SEND META (only author) -->
-            <div
-              v-if="m._localMeta?.groupCount"
-              class="send-meta"
-              ref="sendIcon"
-            >
-              <span
-              class="send-icon"
+            <div v-if="m._localMeta?.groupCount" class="send-meta">
+             <button
+               class="action-btn send-btn"
                @click="toggleSendMeta(m.id)"
-              >
-              📤 {{ m._localMeta.groupCount }}
-              </span>
-            
-        </div>
+             >
+               <span class="action-icon">📤</span>
+               <span class="action-text">{{ m._localMeta.groupCount }}</span>
+            </button>
+          </div>
+
           </div>
 
            <!-- SEND META EXPANDED (like comments) -->
@@ -1200,6 +1197,10 @@ export default defineComponent({
   margin-left: auto;   /* ⭐ 推到最右 */
   position: relative;
 }
+.send-btn {
+  padding: 6px 12px;   /* 和 action-btn 保持一致 */
+}
+
 
 .send-meta-panel {
   margin-top: 8px;
