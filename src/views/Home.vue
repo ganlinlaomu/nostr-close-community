@@ -423,10 +423,21 @@ export default defineComponent({
       }
     }
 
+    function getHashQuery() {
+  const hash = window.location.hash; // "#/?mid=xxx&iid=yyy"
+  const idx = hash.indexOf("?");
+  if (idx === -1) return {};
+  const qs = new URLSearchParams(hash.slice(idx + 1));
+  return Object.fromEntries(qs.entries());
+}
+
+
   async function handleNotificationJump() {
-  const mid = route.query.mid as string | undefined;
-  const iid = route.query.iid as string | undefined;
-  const type = route.query.type as string | undefined;
+  const q = getHashQuery();
+  const mid = q.mid as string | undefined;
+  const iid = q.iid as string | undefined;
+  const type = q.type as string | undefined;
+
 
   if (!mid) return;
 
