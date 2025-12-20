@@ -66,12 +66,15 @@
 import { defineComponent, computed } from "vue";
 import { useKeyStore } from "@/stores/keys";
 import { useUIStore } from "@/stores/ui";
+import { useNotificationsStore } from "@/stores/notifications";
+
 
 export default defineComponent({
   name: "Headbar",
   setup() {
     const keys = useKeyStore();
     const ui = useUIStore();
+    const notifications = useNotificationsStore();
     const isLoggedIn = computed(() => !!keys.pkHex);
     const shortPk = computed(() => (keys.pkHex ? keys.pkHex.slice(0, 8) + "..." : ""));
     
@@ -79,7 +82,7 @@ export default defineComponent({
       ui.openPostEditor();
     }
     
-    return { isLoggedIn, shortPk, handlePostClick };
+    return { isLoggedIn, shortPk, handlePostClick，notifications, };
   }
 });
 </script>
@@ -152,5 +155,28 @@ export default defineComponent({
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.02em;
+}，
+.icon-wrapper {
+  position: relative;
+  display: inline-flex;
 }
+
+.badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: #ef4444;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 </style>
