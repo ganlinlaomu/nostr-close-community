@@ -934,14 +934,17 @@ export default defineComponent({
 
     onMounted(() => { 
       startSub().catch(console.error); 
-      watch(
-  () => interactions.getComments,
-  () => {
-    if (notificationJumpDone.value) return;
-    handleNotificationJump();
-  },
-  { deep: true }
-);
+      handleNotificationJump();
+    });
+
+   watch(
+     () => interactions.getComments,
+     () => {
+       if (notificationJumpDone.value) return;
+       handleNotificationJump();
+     },
+     { deep: true }
+   );
 
     // Watch for changes to msgs.inbox to handle optimistic UI updates
     // This ensures own messages added via PostEditorModal appear immediately
