@@ -138,7 +138,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, onBeforeUnmount, computed, watch } from "vue";
+import { defineComponent, ref, onMounted, onBeforeUnmount, computed, watch, nextTick } from "vue";
 import { useFriendsStore } from "@/stores/friends";
 import { useKeyStore } from "@/stores/keys";
 import { getRelaysFromStorage, subscribe } from "@/nostr/relays";
@@ -150,7 +150,6 @@ import { formatRelativeTime } from "@/utils/format";
 import PostImagePreview from "@/components/PostImagePreview.vue";
 import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
 import { useRoute } from "vue-router";
-import { nextTick, onMounted } from "vue";
 
 
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
