@@ -82,7 +82,7 @@ export default defineComponent({
       ui.openPostEditor();
     }
     
-    return { isLoggedIn, shortPk, handlePostClick，notifications, };
+    return { isLoggedIn, shortPk, handlePostClick，notifications };
   }
 });
 </script>
