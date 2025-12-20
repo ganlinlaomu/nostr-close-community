@@ -437,7 +437,7 @@ export default defineComponent({
   const q = getHashQuery();
   const mid = q.mid as string | undefined;
   const iid = q.iid as string | undefined;
-  const type = q.type as string | undefined;
+ 
 
 
   if (!mid) return;
@@ -458,7 +458,7 @@ export default defineComponent({
   }
 
   // ② 如果是评论，强制展开评论区
-  if (type === "comment") {
+  if (iid) {
     showingComments.value.add(mid);
     showingComments.value = new Set(showingComments.value);
   }
