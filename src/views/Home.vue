@@ -82,9 +82,9 @@
           <!-- 评论区域 -->
           <div v-if="showingComments.has(m.id)" class="comments-section">
             <div class="comments-list">
-              <div v-for="comment in getComments(m.id)" :key="comment.id" :id="`comment-${comment.id}`" class="comment-thread">
+              <div v-for="comment in getComments(m.id)" :key="comment.id"  class="comment-thread">
                 <!-- 主评论 -->
-                <div class="comment-item">
+                <div class="comment-item" :id="`comment-${comment.id}`">
                   <div class="comment-header small">
                     <strong>{{ displayName(comment.author) }}</strong>
                     <span class="muted"> · {{ toLocalTime(comment.timestamp) }}</span>
