@@ -490,6 +490,7 @@ export default defineComponent({
 
   el.classList.add("highlight");
   setTimeout(() => el.classList.remove("highlight"), 1500);
+  notificationJumpDone.value = true;
     
 }
 
@@ -933,10 +934,14 @@ export default defineComponent({
 
     onMounted(() => { 
       startSub().catch(console.error); 
-      handleNotificationJump();
-    });
-
-   
+      watch(
+  () => interactions.getComments,
+  () => {
+    if (notificationJumpDone.value) return;
+    handleNotificationJump();
+  },
+  { deep: true }
+);
 
     // Watch for changes to msgs.inbox to handle optimistic UI updates
     // This ensures own messages added via PostEditorModal appear immediately
