@@ -364,13 +364,20 @@ export default defineComponent({
     }
 
     function toggleSendMeta(messageId: string) {
+  // ⭐ 关闭评论
+  showingComments.value.delete(messageId);
+
   if (showingSendMeta.value.has(messageId)) {
     showingSendMeta.value.delete(messageId);
   } else {
+    showingSendMeta.value.clear();
     showingSendMeta.value.add(messageId);
   }
+
   showingSendMeta.value = new Set(showingSendMeta.value);
+  showingComments.value = new Set(showingComments.value);
 }
+
 
 
     // Comment functionality
