@@ -176,7 +176,7 @@ export default defineComponent({
     const pendingMessages = ref([] as any[]); // Messages fetched but not yet displayed
     const isInitialLoad = ref(true); // Track if this is the first load
     const openPopover = ref<string | null>(null);
-    const messages = computed(() =>msgs.list.filter(m => m.pubkey === keys.pkHex));
+    
     
     // State for comments UI
     const showingComments = ref<Set<string>>(new Set());
