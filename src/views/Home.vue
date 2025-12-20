@@ -170,6 +170,7 @@ export default defineComponent({
     const interactions = useInteractionsStore();
     const readyForPending = ref(false);
     const route = useRoute();
+    const notificationJumpDone = ref(false);
 
 
     const status = ref("未连接");
@@ -489,6 +490,7 @@ export default defineComponent({
 
   el.classList.add("highlight");
   setTimeout(() => el.classList.remove("highlight"), 1500);
+    
 }
 
 
