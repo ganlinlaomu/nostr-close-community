@@ -430,35 +430,56 @@ export default defineComponent({
 
   if (!mid) return;
 
-  // ① 如果是评论，先强制展开评论区
+  // ① 等消息本身存在（点赞能跳就是靠这个）
+  const waitForMessage = async () => {
+    for (let i = 0; i < 20; i++) {
+      if (displayedMessages.value.some(m => m.id === mid)) return true;
+      await new Promise(r => setTimeout(r, 50));
+    }
+    return false;
+  };
+
+  const msgReady = await waitForMessage();
+  if (!msgReady) {
+    console.warn("通知跳转失败：消息未出现", mid);
+    return;
+  }
+
+  // ② 如果是评论，强制展开评论区
   if (type === "comment") {
     showingComments.value.add(mid);
     showingComments.value = new Set(showingComments.value);
   }
 
-  // ② 等待至少 2 帧，确保：
-  // - 消息列表渲染
-  // - 评论区渲染
-  await nextTick();
-  await nextTick();
-
-  // ③ 优先滚到评论，其次消息
+  // ③ 等评论 DOM 真正渲染出来（核心）
   const targetId = iid ? `comment-${iid}` : `msg-${mid}`;
-  const el = document.getElementById(targetId);
 
-  if (el) {
-    el.scrollIntoView({
-      behavior: "smooth",
-      block: "center"
-    });
+  const waitForElement = async () => {
+    for (let i = 0; i < 40; i++) {
+      const el = document.getElementById(targetId);
+      if (el) return el;
+      await new Promise(r => setTimeout(r, 50));
+    }
+    return null;
+  };
 
-    // ⭐ 高亮提示
-    el.classList.add("highlight");
-    setTimeout(() => el.classList.remove("highlight"), 1500);
-  } else {
-    console.warn("通知跳转失败，未找到元素:", targetId);
+  const el = await waitForElement();
+
+  if (!el) {
+    console.warn("通知跳转失败：DOM 未找到", targetId);
+    return;
   }
+
+  // ④ 滚动 + 高亮
+  el.scrollIntoView({
+    behavior: "smooth",
+    block: "center"
+  });
+
+  el.classList.add("highlight");
+  setTimeout(() => el.classList.remove("highlight"), 1500);
 }
+
 
 
 
@@ -899,53 +920,10 @@ export default defineComponent({
 
     onMounted(() => { 
       startSub().catch(console.error); 
+      handleNotificationJump();
     });
 
-    watch(
-  () => [route.query.mid, displayedMessages.value.length],
-  async () => {
-    const mid = route.query.mid as string | undefined;
-    const iid = route.query.iid as string | undefined;
-    const type = route.query.type as string | undefined;
-
-    if (!mid) return;
-
-    // ① 确保这条消息已经真的渲染出来
-    const msgExists = displayedMessages.value.some(m => m.id === mid);
-    if (!msgExists) return;
-
-    /* ⭐ A. 如果消息还在 pending，先强制显示 */
-    if (pendingMessages.value.some(m => m.id === mid)) {
-      showPendingMessages();     // 把它并入 displayedMessages
-      await nextTick();          // 等消息 DOM
-    }
-
-    // ② 如果是评论，展开评论区
-    if (type === "comment") {
-      showingComments.value.add(mid);
-      showingComments.value = new Set(showingComments.value);
-    }
-
-    // ③ 等 v-if / v-for / 评论 DOM
-    await nextTick();
-    await nextTick();
-
-    const targetId = iid ? `comment-${iid}` : `msg-${mid}`;
-    const el = document.getElementById(targetId);
-
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-
-      el.classList.add("highlight");
-      setTimeout(() => el.classList.remove("highlight"), 1500);
-
-      // ⭐ 跳完清 query，防止反复触发
-      history.replaceState({}, "", location.pathname + location.hash.split("?")[0]);
-    }
-  },
-  { immediate: true }
-);
-
+   
 
     // Watch for changes to msgs.inbox to handle optimistic UI updates
     // This ensures own messages added via PostEditorModal appear immediately
