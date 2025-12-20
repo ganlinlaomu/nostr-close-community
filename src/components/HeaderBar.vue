@@ -25,6 +25,33 @@
       </svg>
       <span class="nav-label">好友</span>
     </router-link>
+    <!-- ⭐⭐⭐ 新增：通知 -->
+    <router-link class="nav-item" to="/notifications">
+      <span class="icon-wrapper">
+        <svg
+          class="icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+
+        <!-- 🔴 小红点 / 数字 -->
+        <span
+          v-if="notifications.unreadCount > 0"
+          class="badge"
+        >
+          {{ notifications.unreadCount }}
+        </span>
+      </span>
+
+      <span class="nav-label">通知</span>
+    </router-link>
     <router-link class="nav-item" to="/settings">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="3"></circle>
