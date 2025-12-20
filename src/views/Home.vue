@@ -1200,6 +1200,7 @@ export default defineComponent({
   align-items: center;
   gap: 12px;
   position: relative;
+  width: 100%;        
 }
   
 .send-meta {
