@@ -150,6 +150,7 @@ import { formatRelativeTime } from "@/utils/format";
 import PostImagePreview from "@/components/PostImagePreview.vue";
 import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
 import { useRoute } from "vue-router";
+import { nextTick, onMounted } from "vue";
 
 
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
@@ -423,41 +424,43 @@ export default defineComponent({
       }
     }
 
-   function handleNotificationJump() {
+  async function handleNotificationJump() {
   const mid = route.query.mid as string | undefined;
   const iid = route.query.iid as string | undefined;
   const type = route.query.type as string | undefined;
 
   if (!mid) return;
 
-  // ① 确保这条消息存在
-  const msg = displayedMessages.value.find(m => m.id === mid);
-  if (!msg) return;
-
-  // ② 如果是评论，自动展开评论区
+  // ① 如果是评论，先强制展开评论区
   if (type === "comment") {
     showingComments.value.add(mid);
     showingComments.value = new Set(showingComments.value);
   }
 
-  // ③ 等 DOM 渲染完再滚动
-  nextTick(() => {
-    let targetId = `msg-${mid}`;
-    if (iid) {
-      targetId = `comment-${iid}`;
-    }
+  // ② 等待至少 2 帧，确保：
+  // - 消息列表渲染
+  // - 评论区渲染
+  await nextTick();
+  await nextTick();
 
-    const el = document.getElementById(targetId);
-    if (el) {
-      el.scrollIntoView({
-        behavior: "smooth",
-        block: "center"
-      });
-      el.classList.add("highlight");
-      setTimeout(() => el.classList.remove("highlight"), 1500);
-    }
-  });
+  // ③ 优先滚到评论，其次消息
+  const targetId = iid ? `comment-${iid}` : `msg-${mid}`;
+  const el = document.getElementById(targetId);
+
+  if (el) {
+    el.scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
+
+    // ⭐ 高亮提示
+    el.classList.add("highlight");
+    setTimeout(() => el.classList.remove("highlight"), 1500);
+  } else {
+    console.warn("通知跳转失败，未找到元素:", targetId);
+  }
 }
+
 
 
     function startReply(messageId: string, commentId: string, authorName: string) {
