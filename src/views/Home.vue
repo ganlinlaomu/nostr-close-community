@@ -946,6 +946,13 @@ export default defineComponent({
      { deep: true }
    );
 
+   watch(
+  () => friends.version,
+  () => {
+    rebuildSubscription(); // unsub + sub
+  },
+  { immediate: true }
+);
     // Watch for changes to msgs.inbox to handle optimistic UI updates
     // This ensures own messages added via PostEditorModal appear immediately
     // Using 'post' flush to batch updates and run after component updates
