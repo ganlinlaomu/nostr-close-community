@@ -946,36 +946,7 @@ export default defineComponent({
      { deep: true }
    );
    
-   const rebuildSubscription = () => {
-      // 1. 先取消旧订阅
-      if (sub) {
-        sub.unsub();
-        sub = null;
-      }
-
-      // 2. 生成最新 author 列表
-      const authors = friends.sortedList.map(f => f.pubkey);
-
-      if (authors.length === 0) return;
-
-      // 3. 重新订阅
-      sub = subscribe(
-        /* relays */ undefined,
-        [
-          {
-            kinds: [1],
-            authors
-          }
-        ]
-      );
-    };
-   watch(
-  () => friends.version,
-  () => {
-    rebuildSubscription(); // unsub + sub
-  },
-  { immediate: true }
-);
+   
     // Watch for changes to msgs.inbox to handle optimistic UI updates
     // This ensures own messages added via PostEditorModal appear immediately
     // Using 'post' flush to batch updates and run after component updates
