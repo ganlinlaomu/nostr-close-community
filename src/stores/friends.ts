@@ -28,7 +28,7 @@ export const useFriendsStore = defineStore("friends", {
     loadedFor: "" as string, // pkHex this list was loaded for
     syncing: false as boolean, // whether sync is in progress
     lastSyncTimestamp: 0 as number, // timestamp of last successful sync
-    syncError: "" as string // last sync error message
+    syncError: "" as string, // last sync error message
     version: 0
   }),
   getters: {
