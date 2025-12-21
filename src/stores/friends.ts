@@ -29,6 +29,7 @@ export const useFriendsStore = defineStore("friends", {
     syncing: false as boolean, // whether sync is in progress
     lastSyncTimestamp: 0 as number, // timestamp of last successful sync
     syncError: "" as string // last sync error message
+    version: 0
   }),
   getters: {
     // Get friends sorted by nickname
@@ -166,6 +167,7 @@ export const useFriendsStore = defineStore("friends", {
       // prevent duplicate by pubkey
       if (this.list.find((f) => f.pubkey === friend.pubkey)) return false;
       this.list.push({ ...friend });
+      this.version++;
       this.save();
       // Sync to relays in background (don't wait) - only if NIP-04 is supported
       const ks = useKeyStore();
@@ -179,6 +181,7 @@ export const useFriendsStore = defineStore("friends", {
       const idx = this.list.findIndex((f) => f.pubkey === pubkey);
       if (idx === -1) return false;
       this.list.splice(idx, 1);
+      this.version++;
       this.save();
       // Sync to relays in background (don't wait) - only if NIP-04 is supported
       const ks = useKeyStore();
@@ -194,6 +197,7 @@ export const useFriendsStore = defineStore("friends", {
       // Don't allow empty name
       if (patch.name !== undefined && !patch.name.trim()) return false;
       Object.assign(f, patch);
+      this.version++;
       this.save();
       // Sync to relays in background (don't wait) - only if NIP-04 is supported
       const ks = useKeyStore();
