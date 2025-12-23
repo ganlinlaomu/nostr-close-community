@@ -1,6 +1,6 @@
 <template>
   <div 
-    class="home-container"
+    class="home-container" ref="container"
   >
     <div
       class="pull-indicator"
@@ -1020,6 +1020,10 @@ export default defineComponent({
       replyingToAuthor,
       messageTimeRange,
       showPendingMessages,
+      container,
+      pullDistance,
+      refreshing
+
       
     };
   }
