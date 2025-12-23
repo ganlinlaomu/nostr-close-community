@@ -1036,21 +1036,6 @@ export default defineComponent({
   min-height: 100vh;
 }
 
-.pull-to-refresh-indicator {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.95), transparent);
-  z-index: 1000;
-  transition: opacity 0.3s ease;
-  pointer-events: none;
-}
 
 .refresh-icon {
   font-size: 24px;
