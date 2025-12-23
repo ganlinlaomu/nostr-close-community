@@ -2,7 +2,13 @@
   <div 
     class="home-container"
   >
-    
+    <div
+      class="pull-indicator"
+      :style="{ height: pullDistance + 'px' }"
+    >
+      <span v-if="!refreshing">↓ 下拉刷新</span>
+      <span v-else>⟳ 刷新中...</span>
+    </div>
     
     <!-- New messages notification - only show on PC/desktop (non-touch devices) -->
     <div 
@@ -150,6 +156,7 @@ import { formatRelativeTime } from "@/utils/format";
 import PostImagePreview from "@/components/PostImagePreview.vue";
 import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
 import { useRoute } from "vue-router";
+import { usePullToRefresh } from "@/components/usePullToRefresh";
 
 
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
@@ -279,7 +286,17 @@ export default defineComponent({
       }
       
       updateMessageTimeRange();
-    }
+      const {
+         container,
+         pullDistance,
+         refreshing
+         } = usePullToRefresh({
+         onRefresh: async () => {
+         await startSub();      // 重逻辑
+         updateLocalRefs();     // UI 刷新
+           }
+        });
+       }
     
     function updateMessageTimeRange() {
       if (displayedMessages.value.length === 0) {
@@ -1361,5 +1378,14 @@ export default defineComponent({
   100% { background: transparent; }
 }
 
+.pull-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: #666;
+  transition: height 0.2s ease;
+  overflow: hidden;
+}
 
 </style>
