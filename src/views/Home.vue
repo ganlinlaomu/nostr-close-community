@@ -286,18 +286,18 @@ export default defineComponent({
       }
       
       updateMessageTimeRange();
-      const {
-         container,
-         pullDistance,
-         refreshing
-         } = usePullToRefresh({
-         onRefresh: async () => {
-         await startSub();      // 重逻辑
-         updateLocalRefs();     // UI 刷新
-           }
-        });
        }
-    
+    const {
+       container,
+       pullDistance,
+       refreshing
+    } = usePullToRefresh({
+      onRefresh: async () => {
+        await startSub();      // 重逻辑
+        updateLocalRefs();     // UI 刷新
+      }
+    });
+
     function updateMessageTimeRange() {
       if (displayedMessages.value.length === 0) {
         messageTimeRange.value = "";
