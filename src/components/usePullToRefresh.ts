@@ -41,7 +41,6 @@ export function usePullToRefresh(options: PullOptions) {
        pullDistance.value = threshold;
        await triggerRefresh();
     }
-    pullDistance.value = 0;
   }
 
   async function triggerRefresh() {
