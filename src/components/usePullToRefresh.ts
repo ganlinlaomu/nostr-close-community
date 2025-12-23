@@ -28,7 +28,7 @@ export function usePullToRefresh(options: PullOptions) {
 
   function onTouchMove(e: TouchEvent) {
     if (refreshing.value) return;
-    if (window.scrollY !== 0) return;
+    if (container.value?.scrollTop !== 0) return;
 
     const dy = e.touches[0].clientY - startY.value;
     if (dy <= 0) return;
