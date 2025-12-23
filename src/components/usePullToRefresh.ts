@@ -39,7 +39,7 @@ export function usePullToRefresh(options: PullOptions) {
   async function onTouchEnd() {
     if (pullDistance.value >= threshold && !refreshing.value) {
        pullDistance.value = threshold;
-       await triggerRefresh();
+       triggerRefresh();
     }
   }
 
