@@ -21,7 +21,7 @@ export function usePullToRefresh(options: PullOptions) {
 
   function onTouchStart(e: TouchEvent) {
     if (refreshing.value) return;
-    if (window.scrollY !== 0) return;
+    if (container.value?.scrollTop !== 0) return;
 
     startY.value = e.touches[0].clientY;
   }
