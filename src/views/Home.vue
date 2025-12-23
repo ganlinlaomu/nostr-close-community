@@ -1034,6 +1034,7 @@ export default defineComponent({
 .home-container {
   position: relative;
   min-height: 100vh;
+  overscroll-behavior: contain;
 }
 
 
@@ -1375,6 +1376,9 @@ export default defineComponent({
   color: #666;
   transition: height 0.2s ease;
   overflow: hidden;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 </style>
