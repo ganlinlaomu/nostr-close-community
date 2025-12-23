@@ -326,7 +326,9 @@ export default defineComponent({
       if (msgs.inbox.find((m) => m.id === evt.id)) return false;
       const added = { id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at, content: plain };
       msgs.addInbox(added);
-      updateLocalRefs();
+      nextTick(() => {
+        updateLocalRefs();
+      });
       return true;
     }
 
@@ -945,6 +947,12 @@ export default defineComponent({
      },
      { deep: true }
    );
+
+   watch(readyForPending, (v) => {
+      if (v) {
+        updateLocalRefs();
+      }
+   });
    
    
     // Watch for changes to msgs.inbox to handle optimistic UI updates
