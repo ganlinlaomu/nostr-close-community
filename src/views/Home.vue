@@ -52,7 +52,7 @@
                class="action-btn send-btn"
                @click="toggleSendMeta(m.id)"
              >
-               <span class="action-icon">👁️</span>
+               <span class="action-icon">👀</span>
                <span class="action-text">{{ m._localMeta.groupCount }}</span>
             </button>
           </div>
