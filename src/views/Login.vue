@@ -209,9 +209,36 @@ export default defineComponent({
 }
 
 .title {
-  font-size: 48px;
+  /* 字体 */
+  font-family:
+    "Source Han Serif SC",
+    "Noto Serif SC",
+    "Songti SC",
+    "STSong",
+    serif;
+
+  /* 字号 */
+  font-size: 2.6rem;
+
+  /* 字重：关键，不要太粗 */
+  font-weight: 400;
+
+  /* 字距：宋体一定要松一点 */
+  letter-spacing: 0.08em;
+
+  /* 行高 */
+  line-height: 1.1;
+
+  /* 颜色（暗色模式专用） */
+  color: #D6D9E0;
+
+  /* 去装饰 */
   margin: 0;
-  letter-spacing: 6px;
+  padding: 0;
+
+  /* 抗锯齿 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .login-info {
