@@ -4,7 +4,7 @@
       <h1 class="title">海内</h1>
 
       <div class="login-info">
-        <p>{纯}知己</p> 
+        <p>纯·知己</p> 
       </div>
 
       <!-- Login Actions -->
