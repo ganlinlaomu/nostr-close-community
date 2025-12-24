@@ -349,7 +349,51 @@ export const useKeyStore = defineStore("keys", {
       const sk = safeGeneratePrivateKey();
       await this.loginWithSk(sk);
     },
+    
+    async restoreSession() {
+      const method = localStorage.getItem("loginMethod") as
+        | "sk"
+        | "nip07"
+        | "nip46"
+        | null;
 
+      const pk = localStorage.getItem("pkHex");
+
+      if (!method || !pk) return;
+
+      this.loginMethod = method;
+      this.pkHex = pk;
+
+      if (method === "nip46") {
+        const bunkerInput = localStorage.getItem("bunkerInput");
+        if (!bunkerInput) {
+          this.logout();
+          return;
+        }
+
+        try {
+          const bunkerPointer = await parseBunkerInput(bunkerInput);
+          const clientSecretKey = crypto.getRandomValues(new Uint8Array(32));
+
+          const signer = BunkerSigner.fromBunker(
+            clientSecretKey,
+            bunkerPointer
+          );
+
+          await signer.sendRequest("connect", []);
+
+          this.bunkerSigner = signer;
+        } catch (e) {
+          console.error("[keys] bunker restore failed", e);
+          this.logout();
+        }
+      }
+
+      if (method === "sk") {
+        const sk = localStorage.getItem("skHex");
+        if (sk) this.skHex = sk;
+      }
+    }
     /**
      * register(options?)
      * - Creates a new keypair (or uses provided skHex) and logs in the user.
