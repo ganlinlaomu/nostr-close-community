@@ -393,7 +393,7 @@ export const useKeyStore = defineStore("keys", {
         const sk = localStorage.getItem("skHex");
         if (sk) this.skHex = sk;
       }
-    }
+    },
     /**
      * register(options?)
      * - Creates a new keypair (or uses provided skHex) and logs in the user.
