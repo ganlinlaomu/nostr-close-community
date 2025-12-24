@@ -1,10 +1,10 @@
 <template>
   <div class="card login-card">
     <div class="login-center">
-      <h1 class="title">share</h1>
+      <h1 class="title">海内</h1>
 
       <div class="login-info">
-        <p>with friends</p> 
+        <p>纯知己</p> 
       </div>
 
       <!-- Login Actions -->
@@ -77,8 +77,6 @@
 
       <!-- Help Text -->
       <div class="help-text" style="margin-top:24px;">
-        <p><strong>浏览器插件</strong>：适合桌面用户（NIP-07）</p>
-        <p><strong>Bunker</strong>：适合手机 / PWA / 跨设备（NIP-46）</p>
       </div>
     </div>
   </div>
