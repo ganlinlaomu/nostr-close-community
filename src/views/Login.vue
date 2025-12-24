@@ -243,8 +243,9 @@ export default defineComponent({
 
 .login-info {
   margin-top: 12px;
-  font-size: 16px;
-  color: #666;
+  font-size: 15px;
+  color: #9AA1AC; /* 冷灰，不抢标题 */
+  letter-spacing: 0.12em;
 }
 
 .login-actions {
@@ -266,16 +267,17 @@ export default defineComponent({
 
 :is(.login-actions .btn, .form .btn) {
   background: transparent;
-  color: #3b82f6;
-  border: 1px solid #3b82f6;
-  border-radius: 8px;
-  transition: all 0.2s ease;
+  color: #C7CBD1;
+  border: 1px solid #2A3342;
+  border-radius: 10px;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 :is(.login-actions .btn, .form .btn):hover:not(:disabled) {
-  background: #3b82f6;
-  color: white;
-  transform: translateY(-1px);
+  background: #151B26;
+  border-color: #3A4458;
+  color: #E5E7EB;
+  transform: none;
 }
 
 .btn:disabled {
@@ -288,40 +290,53 @@ export default defineComponent({
 }
 
 .btn-cancel {
-  color: #ef4444;
-  border-color: #ef4444;
+  color: #9AA1AC;
+  border-color: #2A3342;
 }
 
 .btn-cancel:hover:not(:disabled) {
-  background: #ef4444;
-  color: white;
+  background: #151B26;
+  color: #E5E7EB;
+}
+
+.form {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.form label {
+  display: block;
+  font-size: 14px;
+  color: #9AA1AC;
+  margin-bottom: 4px;
 }
 
 .form .input {
-  margin-top: 8px;
+  width: 100%;
+  background: #0F141C;
+  border: 1px solid #2A3342;
+  color: #E5E7EB;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+
+.form .input::placeholder {
+  color: #6B7280;
+}
+
+.form .input:focus {
+  outline: none;
+  border-color: #3A4458;
 }
 
 .error-message {
-  background: #fee2e2;
-  color: #991b1b;
-  padding: 12px;
+  background: rgba(153, 27, 27, 0.12);
+  color: #FCA5A5;
+  padding: 10px 12px;
   border-radius: 8px;
-  border: 1px solid #fca5a5;
-}
-
-.help-text {
+  border: 1px solid rgba(252, 165, 165, 0.3);
   font-size: 14px;
-  color: #666;
-  text-align: left;
-  line-height: 1.6;
-}
-
-.help-text p {
-  margin: 8px 0;
-}
-
-.help-text strong {
-  color: #333;
 }
 </style>
 
