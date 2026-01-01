@@ -14,7 +14,6 @@ export default defineConfig({
     vue(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["icon-192.png", "icon-512.png"],
       manifest: {
         name: "海内 - 封闭式朋友圈",
         short_name: "海内",
@@ -22,14 +21,14 @@ export default defineConfig({
         theme_color: "#ffffff",
         icons: [
           {
-            src: "icon-192.png",
+            src: "icon-192.svg",
             sizes: "192x192",
-            type: "image/png"
+            type: "image/svg+xml"
           },
           {
-            src: "icon-512.png",
+            src: "icon-512.svg",
             sizes: "512x512",
-            type: "image/png"
+            type: "image/svg+xml"
           }
         ]
       },
