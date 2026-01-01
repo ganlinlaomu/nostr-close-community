@@ -208,6 +208,7 @@ export default defineComponent({
     const isBackfilling = ref(false); // Track if currently backfilling (vs realtime)
     const showOlderLocal = ref(false); // Whether to show older local messages
     const atBottom = ref(false); // Track if user has scrolled to bottom of message list
+    const bottomObserver = ref<IntersectionObserver | null>(null); // IntersectionObserver for bottom detection
 
     // Computed property to check if there are older messages beyond the 3-day window
     const hasOlderLocalMessages = computed(() => {
@@ -1061,7 +1062,7 @@ export default defineComponent({
       // Set up IntersectionObserver for bottom sentinel
       const bottomSentinel = document.getElementById('bottom-sentinel');
       if (bottomSentinel) {
-        const observer = new IntersectionObserver(
+        bottomObserver.value = new IntersectionObserver(
           (entries) => {
             entries.forEach(entry => {
               atBottom.value = entry.isIntersecting;
@@ -1073,12 +1074,7 @@ export default defineComponent({
             threshold: 0.1
           }
         );
-        observer.observe(bottomSentinel);
-        
-        // Clean up observer when component unmounts
-        onBeforeUnmount(() => {
-          observer.disconnect();
-        });
+        bottomObserver.value.observe(bottomSentinel);
       }
     });
 
@@ -1109,6 +1105,13 @@ export default defineComponent({
     }, { flush: 'post' });
 
     onBeforeUnmount(() => {
+      // Clean up IntersectionObserver
+      if (bottomObserver.value) {
+        bottomObserver.value.disconnect();
+        bottomObserver.value = null;
+      }
+      
+      // Clean up subscriptions
       if (sub) {
         try { if (typeof sub.close === "function") sub.close(); else if (typeof sub.unsub === "function") sub.unsub(); else if (typeof sub.unsubscribe === "function") sub.unsubscribe(); else if (typeof sub === "function") sub(); } catch {}
       }
