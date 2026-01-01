@@ -199,8 +199,23 @@ export const useFriendsStore = defineStore("friends", {
           note: f.note
         }));
         
-        await db.friends.clear(); // Clear old data
-        await db.friends.bulkAdd(friends);
+        // Use bulkPut for atomic upsert operation
+        // First, get all existing pubkeys to determine what needs to be deleted
+        const existingFriends = await db.friends.toArray();
+        const existingPubkeys = new Set(existingFriends.map(f => f.pubkey));
+        const newPubkeys = new Set(friends.map(f => f.pubkey));
+        
+        // Delete friends that are no longer in the list
+        const toDelete = existingFriends
+          .filter(f => !newPubkeys.has(f.pubkey))
+          .map(f => f.pubkey);
+        
+        if (toDelete.length > 0) {
+          await db.friends.bulkDelete(toDelete);
+        }
+        
+        // Upsert all current friends
+        await db.friends.bulkPut(friends);
         
         // Save timestamp to meta table
         await db.meta.put({

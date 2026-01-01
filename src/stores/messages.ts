@@ -121,9 +121,10 @@ export const useMessagesStore = defineStore("messages", {
           .where("type")
           .equals("inbox")
           .and(msg => msg.pubkey !== targetPk) // exclude own messages
-          .reverse()
           .sortBy("created_at");
         
+        // Reverse to get newest first, then take 200
+        inboxMessages.reverse();
         this.inbox = inboxMessages.slice(0, 200).map(msg => ({
           id: msg.id,
           pubkey: msg.pubkey,
@@ -143,9 +144,10 @@ export const useMessagesStore = defineStore("messages", {
         const outboxMessages = await db.messages
           .where("type")
           .equals("outbox")
-          .reverse()
           .sortBy("created_at");
         
+        // Reverse to get newest first, then take 500
+        outboxMessages.reverse();
         this.outbox = outboxMessages.slice(0, 500).map(msg => ({
           id: msg.id,
           created_at: msg.created_at,
