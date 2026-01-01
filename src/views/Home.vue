@@ -142,7 +142,7 @@
       </div>
       
       <!-- Bottom sentinel for scroll detection -->
-      <div ref="bottomSentinelRef" id="bottom-sentinel" class="bottom-sentinel"></div>
+      <div ref="bottomSentinelRef" class="bottom-sentinel"></div>
       
       <!-- Show older messages button - only appears when at bottom -->
       <div v-if="hasOlderLocalMessages && atBottom" class="show-older-container">
@@ -1067,10 +1067,8 @@ export default defineComponent({
         if (bottomSentinel) {
           bottomObserver.value = new IntersectionObserver(
             (entries) => {
-              // Only one element is observed, so directly access the first entry
-              if (entries.length > 0) {
-                atBottom.value = entries[0].isIntersecting;
-              }
+              // IntersectionObserver guarantees at least one entry for the observed element
+              atBottom.value = entries[0].isIntersecting;
             },
             {
               root: null, // viewport
