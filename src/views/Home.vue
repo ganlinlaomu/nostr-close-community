@@ -30,14 +30,6 @@
       <h4 style="margin: 0 0 12px 0;">好友动态</h4>
       <div v-if="displayedMessages.length === 0" class="small">还没有消息</div>
       
-      <!-- Show older messages button -->
-      <div v-if="!showOlderLocal && displayedMessages.length > 0" class="show-older-container">
-        <button class="show-older-btn" @click="showOlderLocalMessages">
-          <span class="show-older-icon">📜</span>
-          <span class="show-older-text">显示更早消息（本地）</span>
-        </button>
-      </div>
-      
       <div class="list">
         <div v-for="m in displayedMessages" :key="m.id" :id="`msg-${m.id}`" class="card">
           <div class="small">
@@ -148,6 +140,17 @@
         </div>
         </div>
       </div>
+      
+      <!-- Bottom sentinel for scroll detection -->
+      <div id="bottom-sentinel" style="height: 1px;"></div>
+      
+      <!-- Show older messages button - only appears when at bottom -->
+      <div v-if="hasOlderLocalMessages && atBottom" class="show-older-container">
+        <button class="show-older-btn" @click="showOlderLocalMessages">
+          <span class="show-older-icon">📜</span>
+          <span class="show-older-text">显示更早消息（本地）</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -204,8 +207,24 @@ export default defineComponent({
     const showingSendMeta = ref<Set<string>>(new Set());
     const isBackfilling = ref(false); // Track if currently backfilling (vs realtime)
     const showOlderLocal = ref(false); // Whether to show older local messages
+    const atBottom = ref(false); // Track if user has scrolled to bottom of message list
 
-    
+    // Computed property to check if there are older messages beyond the 3-day window
+    const hasOlderLocalMessages = computed(() => {
+      if (showOlderLocal.value) return false; // Already showing older messages
+      if (displayedMessages.value.length === 0) return false;
+      
+      const now = Math.floor(Date.now() / 1000);
+      const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
+      
+      // Check if there are any messages in inbox that are older than 3 days and not currently displayed
+      const displayedIds = new Set(displayedMessages.value.map(m => m.id));
+      const olderMessages = msgs.inbox.filter(m => 
+        (m.created_at || 0) < threeDaysAgo && !displayedIds.has(m.id)
+      );
+      
+      return olderMessages.length > 0;
+    });
     
     // State for comments UI
     const showingComments = ref<Set<string>>(new Set());
@@ -1038,6 +1057,29 @@ export default defineComponent({
     onMounted(() => { 
       startSub().catch(console.error); 
       handleNotificationJump();
+      
+      // Set up IntersectionObserver for bottom sentinel
+      const bottomSentinel = document.getElementById('bottom-sentinel');
+      if (bottomSentinel) {
+        const observer = new IntersectionObserver(
+          (entries) => {
+            entries.forEach(entry => {
+              atBottom.value = entry.isIntersecting;
+            });
+          },
+          {
+            root: null, // viewport
+            rootMargin: '0px',
+            threshold: 0.1
+          }
+        );
+        observer.observe(bottomSentinel);
+        
+        // Clean up observer when component unmounts
+        onBeforeUnmount(() => {
+          observer.disconnect();
+        });
+      }
     });
 
    watch(
@@ -1106,6 +1148,8 @@ export default defineComponent({
       showPendingMessages,
       showOlderLocalMessages,
       showOlderLocal,
+      hasOlderLocalMessages,
+      atBottom,
       container,
       pullDistance,
       refreshing
