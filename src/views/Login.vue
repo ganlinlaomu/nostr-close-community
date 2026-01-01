@@ -480,10 +480,10 @@ export default defineComponent({
   transform: none;
 }
 
-.btn-active {
-  background: #151B26 !important;
-  border-color: #3A4458 !important;
-  color: #E5E7EB !important;
+.login-actions .btn.btn-active {
+  background: #151B26;
+  border-color: #3A4458;
+  color: #E5E7EB;
 }
 
 .btn:disabled {
