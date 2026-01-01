@@ -62,12 +62,22 @@ function go(n: any) {
   notifications.markAsRead(n.id);
 
   // 跳转到 Home，并带参数
+  // Use new naming: mid (message), cid (comment/parent), rid (reply)
+  const query: any = {
+    mid: n.messageId
+  };
+  
+  // For comments/replies, use cid and rid
+  if (n.commentId) {
+    query.cid = n.commentId;
+  }
+  if (n.replyId) {
+    query.rid = n.replyId;
+  }
+  
   router.push({
     path: "/",
-    query: {
-      mid: n.messageId,
-      iid: n.commentId
-    }
+    query
   });
 }
 </script>
