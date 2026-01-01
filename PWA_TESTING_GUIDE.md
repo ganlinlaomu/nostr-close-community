@@ -74,7 +74,27 @@ npm run preview
 7. Launch the installed PWA again
 8. **Expected Result**: App loads successfully (offline-first)
 
-### 9. Test PWA Installation (Mobile - Manual)
+### 9. Test First Login Empty Feed Issue (Breakpoint Fix)
+1. Clear all application data:
+   - DevTools > Application > Storage > Clear site data
+   - Or clear IndexedDB, localStorage, and cache manually
+2. Login to the app with your account
+3. Navigate to Home page
+4. Check DevTools Console for backfill logs
+5. **Expected Result**: You should see:
+   ```
+   无断点，拉取最近3天: since=<3 days ago>
+   回填完成: X 个事件, Y 个批次
+   ```
+6. If no messages were decrypted (e.g., no friends have posted), check for:
+   ```
+   跳过断点更新: 未解密任何消息 (获取了 X 条事件)
+   ```
+7. **Expected Result**: On next app reload/refresh, the backfill should retry the same 3-day window instead of being locked to a tiny time window
+8. Post a test message yourself
+9. **Expected Result**: Your own message should appear in the home feed (not filtered out)
+
+### 10. Test PWA Installation (Mobile - Manual)
 1. On Android Chrome:
    - Open the app in Chrome
    - Tap the three-dot menu
@@ -100,6 +120,9 @@ npm run preview
 - [ ] Old localStorage keys are removed after migration
 - [ ] Home page displays cached messages when offline
 - [ ] Home page displays cached friends list when offline
+- [ ] Home page displays user's own messages in feed
+- [ ] First login without messages doesn't lock breakpoint to current time
+- [ ] Subsequent logins can fetch historical messages after breakpoint fix
 - [ ] PWA can be installed (desktop/mobile)
 - [ ] Installed PWA works offline
 
@@ -117,6 +140,24 @@ When the app loads for the first time with existing localStorage data:
 [Messages] Loaded Y outbox messages from Dexie
 [Friends] Loaded Z friends from Dexie (timestamp: ...)
 ```
+
+### Backfill Breakpoint Behavior
+
+**On first login with no messages:**
+```
+无断点，拉取最近3天: since=<3 days ago timestamp>
+回填完成: 0 个事件, 0 个批次
+跳过断点更新: 未解密任何消息 (获取了 0 条事件)
+```
+Note: The breakpoint is NOT updated when no messages are decrypted. This allows subsequent logins to retry the full 3-day window.
+
+**After friends post messages:**
+```
+使用断点拉取（限制3天）: since=<breakpoint+1>, breakpoint=<last successful timestamp>
+回填完成: X 个事件, Y 个批次
+保存消息断点: <newest message timestamp> (解密了 X 条)
+```
+Note: The breakpoint is only updated when at least one message is successfully decrypted.
 
 ## Troubleshooting
 
