@@ -89,8 +89,23 @@ export const useMessagesStore = defineStore("messages", {
 
     addInbox(item: InboxItem) {
       if (!item || !item.id) return;
-      // prevent exact duplicates
-      if (this.inbox.find((m) => m.id === item.id)) return;
+      
+      // Check if message already exists
+      const existingIndex = this.inbox.findIndex((m) => m.id === item.id);
+      if (existingIndex !== -1) {
+        // Message already exists
+        const existing = this.inbox[existingIndex];
+        
+        // If the new item has _localMeta but the existing one doesn't, update it
+        // This handles the case where a relay echo arrived before the local version with metadata
+        if (item._localMeta && !existing._localMeta) {
+          existing._localMeta = item._localMeta;
+          this.saveInbox();
+        }
+        return;
+      }
+      
+      // Add new message
       this.inbox.unshift(item);
       // keep bounded history
       if (this.inbox.length > 1000) this.inbox.splice(1000);

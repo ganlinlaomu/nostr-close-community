@@ -533,32 +533,30 @@ export default defineComponent({
           }
         }
         
+        // Calculate group metadata before publishing
+        const groupsMeta = allFriends.value
+          ? [{ name: "全部好友", count: recipientsCount.value }]
+          : selectedGroups.value.map(g => ({
+              name: g,
+              count: countByGroup.value[g] || 0
+            }));
+        
+        // Publish the message to relays
         const { signed } = await posts.publishNip44PerMessage(recips, fullContent);
 
-// ✅ 先算 groupsMeta
-const groupsMeta = allFriends.value
-  ? [{ name: "全部好友", count: recipientsCount.value }]
-  : selectedGroups.value.map(g => ({
-      name: g,
-      count: countByGroup.value[g] || 0
-    }));
-
-// ✅ 再写入 inbox（关键就在这里）
-try {
-  await msgs.load();
-  msgs.addInbox({
-    id: signed.id,
-    pubkey: keys.pkHex,
-    created_at: signed.created_at,
-    content: fullContent,
-
-    // ⭐⭐⭐ 这一段是你之前没有的
-    _localMeta: {
-      groupCount: groupsMeta.length,
-      groups: groupsMeta
-    }
-  });
-} catch {}
+        // Immediately add message to inbox with _localMeta to prevent race condition
+        // This must happen synchronously after publishing completes so that any relay
+        // echo will be blocked by the duplicate check in addInbox
+        msgs.addInbox({
+          id: signed.id,
+          pubkey: keys.pkHex,
+          created_at: signed.created_at,
+          content: fullContent,
+          _localMeta: {
+            groupCount: groupsMeta.length,
+            groups: groupsMeta
+          }
+        });
 
         ui.addToast("发送成功", 1200, "success");
         onClose();
