@@ -259,10 +259,8 @@ export default defineComponent({
       
       if (olderMessages.length > 0) {
         logger.info(`找到 ${olderMessages.length} 条更早的本地消息`);
-        // Merge older messages into displayedMessages, maintaining sort order
-        const merged = [...displayedMessages.value, ...olderMessages].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-        // Deduplicate by id (shouldn't be needed but safe to have)
-        displayedMessages.value = Array.from(new Map(merged.map(m => [m.id, m])).values());
+        // Simply append older messages and sort (displayedIds Set already ensures no duplicates)
+        displayedMessages.value = [...displayedMessages.value, ...olderMessages].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
         updateMessageTimeRange();
       } else {
         logger.info("没有更早的本地消息");
