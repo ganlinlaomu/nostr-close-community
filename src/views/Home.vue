@@ -801,15 +801,17 @@ export default defineComponent({
               status.value = "已是最新";
             }
             
-            // Save the timestamp of the newest message for future reference
-            // This helps track the last time we successfully fetched messages
+            // Only update breakpoint if we successfully decrypted at least one message
+            // This prevents the "window locks to now" trap when no messages are decrypted
+            // on first login, which would cause subsequent backfills to miss historical messages
             const breakpointKey = `messages_${keys.pkHex}`;
             if (newestTimestamp > 0) {
               saveBackfillBreakpoint(breakpointKey, newestTimestamp);
-              logger.info(`保存最新消息时间戳: ${new Date(newestTimestamp * 1000).toLocaleString()}`);
+              logger.info(`保存消息断点: ${new Date(newestTimestamp * 1000).toLocaleString()} (解密了 ${decryptedEvents} 条)`);
             } else {
-              // No new messages, save current time
-              saveBackfillBreakpoint(breakpointKey, now);
+              // No messages were decrypted - do NOT advance the breakpoint
+              // Keep the previous breakpoint unchanged to allow subsequent backfills to retry the same window
+              logger.info(`跳过断点更新: 未解密任何消息 (获取了 ${fetchedEvents} 条事件)`);
             }
           },
           batchSize: 1000, // Increased batch size for more efficient fetching

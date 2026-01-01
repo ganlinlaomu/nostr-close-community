@@ -116,11 +116,11 @@ export const useMessagesStore = defineStore("messages", {
       await migrateFromLocalStorage(targetPk);
 
       // Load inbox from Dexie (limit to recent 200 messages, sorted by created_at descending)
+      // Note: We now include user's own messages to show them in the home feed
       try {
         const inboxMessages = await db.messages
           .where("type")
           .equals("inbox")
-          .and(msg => msg.pubkey !== targetPk) // exclude own messages
           .sortBy("created_at");
         
         // Reverse to get newest first, then take 200
