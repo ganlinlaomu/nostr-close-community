@@ -142,7 +142,7 @@
       </div>
       
       <!-- Bottom sentinel for scroll detection -->
-      <div id="bottom-sentinel" style="height: 1px;"></div>
+      <div id="bottom-sentinel" class="bottom-sentinel"></div>
       
       <!-- Show older messages button - only appears when at bottom -->
       <div v-if="hasOlderLocalMessages && atBottom" class="show-older-container">
@@ -1073,7 +1073,7 @@ export default defineComponent({
             {
               root: null, // viewport
               rootMargin: '100px', // Trigger slightly before reaching exact bottom for better UX
-              threshold: 0.1 // Trigger when 10% of sentinel is visible
+              threshold: 0 // Trigger as soon as sentinel enters the extended area
             }
           );
           bottomObserver.value.observe(bottomSentinel);
@@ -1557,6 +1557,11 @@ export default defineComponent({
   position: sticky;
   top: 0;
   z-index: 10;
+}
+
+.bottom-sentinel {
+  height: 1px;
+  visibility: hidden;
 }
 
 </style>
