@@ -61,6 +61,7 @@
         <!-- Private Key Login -->
         <button
           class="btn"
+          :class="{ 'btn-active': showNsec }"
           @click="showNsecLogin"
           :disabled="loading"
           aria-label="Login with private key"
@@ -72,6 +73,7 @@
         <!-- Bunker Login -->
         <button
           class="btn"
+          :class="{ 'btn-active': showBunker }"
           @click="showBunkerLogin"
           :disabled="loading"
           aria-label="Login with remote signer"
@@ -476,6 +478,12 @@ export default defineComponent({
   border-color: #3A4458;
   color: #E5E7EB;
   transform: none;
+}
+
+.btn-active {
+  background: #151B26 !important;
+  border-color: #3A4458 !important;
+  color: #E5E7EB !important;
 }
 
 .btn:disabled {
