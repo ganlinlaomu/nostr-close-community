@@ -383,7 +383,7 @@ export default defineComponent({
         // Create a new File from encrypted bytes with octet-stream type
         const encryptedFile = new File(
           [encryptedBytes],
-          resizedFile.name + ".enc",
+          resizedFile.name.replace(/\.[^.]*$/, '') + ".enc",
           { type: "application/octet-stream" }
         );
         

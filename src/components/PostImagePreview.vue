@@ -60,7 +60,7 @@ export default defineComponent({
         // Decrypt encrypted image reference
         const metadata = decodeEncryptedImageRef(url);
         if (!metadata) {
-          console.error("Failed to decode encrypted image reference:", url);
+          console.error("Invalid encrypted image reference format:", url);
           return { url: "", isEncrypted: true };
         }
 
@@ -68,7 +68,7 @@ export default defineComponent({
           // Fetch encrypted blob
           const response = await fetch(metadata.url);
           if (!response.ok) {
-            console.error("Failed to fetch encrypted image:", response.status);
+            console.error("Failed to fetch encrypted image:", metadata.url, response.status);
             return { url: "", isEncrypted: true };
           }
           
@@ -98,7 +98,7 @@ export default defineComponent({
           
           return { url: objectUrl, isEncrypted: true };
         } catch (error) {
-          console.error("Failed to decrypt image:", error);
+          console.error("Failed to decrypt image:", url, error);
           return { url: "", isEncrypted: true };
         }
       } else {
@@ -117,7 +117,7 @@ export default defineComponent({
         try { 
           URL.revokeObjectURL(url); 
         } catch (error) {
-          console.error("Failed to revoke object URL:", error);
+          console.error("Failed to revoke object URL:", url, error);
         }
       });
       objectUrls.clear();
@@ -142,7 +142,7 @@ export default defineComponent({
         try { 
           URL.revokeObjectURL(url); 
         } catch (error) {
-          console.error("Failed to revoke object URL:", error);
+          console.error("Failed to revoke object URL on unmount:", url, error);
         }
       });
       objectUrls.clear();
