@@ -1,7 +1,7 @@
 <template>
 
-  <!-- bottom nav moved into Headbar file for simplicity; only shown when logged in -->
-  <nav v-show="isLoggedIn" class="bottom-nav">
+  <!-- bottom nav moved into Headbar file for simplicity; only shown when logged in and unlocked -->
+  <nav v-show="shouldShowBottomNav" class="bottom-nav">
     <router-link class="nav-item" to="/">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
@@ -78,11 +78,18 @@ export default defineComponent({
     const isLoggedIn = computed(() => !!keys.pkHex);
     const shortPk = computed(() => (keys.pkHex ? keys.pkHex.slice(0, 8) + "..." : ""));
     
+    // Hide bottom nav when user needs to unlock (encrypted but not unlocked)
+    const shouldShowBottomNav = computed(() => {
+      if (!keys.pkHex) return false; // Not logged in at all
+      if (keys.isEncrypted && !keys.isUnlocked) return false; // Needs to unlock
+      return true; // Logged in and unlocked (or not encrypted)
+    });
+    
     function handlePostClick() {
       ui.openPostEditor();
     }
     
-    return { isLoggedIn, shortPk, handlePostClick, notifications};
+    return { isLoggedIn, shortPk, handlePostClick, notifications, shouldShowBottomNav };
   }
 });
 </script>
