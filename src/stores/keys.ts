@@ -8,6 +8,15 @@ import type { WindowNostr } from "nostr-tools/lib/types/nip07";
 import { BunkerSigner, type BunkerPointer, parseBunkerInput } from "nostr-tools/nip46";
 import { finalizeEvent } from "nostr-tools";
 import type { EventTemplate, VerifiedEvent } from "nostr-tools/lib/types/core";
+import {
+  encryptPrivateKey,
+  decryptPrivateKey,
+  storeEncryptedKey,
+  retrieveEncryptedKey,
+  removeEncryptedKey,
+  hasEncryptedKey,
+  type EncryptedData
+} from "@/utils/crypto";
 
 /**
  * keys store with robust nostr-tools feature detection.
@@ -53,7 +62,10 @@ export const useKeyStore = defineStore("keys", {
     pkHex: "" as string,
     loginMethod: "" as "sk" | "nip07" | "nip46" | "",
     bunkerSigner: null as BunkerSigner | null,
-    loginTimestamp: 0 as number // Unix timestamp when user logged in
+    loginTimestamp: 0 as number, // Unix timestamp when user logged in
+    isEncrypted: false as boolean, // Whether the current login uses encrypted storage
+    isUnlocked: false as boolean, // Whether the encrypted key has been unlocked
+    bunkerClientSecretKey: null as Uint8Array | null // Persisted bunker client secret for reconnection
   }),
   getters: {
     /**
@@ -284,8 +296,24 @@ export const useKeyStore = defineStore("keys", {
           throw new Error("无效的 bunker URL 或 NIP-05 地址。请检查输入格式。");
         }
 
-        // Generate client secret key for bunker communication
-        const clientSecretKey = crypto.getRandomValues(new Uint8Array(32));
+        // Try to restore existing client secret key, or generate a new one
+        let clientSecretKey: Uint8Array;
+        const storedKey = localStorage.getItem("bunkerClientSecretKey");
+        if (storedKey) {
+          try {
+            // Restore from base64
+            const bytes = atob(storedKey);
+            clientSecretKey = new Uint8Array(bytes.length);
+            for (let i = 0; i < bytes.length; i++) {
+              clientSecretKey[i] = bytes.charCodeAt(i);
+            }
+          } catch {
+            // If restore fails, generate new
+            clientSecretKey = crypto.getRandomValues(new Uint8Array(32));
+          }
+        } else {
+          clientSecretKey = crypto.getRandomValues(new Uint8Array(32));
+        }
         
         // Create bunker signer with timeout handling
         const signer = BunkerSigner.fromBunker(clientSecretKey, bunkerPointer, {
@@ -309,12 +337,16 @@ export const useKeyStore = defineStore("keys", {
         this.loginMethod = "nip46";
         this.loginTimestamp = Math.floor(Date.now() / 1000);
         this.bunkerSigner = signer;
+        this.bunkerClientSecretKey = clientSecretKey;
 
         try {
           localStorage.setItem("pkHex", this.pkHex);
           localStorage.setItem("loginMethod", this.loginMethod);
           localStorage.setItem("loginTimestamp", String(this.loginTimestamp));
           localStorage.setItem("bunkerInput", bunkerInput);
+          // Store client secret key for reconnection (base64 encoded)
+          const keyBase64 = btoa(String.fromCharCode(...clientSecretKey));
+          localStorage.setItem("bunkerClientSecretKey", keyBase64);
           localStorage.removeItem("skHex"); // Ensure no private key is stored
         } catch {}
 
@@ -345,6 +377,141 @@ export const useKeyStore = defineStore("keys", {
       }
     },
 
+    /**
+     * Login with nsec (NIP-19 encoded private key) or hex private key
+     * @param nsecOrHex - nsec1... string or 64-character hex private key
+     * @param password - Optional password to encrypt the private key. If provided, key will be encrypted.
+     */
+    async loginWithNsec(nsecOrHex: string, password?: string) {
+      try {
+        let skHex: string;
+
+        // Try to decode as nsec first
+        if (nsecOrHex.startsWith("nsec1")) {
+          try {
+            const decoded = nostr.nip19.decode(nsecOrHex);
+            if (decoded.type !== "nsec") {
+              throw new Error("输入的不是有效的 nsec 私钥");
+            }
+            // Convert Uint8Array to hex
+            skHex = Array.from(decoded.data as Uint8Array)
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join("");
+          } catch (e: any) {
+            throw new Error(`无效的 nsec 格式: ${e.message || e}`);
+          }
+        } else if (/^[0-9a-fA-F]{64}$/.test(nsecOrHex)) {
+          // Valid hex private key
+          skHex = nsecOrHex.toLowerCase();
+        } else {
+          throw new Error("请输入有效的 nsec 私钥或 64 位十六进制私钥");
+        }
+
+        // Get public key
+        const pk = await safeGetPublicKey(skHex);
+
+        // If password provided, encrypt and store
+        if (password && password.trim()) {
+          const encrypted = await encryptPrivateKey(skHex, password);
+          storeEncryptedKey(pk, encrypted);
+          
+          this.skHex = skHex;
+          this.pkHex = pk;
+          this.loginMethod = "sk";
+          this.isEncrypted = true;
+          this.isUnlocked = true;
+          this.loginTimestamp = Math.floor(Date.now() / 1000);
+
+          // Store metadata
+          try {
+            localStorage.setItem("pkHex", this.pkHex);
+            localStorage.setItem("loginMethod", this.loginMethod);
+            localStorage.setItem("loginTimestamp", String(this.loginTimestamp));
+            localStorage.setItem("isEncrypted", "true");
+            // Don't store skHex in plain text
+            localStorage.removeItem("skHex");
+          } catch {}
+        } else {
+          // No password, use regular login
+          await this.loginWithSk(skHex);
+          this.isEncrypted = false;
+          this.isUnlocked = true;
+          return;
+        }
+
+        // Load account-scoped stores
+        try {
+          const friends = useFriendsStore();
+          await friends.load(this.pkHex);
+        } catch {}
+        try {
+          const msgs = useMessagesStore();
+          await msgs.load(this.pkHex);
+        } catch {}
+        try {
+          const settings = useSettingsStore();
+          await settings.load(this.pkHex);
+        } catch {}
+      } catch (e: any) {
+        this.skHex = "";
+        this.pkHex = "";
+        this.loginMethod = "";
+        this.loginTimestamp = 0;
+        this.isEncrypted = false;
+        this.isUnlocked = false;
+        throw e;
+      }
+    },
+
+    /**
+     * Unlock an encrypted private key with password
+     * @param password - The password to decrypt the private key
+     */
+    async unlockWithPassword(password: string) {
+      if (!this.pkHex) {
+        throw new Error("未找到公钥信息");
+      }
+
+      if (!hasEncryptedKey(this.pkHex)) {
+        throw new Error("未找到加密的私钥");
+      }
+
+      const encrypted = retrieveEncryptedKey(this.pkHex);
+      if (!encrypted) {
+        throw new Error("无法读取加密数据");
+      }
+
+      try {
+        const skHex = await decryptPrivateKey(encrypted, password);
+        
+        // Verify the decrypted key matches the public key
+        const pk = await safeGetPublicKey(skHex);
+        if (pk !== this.pkHex) {
+          throw new Error("解密的私钥与公钥不匹配");
+        }
+
+        this.skHex = skHex;
+        this.isUnlocked = true;
+
+        // Load account-scoped stores if not already loaded
+        try {
+          const friends = useFriendsStore();
+          await friends.load(this.pkHex);
+        } catch {}
+        try {
+          const msgs = useMessagesStore();
+          await msgs.load(this.pkHex);
+        } catch {}
+        try {
+          const settings = useSettingsStore();
+          await settings.load(this.pkHex);
+        } catch {}
+      } catch (e: any) {
+        // Don't clear state on failed unlock attempt
+        throw e;
+      }
+    },
+
     async generateTemp() {
       const sk = safeGeneratePrivateKey();
       await this.loginWithSk(sk);
@@ -358,11 +525,14 @@ export const useKeyStore = defineStore("keys", {
         | null;
 
       const pk = localStorage.getItem("pkHex");
+      const isEncrypted = localStorage.getItem("isEncrypted") === "true";
 
       if (!method || !pk) return;
 
       this.loginMethod = method;
       this.pkHex = pk;
+      const loginTimestamp = localStorage.getItem("loginTimestamp") || "0";
+      this.loginTimestamp = parseInt(loginTimestamp, 10) || 0;
 
       if (method === "nip46") {
         const bunkerInput = localStorage.getItem("bunkerInput");
@@ -373,25 +543,79 @@ export const useKeyStore = defineStore("keys", {
 
         try {
           const bunkerPointer = await parseBunkerInput(bunkerInput);
-          const clientSecretKey = crypto.getRandomValues(new Uint8Array(32));
+          
+          // Try to restore the client secret key
+          let clientSecretKey: Uint8Array;
+          const storedKey = localStorage.getItem("bunkerClientSecretKey");
+          if (storedKey) {
+            try {
+              const bytes = atob(storedKey);
+              clientSecretKey = new Uint8Array(bytes.length);
+              for (let i = 0; i < bytes.length; i++) {
+                clientSecretKey[i] = bytes.charCodeAt(i);
+              }
+            } catch {
+              console.warn("[keys] Failed to restore bunker client secret, generating new");
+              clientSecretKey = crypto.getRandomValues(new Uint8Array(32));
+            }
+          } else {
+            clientSecretKey = crypto.getRandomValues(new Uint8Array(32));
+          }
 
           const signer = BunkerSigner.fromBunker(
             clientSecretKey,
             bunkerPointer
           );
 
-          await signer.sendRequest("connect", []);
+          // Connect with timeout
+          const connectPromise = signer.sendRequest("connect", []);
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error("Bunker connection timeout")), 10000)
+          );
+          
+          await Promise.race([connectPromise, timeoutPromise]);
 
           this.bunkerSigner = signer;
+          this.bunkerClientSecretKey = clientSecretKey;
         } catch (e) {
           console.error("[keys] bunker restore failed", e);
           this.logout();
+          return;
         }
       }
 
       if (method === "sk") {
-        const sk = localStorage.getItem("skHex");
-        if (sk) this.skHex = sk;
+        if (isEncrypted) {
+          // Encrypted private key - need to unlock
+          this.isEncrypted = true;
+          this.isUnlocked = false;
+          // Don't load stores yet, wait for unlock
+          return;
+        } else {
+          // Plain text private key
+          const sk = localStorage.getItem("skHex");
+          if (sk) {
+            this.skHex = sk;
+            this.isEncrypted = false;
+            this.isUnlocked = true;
+          }
+        }
+      }
+
+      // Load account-scoped stores for non-encrypted or successfully restored sessions
+      if (method === "nip07" || method === "nip46" || (method === "sk" && !isEncrypted)) {
+        try {
+          const friends = useFriendsStore();
+          await friends.load(this.pkHex);
+        } catch {}
+        try {
+          const msgs = useMessagesStore();
+          await msgs.load(this.pkHex);
+        } catch {}
+        try {
+          const settings = useSettingsStore();
+          await settings.load(this.pkHex);
+        } catch {}
       }
     },
     /**
@@ -425,6 +649,8 @@ export const useKeyStore = defineStore("keys", {
       this.pkHex = "";
       this.loginMethod = "";
       this.loginTimestamp = 0;
+      this.isEncrypted = false;
+      this.isUnlocked = false;
       
       // Close bunker signer if exists
       if (this.bunkerSigner) {
@@ -434,12 +660,17 @@ export const useKeyStore = defineStore("keys", {
         this.bunkerSigner = null;
       }
       
+      this.bunkerClientSecretKey = null;
+      
       try {
         localStorage.removeItem("skHex");
         localStorage.removeItem("pkHex");
         localStorage.removeItem("loginMethod");
         localStorage.removeItem("loginTimestamp");
         localStorage.removeItem("bunkerInput");
+        localStorage.removeItem("bunkerClientSecretKey");
+        localStorage.removeItem("isEncrypted");
+        // Note: We don't remove the encrypted key itself, user can unlock again
       } catch {}
       // clear in-memory stores (do not delete persisted storage by default)
       try {

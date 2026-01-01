@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { useKeyStore } from "./keys";
-import { getRelaysFromStorage, subscribe, publish } from "@/nostr/relays";
+import { getRelaysFromStorage, subscribe, publish, reconnectRelay } from "@/nostr/relays";
 import { logger } from "@/utils/logger";
 
 export type BlossomServer = {
@@ -146,6 +146,56 @@ export const useSettingsStore = defineStore("settings", {
         logger.error("Error loading settings", e);
         this.settings = { relays: [], blossomServers: [] };
         this.lastSyncTimestamp = 0;
+      }
+      
+      // After loading, apply the settings to make them active
+      this.applySettings();
+    },
+
+    // Apply current settings to the system (relays and blossom servers)
+    applySettings() {
+      // Apply relay settings
+      if (this.settings.relays && this.settings.relays.length > 0) {
+        try {
+          // Write to localStorage in the format that getRelaysFromStorage expects
+          const relaysText = this.settings.relays.join('\n');
+          localStorage.setItem('custom-relays', relaysText);
+          
+          // Trigger reconnection for each relay
+          for (const relayUrl of this.settings.relays) {
+            try {
+              reconnectRelay(relayUrl);
+            } catch (e) {
+              logger.warn(`Failed to reconnect relay ${relayUrl}`, e);
+            }
+          }
+          logger.info(`Applied ${this.settings.relays.length} relay(s) from settings`);
+        } catch (e) {
+          logger.error("Failed to apply relay settings", e);
+        }
+      }
+      
+      // Apply blossom server settings
+      if (this.settings.blossomServers && this.settings.blossomServers.length > 0) {
+        try {
+          // Store in the format expected by blossom code
+          localStorage.setItem('blossom_servers', JSON.stringify(this.settings.blossomServers));
+          
+          // For backward compatibility, also set the first server as default
+          if (this.settings.blossomServers[0]) {
+            localStorage.setItem('blossom_upload_url', this.settings.blossomServers[0].url);
+            localStorage.setItem('blossom_token', this.settings.blossomServers[0].token || '');
+          }
+          
+          // Dispatch event to notify other components
+          window.dispatchEvent(new CustomEvent('blossom-config-updated', {
+            detail: { servers: this.settings.blossomServers }
+          }));
+          
+          logger.info(`Applied ${this.settings.blossomServers.length} blossom server(s) from settings`);
+        } catch (e) {
+          logger.error("Failed to apply blossom settings", e);
+        }
       }
     },
 
@@ -328,6 +378,7 @@ export const useSettingsStore = defineStore("settings", {
                     this.save();
                     this.lastSyncTimestamp = latestEvent.created_at;
                     logger.info(`Fetched settings from relays (timeout)`);
+                    this.applySettings(); // Apply settings immediately
                     this.syncing = false;
                     resolve(true);
                   } else {
@@ -384,6 +435,7 @@ export const useSettingsStore = defineStore("settings", {
                 this.save(); // Save to localStorage as well
                 this.lastSyncTimestamp = latestEvent.created_at;
                 logger.info(`Fetched settings from relays`);
+                this.applySettings(); // Apply settings immediately
                 resolve(true);
               } else {
                 logger.warn("Invalid settings format from relay");
