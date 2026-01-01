@@ -145,6 +145,7 @@
 <script lang="ts">
 import { defineComponent, ref, reactive, onMounted, onBeforeUnmount, computed, watch } from "vue";
 import { DEFAULT_RELAYS, getRelaysFromStorage, inspectRelays, reconnectRelay } from "@/nostr/relays";
+import { DEFAULT_BLOSSOM_SERVERS } from "@/utils/blossom";
 import { useKeyStore } from "@/stores/keys";
 import { useSettingsStore, type BlossomServer } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
@@ -317,6 +318,12 @@ export default defineComponent({
         }
       } else if (settings.blossomList.length === 0) {
         migrateOldBlossomFormat();
+      }
+      
+      // If still no blossom servers after migration, use defaults
+      if (settings.blossomList.length === 0) {
+        settings.updateBlossomServers([...DEFAULT_BLOSSOM_SERVERS]);
+        saveBlossomsToStorage();
       }
     }
 
