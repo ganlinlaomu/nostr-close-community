@@ -473,7 +473,16 @@ export default defineComponent({
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
-:is(.login-actions .btn, .form .btn):hover:not(:disabled) {
+/* Only apply hover effect when not active - this prevents double highlighting */
+.login-actions .btn:hover:not(:disabled):not(.btn-active) {
+  background: #151B26;
+  border-color: #3A4458;
+  color: #E5E7EB;
+  transform: none;
+}
+
+/* Keep hover effect for form buttons */
+.form .btn:hover:not(:disabled) {
   background: #151B26;
   border-color: #3A4458;
   color: #E5E7EB;

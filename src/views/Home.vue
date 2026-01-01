@@ -344,7 +344,16 @@ export default defineComponent({
 
     function addMessageIfNew(evt: any, plain: string) {
       if (!evt || !evt.id) return false;
-      if (msgs.inbox.find((m) => m.id === evt.id)) return false;
+      
+      // Check if message already exists in inbox
+      const existing = msgs.inbox.find((m) => m.id === evt.id);
+      if (existing) {
+        // Message already exists - the stores layer (addInbox) handles preservation
+        // of _localMeta, so we just return false to skip adding this duplicate
+        return false;
+      }
+      
+      // Add new message to inbox
       const added = { id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at, content: plain };
       msgs.addInbox(added);
       nextTick(() => {
