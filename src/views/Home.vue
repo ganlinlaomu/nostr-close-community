@@ -162,6 +162,10 @@ import { usePullToRefresh } from "@/components/usePullToRefresh";
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
 const mdImageRE = /!\[[^\]]*?\]\(\s*(https?:\/\/[^\s)]+)\s*\)/gi;
 const plainImgUrlRE = /(https?:\/\/[^\s)]+?\.(?:png|jpe?g|gif|webp|avif|svg)(?:\?[^\s)]*)?)/gi;
+// Match encrypted image references in markdown: ![](blossom+aesgcm:...)
+// This is needed to prevent raw encrypted markdown from appearing in the message text area
+// while PostImagePreview handles the actual decryption and rendering
+const mdEncryptedImageRE = /!\[[^\]]*?\]\(\s*(blossom\+aesgcm:[^\s)]+)\s*\)/gi;
 
 // Constants for time calculations
 const SECONDS_PER_DAY = 24 * 60 * 60;
@@ -353,6 +357,8 @@ export default defineComponent({
       if (!content) return "";
       // remove markdown image ![alt](url)
       let s = content.replace(mdImageRE, "");
+      // remove encrypted image markdown ![](blossom+aesgcm:...)
+      s = s.replace(mdEncryptedImageRE, "");
       // remove plain image urls
       s = s.replace(plainImgUrlRE, "");
       // collapse multiple blank lines and trim
