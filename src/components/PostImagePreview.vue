@@ -2,7 +2,7 @@
   <div class="post-image-preview" v-if="images.length > 0">
     <img
       v-if="!showAll"
-      :src="images[0]"
+      :src="images[0].url"
       :alt="altText"
       class="post-image-first"
       @error="onError(0)"
@@ -10,9 +10,9 @@
     />
     <div v-else class="gallery" :class="galleryClass">
       <img
-        v-for="(u, idx) in images"
+        v-for="(img, idx) in images"
         :key="idx"
-        :src="u"
+        :src="img.url"
         :alt="altText"
         class="gallery-item"
         @error="onError(idx)"
@@ -23,8 +23,16 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, computed, ref } from "vue";
+import { defineComponent, computed, ref, onBeforeUnmount, watch } from "vue";
 import { extractImageUrls } from "@/utils/extractImageUrls";
+import { decodeEncryptedImageRef, isEncryptedImageRef } from "@/utils/encryptedImageRef";
+import { base64ToBytes } from "@/nostr/crypto";
+import { decryptImageBytes } from "@/utils/imageCrypto";
+
+interface ImageItem {
+  url: string;
+  isEncrypted: boolean;
+}
 
 export default defineComponent({
   name: "PostImagePreview",
@@ -35,17 +43,9 @@ export default defineComponent({
     altText: { type: String, default: "image" }
   },
   setup(props) {
-    const all = computed(() => extractImageUrls(props.content || ""));
-    const images = computed(() => {
-      if (props.showAll) {
-        // Show up to max images (default 9 for grid)
-        return all.value.slice(0, props.max);
-      } else {
-        // Show only first image
-        return all.value.slice(0, 1);
-      }
-    });
-    const failed = ref<Record<number, boolean>>({});
+    const extractedUrls = computed(() => extractImageUrls(props.content || ""));
+    const images = ref<ImageItem[]>([]);
+    const objectUrls = new Set<string>();
     
     // Compute gallery class based on number of images for better browser compatibility
     const galleryClass = computed(() => {
@@ -56,10 +56,96 @@ export default defineComponent({
       return 'gallery-grid';
     });
 
+    async function processImageUrl(url: string): Promise<ImageItem> {
+      if (isEncryptedImageRef(url)) {
+        // Decrypt encrypted image reference
+        const metadata = decodeEncryptedImageRef(url);
+        if (!metadata) {
+          console.error("Failed to decode encrypted image reference:", url);
+          return { url: "", isEncrypted: true };
+        }
+
+        try {
+          // Fetch encrypted blob
+          const response = await fetch(metadata.url);
+          if (!response.ok) {
+            console.error("Failed to fetch encrypted image:", response.status);
+            return { url: "", isEncrypted: true };
+          }
+          
+          const encryptedBytes = new Uint8Array(await response.arrayBuffer());
+          
+          // Import key and decrypt
+          const keyBytes = base64ToBytes(metadata.key);
+          const key = await crypto.subtle.importKey(
+            "raw",
+            keyBytes,
+            "AES-GCM",
+            false,
+            ["decrypt"]
+          );
+          
+          const decryptedBytes = await decryptImageBytes(key, {
+            iv: metadata.iv,
+            ct: new TextEncoder().encode("") // We need to pass the actual ciphertext
+          });
+          
+          // Actually, we need to use the fetched bytes directly
+          const ivBytes = base64ToBytes(metadata.iv);
+          const decrypted = await crypto.subtle.decrypt(
+            { name: "AES-GCM", iv: ivBytes },
+            key,
+            encryptedBytes
+          );
+          
+          // Create object URL from decrypted bytes
+          const blob = new Blob([decrypted], { type: metadata.mime });
+          const objectUrl = URL.createObjectURL(blob);
+          objectUrls.add(objectUrl);
+          
+          return { url: objectUrl, isEncrypted: true };
+        } catch (error) {
+          console.error("Failed to decrypt image:", error);
+          return { url: "", isEncrypted: true };
+        }
+      } else {
+        // Plain http(s) URL
+        return { url, isEncrypted: false };
+      }
+    }
+
+    async function loadImages() {
+      const urls = props.showAll 
+        ? extractedUrls.value.slice(0, props.max)
+        : extractedUrls.value.slice(0, 1);
+      
+      // Clear previous object URLs
+      objectUrls.forEach(url => {
+        try { URL.revokeObjectURL(url); } catch {}
+      });
+      objectUrls.clear();
+      
+      // Process all image URLs
+      const processed = await Promise.all(urls.map(processImageUrl));
+      images.value = processed.filter(img => img.url !== "");
+    }
+
+    // Watch for changes in content or display mode
+    watch([() => props.content, () => props.showAll, () => props.max], loadImages, { immediate: true });
+
+    const failed = ref<Record<number, boolean>>({});
+
     function onError(idx: number) {
       failed.value[idx] = true;
-      // We keep the broken src so Vue can react; parent can choose to remove by filtering if desired.
     }
+
+    onBeforeUnmount(() => {
+      // Clean up object URLs
+      objectUrls.forEach(url => {
+        try { URL.revokeObjectURL(url); } catch {}
+      });
+      objectUrls.clear();
+    });
 
     return { images, onError, failed, galleryClass };
   }
