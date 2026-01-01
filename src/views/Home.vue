@@ -1066,13 +1066,12 @@ export default defineComponent({
         if (bottomSentinel) {
           bottomObserver.value = new IntersectionObserver(
             (entries) => {
-              entries.forEach(entry => {
-                atBottom.value = entry.isIntersecting;
-              });
+              // Only one element is observed, so directly access the first entry
+              atBottom.value = entries[0].isIntersecting;
             },
             {
               root: null, // viewport
-              rootMargin: '100px', // Trigger slightly before reaching exact bottom for better UX
+              rootMargin: '100px', // Trigger 100px before bottom edge is reached for better UX
               threshold: 0 // Trigger as soon as sentinel enters the extended area
             }
           );
