@@ -466,10 +466,8 @@ export default defineComponent({
         if (overlay.value) {
           overlay.value.focus();
         }
-        // Then focus textarea for immediate typing
-        if (textarea.value) {
-          textarea.value.focus();
-        }
+        // Don't auto-focus textarea to avoid mobile keyboard popup
+        // Users can manually click the textarea when ready to type
       } else {
         // Return focus to trigger element when modal closes
         if (triggerElement && typeof triggerElement.focus === 'function') {
