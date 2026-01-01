@@ -1212,6 +1212,8 @@ export default defineComponent({
   position: relative;
   min-height: 100vh;
   overscroll-behavior: contain;
+  /* Add padding-bottom to prevent button overlap with bottom navigation bar */
+  padding-bottom: calc(96px + env(safe-area-inset-bottom));
 }
 
 
