@@ -148,7 +148,7 @@
       <div v-if="hasOlderLocalMessages && atBottom" class="show-older-container">
         <button class="show-older-btn" @click="showOlderLocalMessages">
           <span class="show-older-icon">📜</span>
-          <span class="show-older-text">显示更早消息（本地）</span>
+          <span class="show-older-text">显示更早消息（本地）· +{{ olderLocalMessagesCount }}</span>
         </button>
       </div>
     </div>
@@ -226,6 +226,22 @@ export default defineComponent({
       );
       
       return olderMessages.length > 0;
+    });
+    
+    // Computed property for the count of older messages
+    const olderLocalMessagesCount = computed(() => {
+      if (showOlderLocal.value) return 0;
+      if (displayedMessages.value.length === 0) return 0;
+      
+      const now = Math.floor(Date.now() / 1000);
+      const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
+      
+      const displayedIds = new Set(displayedMessages.value.map(m => m.id));
+      const olderMessages = msgs.inbox.filter(m => 
+        (m.created_at || 0) < threeDaysAgo && !displayedIds.has(m.id)
+      );
+      
+      return olderMessages.length;
     });
     
     // State for comments UI
@@ -334,26 +350,35 @@ export default defineComponent({
         if (othersMessages.length > 0) {
           if (isBackfilling.value) {
             // During backfill: add directly to displayedMessages (within 3-day window), don't count as pending
-            logger.info(`[回填阶段] 收到 ${othersMessages.length} 条其他用户的消息，直接显示（不计入🆕）`);
-            const sortedOthers = othersMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-            const merged: InboxItem[] = [];
-            let i = 0, j = 0;
-            while (i < sortedOthers.length || j < displayedMessages.value.length) {
-              if (i >= sortedOthers.length) {
-                merged.push(...displayedMessages.value.slice(j));
-                break;
+            const now = Math.floor(Date.now() / 1000);
+            const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
+            // Filter to only include messages within 3-day window
+            const recentOthers = othersMessages.filter(m => (m.created_at || 0) >= threeDaysAgo);
+            
+            if (recentOthers.length > 0) {
+              logger.info(`[回填阶段] 收到 ${othersMessages.length} 条其他用户的消息，过滤后显示 ${recentOthers.length} 条（3天内，不计入🆕）`);
+              const sortedOthers = recentOthers.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+              const merged: InboxItem[] = [];
+              let i = 0, j = 0;
+              while (i < sortedOthers.length || j < displayedMessages.value.length) {
+                if (i >= sortedOthers.length) {
+                  merged.push(...displayedMessages.value.slice(j));
+                  break;
+                }
+                if (j >= displayedMessages.value.length) {
+                  merged.push(...sortedOthers.slice(i));
+                  break;
+                }
+                if ((sortedOthers[i].created_at || 0) >= (displayedMessages.value[j].created_at || 0)) {
+                  merged.push(sortedOthers[i++]);
+                } else {
+                  merged.push(displayedMessages.value[j++]);
+                }
               }
-              if (j >= displayedMessages.value.length) {
-                merged.push(...sortedOthers.slice(i));
-                break;
-              }
-              if ((sortedOthers[i].created_at || 0) >= (displayedMessages.value[j].created_at || 0)) {
-                merged.push(sortedOthers[i++]);
-              } else {
-                merged.push(displayedMessages.value[j++]);
-              }
+              displayedMessages.value = merged;
+            } else if (othersMessages.length > 0) {
+              logger.info(`[回填阶段] 收到 ${othersMessages.length} 条其他用户的消息，全部超出3天窗口，已过滤`);
             }
-            displayedMessages.value = merged;
           } else {
             // Realtime stage: add to pending queue (wait for explicit refresh)
             logger.info(`[实时阶段] 收到 ${othersMessages.length} 条其他用户的新消息，计入🆕等待刷新显示`);
@@ -537,19 +562,9 @@ export default defineComponent({
       }
     }
 
-    function getHashQuery() {
-  const hash = window.location.hash; // "#/?mid=xxx&iid=yyy"
-  const idx = hash.indexOf("?");
-  if (idx === -1) return {};
-  const qs = new URLSearchParams(hash.slice(idx + 1));
-  return Object.fromEntries(qs.entries());
-}
-
-
   async function handleNotificationJump() {
-  const q = getHashQuery();
-  const mid = q.mid as string | undefined;
-  const iid = q.iid as string | undefined;
+  const mid = route.query.mid as string | undefined;
+  const iid = route.query.iid as string | undefined;
  
 
 
@@ -655,19 +670,22 @@ export default defineComponent({
         const now = Math.floor(Date.now() / 1000);
         const breakpointKey = `messages_${keys.pkHex}`;
         const savedBreakpoint = loadBackfillBreakpoint(breakpointKey); 
-        // Determine time range for backfill - always use 3-day window
+        const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
+        
+        // Determine time range for backfill - always clamp to 3-day window
         let since: number;
         let until: number = now;
         
         if (savedBreakpoint && savedBreakpoint > 0) {
-          since = savedBreakpoint + 1;
+          // Clamp to 3-day window even with saved breakpoint
+          since = Math.max(savedBreakpoint + 1, threeDaysAgo);
           logger.info(
-            `use backfillpoint to pull: since=${new Date(since * 1000).toLocaleString()}`
+            `使用断点拉取（限制3天）: since=${new Date(since * 1000).toLocaleString()}, breakpoint=${new Date(savedBreakpoint * 1000).toLocaleString()}`
           );
         } else {
-          since = now - THREE_DAYS_IN_SECONDS;
+          since = threeDaysAgo;
           logger.info(
-          `no backfillpoint,pull three days: since=${new Date(since * 1000).toLocaleString()}`
+          `无断点，拉取最近3天: since=${new Date(since * 1000).toLocaleString()}`
           );
         }
         
@@ -904,6 +922,15 @@ export default defineComponent({
         isBackfilling.value = false;
         logger.info("[回填完成] 切换到实时模式");
         
+        // Safety check: Ensure displayedMessages only contains messages within 3-day window
+        const threeDaysAgoCheck = now - THREE_DAYS_IN_SECONDS;
+        const beforeFilter = displayedMessages.value.length;
+        displayedMessages.value = displayedMessages.value.filter(m => (m.created_at || 0) >= threeDaysAgoCheck);
+        const afterFilter = displayedMessages.value.length;
+        if (beforeFilter !== afterFilter) {
+          logger.info(`[安全网] 回填后过滤: 移除 ${beforeFilter - afterFilter} 条超出3天窗口的消息`);
+        }
+        
         // ⭐ 从本地取回填断点（关键）
         const messageBreakpoint =
         loadBackfillBreakpoint(`messages_${keys.pkHex}`) || 0;
@@ -1090,6 +1117,18 @@ export default defineComponent({
      { deep: true }
    );
 
+   // Watch for route query changes to handle notification jumps
+   watch(
+     () => route.query,
+     (newQuery) => {
+       if (newQuery.mid) {
+         notificationJumpDone.value = false;
+         handleNotificationJump();
+       }
+     },
+     { deep: true }
+   );
+
    watch(readyForPending, (v) => {
       if (v) {
         updateLocalRefs();
@@ -1155,6 +1194,7 @@ export default defineComponent({
       showOlderLocalMessages,
       showOlderLocal,
       hasOlderLocalMessages,
+      olderLocalMessagesCount,
       atBottom,
       bottomSentinelRef,
       container,
