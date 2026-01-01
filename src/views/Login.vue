@@ -278,7 +278,7 @@ export default defineComponent({
       showNsec.value = false;
       showBunker.value = false;
       errorMessage.value = "";
-      return handleLogin(() => ks.loginWithExtension());
+      handleLogin(() => ks.loginWithExtension());
     };
 
     function isValidBunkerInput(v: string) {
