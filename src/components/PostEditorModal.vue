@@ -142,6 +142,7 @@ import { useMessagesStore } from "@/stores/messages";
 import { useUIStore } from "@/stores/ui";
 import { uploadImageToBlossom, getBlossomConfig } from "@/utils/blossom";
 import { resizeImageFile } from "@/utils/imageResize";
+import { compressImageToTargetSize } from "@/utils/imageCompression";
 import { encodeEncryptedImageRef, type EncryptedImageMetadata } from "@/utils/encryptedImageRef";
 import { bytesToBase64 } from "@/nostr/crypto";
 
@@ -355,11 +356,22 @@ export default defineComponent({
       updateUploadItem(item.id, { status: "uploading", progress: 0, errorShort: undefined, errorDetails: undefined });
 
       try {
-        // 👇 关键：上传前 resize
-        const resizedFile = await resizeImageFile(item.file, {
-          maxSize: 1920,
-          quality: 0.82
-       });
+        // 👇 关键：上传前使用智能压缩，目标大小 200-300KB
+        console.log(`开始压缩图片: ${item.file.name}`);
+        const compressionResult = await compressImageToTargetSize(item.file, {
+          minTargetSize: 200 * 1024, // 200KB
+          maxTargetSize: 300 * 1024, // 300KB
+          maxIterations: 10
+        });
+        
+        console.log(
+          `压缩结果: ${(compressionResult.originalSize / 1024).toFixed(1)}KB -> ` +
+          `${(compressionResult.compressedSize / 1024).toFixed(1)}KB, ` +
+          `压缩率: ${(compressionResult.compressionRatio * 100).toFixed(1)}%, ` +
+          `迭代次数: ${compressionResult.iterations}`
+        );
+        
+        const compressedFile = compressionResult.file;
         
         // Generate encryption key and IV
         const encryptionKey = await crypto.subtle.generateKey(
@@ -368,10 +380,10 @@ export default defineComponent({
           ["encrypt", "decrypt"]
         );
         const iv = crypto.getRandomValues(new Uint8Array(12));
-        const originalMime = resizedFile.type || "image/jpeg";
+        const originalMime = compressedFile.type || "image/jpeg";
         
         // Read file bytes
-        const fileBytes = new Uint8Array(await resizedFile.arrayBuffer());
+        const fileBytes = new Uint8Array(await compressedFile.arrayBuffer());
         
         // Encrypt the bytes
         const encryptedBytes = await crypto.subtle.encrypt(
@@ -383,7 +395,7 @@ export default defineComponent({
         // Create a new File from encrypted bytes with octet-stream type
         const encryptedFile = new File(
           [encryptedBytes],
-          resizedFile.name.replace(/\.[^.]*$/, '') + ".enc",
+          compressedFile.name.replace(/\.[^.]*$/, '') + ".enc",
           { type: "application/octet-stream" }
         );
         
