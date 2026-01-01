@@ -7,8 +7,46 @@
         <p>纯·知己</p> 
       </div>
 
+      <!-- Unlock Form (when encrypted key exists) -->
+      <div v-if="needsUnlock" class="unlock-form">
+        <div class="unlock-message">
+          <span class="unlock-icon">🔒</span>
+          <p>私钥已加密，请输入密码解锁</p>
+        </div>
+
+        <input
+          ref="unlockPasswordEl"
+          v-model="unlockPassword"
+          class="input"
+          type="password"
+          placeholder="输入解锁密码"
+          :disabled="loading"
+          @keyup.enter="doUnlock"
+          style="margin-top:12px;"
+        />
+
+        <div style="margin-top:12px;">
+          <button
+            class="btn"
+            @click="doUnlock"
+            :disabled="loading"
+          >
+            {{ loading ? "解锁中..." : "解锁" }}
+          </button>
+
+          <button
+            class="btn btn-cancel"
+            style="margin-left:8px"
+            @click="cancelUnlock"
+            :disabled="loading"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+
       <!-- Login Actions -->
-      <div class="login-actions">
+      <div v-else class="login-actions">
         <!-- Browser Extension Login (NIP-07) -->
         <button
           class="btn"
@@ -18,6 +56,17 @@
         >
           <span class="btn-icon" role="img" aria-label="plugin icon">🔌</span>
           {{ loading ? "处理中..." : "插件登录" }}
+        </button>
+
+        <!-- Private Key Login -->
+        <button
+          class="btn"
+          @click="showNsec = true"
+          :disabled="loading"
+          aria-label="Login with private key"
+        >
+          <span class="btn-icon" role="img" aria-label="key icon">🔑</span>
+          私钥登录
         </button>
 
         <!-- Bunker Login -->
@@ -30,6 +79,60 @@
           <span class="btn-icon" role="img" aria-label="lock icon">🔐</span>
           Bunker登录
         </button>
+      </div>
+
+      <!-- Private Key Login Form -->
+      <div v-if="showNsec" class="form card" style="margin-top:12px;">
+        <label>私钥 (nsec 或 hex)</label>
+
+        <input
+          ref="nsecInputEl"
+          v-model="nsecInput"
+          class="input"
+          type="password"
+          placeholder="nsec1... 或 64位十六进制私钥"
+          :disabled="loading"
+          @keyup.enter="doLoginNsec"
+        />
+
+        <div class="small" style="margin-top:8px; text-align:left;">
+          输入 nsec 私钥或 64 位十六进制私钥
+        </div>
+
+        <label style="margin-top:12px;">加密密码（可选）</label>
+
+        <input
+          v-model="nsecPassword"
+          class="input"
+          type="password"
+          placeholder="设置密码以加密保存私钥（推荐）"
+          :disabled="loading"
+          @keyup.enter="doLoginNsec"
+        />
+
+        <div class="small" style="margin-top:8px; text-align:left;">
+          设置密码后，私钥将加密保存在本地。重新打开应用时需要输入密码解锁。
+        </div>
+
+        <div style="margin-top:12px;">
+          <button
+            class="btn"
+            @click="doLoginNsec"
+            :disabled="loading"
+            :aria-label="loading ? 'Logging in...' : 'Login'"
+          >
+            {{ loading ? "登录中..." : "登录" }}
+          </button>
+
+          <button
+            class="btn btn-cancel"
+            style="margin-left:8px"
+            @click="cancelNsec"
+            :disabled="loading"
+          >
+            取消
+          </button>
+        </div>
       </div>
 
       <!-- Bunker Login Form -->
@@ -83,7 +186,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, watch, nextTick } from "vue";
+import { defineComponent, ref, onMounted, watch, nextTick, computed } from "vue";
 import { useKeyStore } from "@/stores/keys";
 import { useRouter } from "vue-router";
 
@@ -93,28 +196,49 @@ export default defineComponent({
     const router = useRouter();
 
     const showBunker = ref(false);
+    const showNsec = ref(false);
     const bunkerInput = ref("");
+    const nsecInput = ref("");
+    const nsecPassword = ref("");
+    const unlockPassword = ref("");
     const errorMessage = ref("");
     const loading = ref(false);
 
     const bunkerInputEl = ref<HTMLInputElement | null>(null);
+    const nsecInputEl = ref<HTMLInputElement | null>(null);
+    const unlockPasswordEl = ref<HTMLInputElement | null>(null);
+
+    const needsUnlock = computed(() => {
+      return ks.pkHex && ks.isEncrypted && !ks.isUnlocked;
+    });
 
     /* ---------------------------
-     * 自动跳转（已登录）
+     * 自动跳转（已登录）或检测需解锁
      * --------------------------- */
-    onMounted(() => {
-      if (ks.isLoggedIn) {
+    onMounted(async () => {
+      if (ks.isLoggedIn && ks.isUnlocked) {
         router.replace("/");
+      } else if (needsUnlock.value) {
+        // Need to unlock - focus password input
+        await nextTick();
+        unlockPasswordEl.value?.focus();
       }
     });
 
     /* ---------------------------
-     * Bunker 展开自动 focus
+     * 展开自动 focus
      * --------------------------- */
     watch(showBunker, async (v) => {
       if (v) {
         await nextTick();
         bunkerInputEl.value?.focus();
+      }
+    });
+
+    watch(showNsec, async (v) => {
+      if (v) {
+        await nextTick();
+        nsecInputEl.value?.focus();
       }
     });
 
@@ -179,15 +303,70 @@ export default defineComponent({
       errorMessage.value = "";
     };
 
+    const doLoginNsec = () => {
+      const v = nsecInput.value.trim();
+      const pwd = nsecPassword.value.trim();
+
+      if (!v) {
+        errorMessage.value = "请输入私钥";
+        return;
+      }
+
+      // Validate format
+      if (!v.startsWith("nsec1") && !/^[0-9a-fA-F]{64}$/.test(v)) {
+        errorMessage.value = "请输入有效的 nsec 私钥或 64 位十六进制私钥";
+        return;
+      }
+
+      handleLogin(() => ks.loginWithNsec(v, pwd || undefined));
+    };
+
+    const cancelNsec = () => {
+      if (loading.value) return;
+      showNsec.value = false;
+      nsecInput.value = "";
+      nsecPassword.value = "";
+      errorMessage.value = "";
+    };
+
+    const doUnlock = () => {
+      const pwd = unlockPassword.value.trim();
+      if (!pwd) {
+        errorMessage.value = "请输入密码";
+        return;
+      }
+
+      handleLogin(() => ks.unlockWithPassword(pwd));
+    };
+
+    const cancelUnlock = () => {
+      if (loading.value) return;
+      // Logout to go back to normal login
+      ks.logout();
+      unlockPassword.value = "";
+      errorMessage.value = "";
+    };
+
     return {
+      needsUnlock,
       showBunker,
+      showNsec,
       bunkerInput,
+      nsecInput,
+      nsecPassword,
+      unlockPassword,
       bunkerInputEl,
+      nsecInputEl,
+      unlockPasswordEl,
       errorMessage,
       loading,
       loginWithExtension,
       doLoginBunker,
-      cancelBunker
+      cancelBunker,
+      doLoginNsec,
+      cancelNsec,
+      doUnlock,
+      cancelUnlock
     };
   }
 });
@@ -337,6 +516,28 @@ export default defineComponent({
   border-radius: 8px;
   border: 1px solid rgba(252, 165, 165, 0.3);
   font-size: 14px;
+}
+
+.unlock-form {
+  margin-top: 24px;
+  text-align: center;
+}
+
+.unlock-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.unlock-icon {
+  font-size: 32px;
+}
+
+.unlock-message p {
+  font-size: 15px;
+  color: #9AA1AC;
+  margin: 0;
 }
 </style>
 
