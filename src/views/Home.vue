@@ -1060,22 +1060,25 @@ export default defineComponent({
       handleNotificationJump();
       
       // Set up IntersectionObserver for bottom sentinel
-      const bottomSentinel = document.getElementById('bottom-sentinel');
-      if (bottomSentinel) {
-        bottomObserver.value = new IntersectionObserver(
-          (entries) => {
-            entries.forEach(entry => {
-              atBottom.value = entry.isIntersecting;
-            });
-          },
-          {
-            root: null, // viewport
-            rootMargin: '0px',
-            threshold: 0.1
-          }
-        );
-        bottomObserver.value.observe(bottomSentinel);
-      }
+      // Use nextTick to ensure DOM is fully rendered
+      nextTick(() => {
+        const bottomSentinel = document.getElementById('bottom-sentinel');
+        if (bottomSentinel) {
+          bottomObserver.value = new IntersectionObserver(
+            (entries) => {
+              entries.forEach(entry => {
+                atBottom.value = entry.isIntersecting;
+              });
+            },
+            {
+              root: null, // viewport
+              rootMargin: '100px', // Trigger slightly before reaching exact bottom for better UX
+              threshold: 0.1 // Trigger when 10% of sentinel is visible
+            }
+          );
+          bottomObserver.value.observe(bottomSentinel);
+        }
+      });
     });
 
    watch(
