@@ -571,24 +571,27 @@ export default defineComponent({
   // Backward compatibility: treat old 'iid' as 'cid'
   if (!cid && route.query.iid) {
     cid = route.query.iid as string;
-    logger.info("[通知跳转] 使用旧参数 iid 作为 cid (向后兼容)");
+    logger.info("[Notification Jump] Using legacy iid parameter as cid (backward compatibility)");
   }
 
   if (!mid) return;
 
-  logger.info(`[通知跳转] 开始处理: mid=${mid?.slice(0, 8)}, cid=${cid?.slice(0, 8)}, rid=${rid?.slice(0, 8)}`);
+  // Helper to safely truncate IDs for logging
+  const truncateId = (id: string | undefined) => id ? id.substring(0, Math.min(8, id.length)) : 'none';
+  
+  logger.info(`[Notification Jump] Starting: mid=${truncateId(mid)}, cid=${truncateId(cid)}, rid=${truncateId(rid)}`);
 
   // Step 1: Ensure message is in displayedMessages
   // If not, check pendingMessages and msgs.inbox, then merge it
   let msgInDisplayed = displayedMessages.value.some(m => m.id === mid);
   
   if (!msgInDisplayed) {
-    logger.info("[通知跳转] 消息不在 displayedMessages，尝试从 pending/inbox 合并");
+    logger.info("[Notification Jump] Message not in displayedMessages, attempting to merge from pending/inbox");
     
     // Check if message exists in pendingMessages
     const msgInPending = pendingMessages.value.find(m => m.id === mid);
     if (msgInPending) {
-      logger.info("[通知跳转] 从 pendingMessages 找到目标消息，合并到 displayedMessages");
+      logger.info("[Notification Jump] Found target message in pendingMessages, merging to displayedMessages");
       // Merge only this message (not all pending messages)
       const sortedDisplayed = [...displayedMessages.value, msgInPending].sort(
         (a, b) => (b.created_at || 0) - (a.created_at || 0)
@@ -601,7 +604,7 @@ export default defineComponent({
       // Check if message exists in msgs.inbox
       const msgInInbox = msgs.inbox.find(m => m.id === mid);
       if (msgInInbox) {
-        logger.info("[通知跳转] 从 msgs.inbox 找到目标消息，合并到 displayedMessages");
+        logger.info("[Notification Jump] Found target message in msgs.inbox, merging to displayedMessages");
         // Merge only this message
         const sortedDisplayed = [...displayedMessages.value, msgInInbox].sort(
           (a, b) => (b.created_at || 0) - (a.created_at || 0)
@@ -623,13 +626,13 @@ export default defineComponent({
 
   const msgReady = await waitForMessage();
   if (!msgReady) {
-    logger.warn("[通知跳转] 失败：消息未出现在 displayedMessages", mid);
+    logger.warn("[Notification Jump] Failed: message did not appear in displayedMessages", mid);
     return;
   }
 
   // Step 3: If comment or reply, expand comments section
   if (cid || rid) {
-    logger.info("[通知跳转] 展开评论区");
+    logger.info("[Notification Jump] Expanding comments section");
     showingComments.value.add(mid);
     showingComments.value = new Set(showingComments.value);
     // Wait for Vue to update DOM
@@ -641,15 +644,15 @@ export default defineComponent({
   if (rid) {
     // Jump to reply
     targetId = `reply-${rid}`;
-    logger.info(`[通知跳转] 目标：回复 ${targetId}`);
+    logger.info(`[Notification Jump] Target: reply ${targetId}`);
   } else if (cid) {
     // Jump to top-level comment
     targetId = `comment-${cid}`;
-    logger.info(`[通知跳转] 目标：评论 ${targetId}`);
+    logger.info(`[Notification Jump] Target: comment ${targetId}`);
   } else {
     // Jump to message
     targetId = `msg-${mid}`;
-    logger.info(`[通知跳转] 目标：消息 ${targetId}`);
+    logger.info(`[Notification Jump] Target: message ${targetId}`);
   }
 
   // Step 5: Wait for target element to appear in DOM
@@ -665,12 +668,12 @@ export default defineComponent({
   const el = await waitForElement();
 
   if (!el) {
-    logger.warn("[通知跳转] 失败：DOM 元素未找到", targetId);
+    logger.warn("[Notification Jump] Failed: DOM element not found", targetId);
     return;
   }
 
   // Step 6: Scroll to element and highlight
-  logger.info(`[通知跳转] 成功：滚动到 ${targetId}`);
+  logger.info(`[Notification Jump] Success: scrolling to ${targetId}`);
   el.scrollIntoView({
     behavior: "smooth",
     block: "center"
