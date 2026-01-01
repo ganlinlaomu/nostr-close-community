@@ -29,6 +29,15 @@
     <div class="card">
       <h4 style="margin: 0 0 12px 0;">好友动态</h4>
       <div v-if="displayedMessages.length === 0" class="small">还没有消息</div>
+      
+      <!-- Show older messages button -->
+      <div v-if="!showOlderLocal && displayedMessages.length > 0" class="show-older-container">
+        <button class="show-older-btn" @click="showOlderLocalMessages">
+          <span class="show-older-icon">📜</span>
+          <span class="show-older-text">显示更早消息（本地）</span>
+        </button>
+      </div>
+      
       <div class="list">
         <div v-for="m in displayedMessages" :key="m.id" :id="`msg-${m.id}`" class="card">
           <div class="small">
@@ -193,6 +202,8 @@ export default defineComponent({
     const pendingMessages = ref([] as any[]); // Messages fetched but not yet displayed
     const isInitialLoad = ref(true); // Track if this is the first load
     const showingSendMeta = ref<Set<string>>(new Set());
+    const isBackfilling = ref(false); // Track if currently backfilling (vs realtime)
+    const showOlderLocal = ref(false); // Whether to show older local messages
 
     
     
@@ -232,6 +243,29 @@ export default defineComponent({
         displayedMessages.value = merged;
         pendingMessages.value = [];
         updateMessageTimeRange();
+      }
+    }
+    
+    function showOlderLocalMessages() {
+      logger.info("[显示更早消息] 合并本地缓存的更早消息");
+      showOlderLocal.value = true;
+      
+      // Get all messages from local cache, sorted by time
+      const allLocalMessages = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+      
+      // Find messages that are not currently displayed
+      const displayedIds = new Set(displayedMessages.value.map(m => m.id));
+      const olderMessages = allLocalMessages.filter(m => !displayedIds.has(m.id));
+      
+      if (olderMessages.length > 0) {
+        logger.info(`找到 ${olderMessages.length} 条更早的本地消息`);
+        // Merge older messages into displayedMessages, maintaining sort order
+        const merged = [...displayedMessages.value, ...olderMessages].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        // Deduplicate by id (shouldn't be needed but safe to have)
+        displayedMessages.value = Array.from(new Map(merged.map(m => [m.id, m])).values());
+        updateMessageTimeRange();
+      } else {
+        logger.info("没有更早的本地消息");
       }
     }
     
@@ -277,15 +311,40 @@ export default defineComponent({
           displayedMessages.value = merged;
         }
         
-        // Others' messages: add to pending queue (wait for explicit refresh)
+        // Others' messages: handle differently based on backfill state
         if (othersMessages.length > 0) {
-          logger.info(`收到 ${othersMessages.length} 条其他用户的新消息，等待刷新显示`);
-          // Sort other messages by timestamp (newest first) before adding
-          const sortedOthers = othersMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-          // Merge with existing pending messages, de-duplicate by id, and keep sorted
-          const combined = [...sortedOthers, ...pendingMessages.value];
-          const deduped = Array.from(new Map(combined.map(m => [m.id, m])).values());
-          pendingMessages.value = deduped.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+          if (isBackfilling.value) {
+            // During backfill: add directly to displayedMessages (within 3-day window), don't count as pending
+            logger.info(`[回填阶段] 收到 ${othersMessages.length} 条其他用户的消息，直接显示（不计入🆕）`);
+            const sortedOthers = othersMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+            const merged: InboxItem[] = [];
+            let i = 0, j = 0;
+            while (i < sortedOthers.length || j < displayedMessages.value.length) {
+              if (i >= sortedOthers.length) {
+                merged.push(...displayedMessages.value.slice(j));
+                break;
+              }
+              if (j >= displayedMessages.value.length) {
+                merged.push(...sortedOthers.slice(i));
+                break;
+              }
+              if ((sortedOthers[i].created_at || 0) >= (displayedMessages.value[j].created_at || 0)) {
+                merged.push(sortedOthers[i++]);
+              } else {
+                merged.push(displayedMessages.value[j++]);
+              }
+            }
+            displayedMessages.value = merged;
+          } else {
+            // Realtime stage: add to pending queue (wait for explicit refresh)
+            logger.info(`[实时阶段] 收到 ${othersMessages.length} 条其他用户的新消息，计入🆕等待刷新显示`);
+            // Sort other messages by timestamp (newest first) before adding
+            const sortedOthers = othersMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+            // Merge with existing pending messages, de-duplicate by id, and keep sorted
+            const combined = [...sortedOthers, ...pendingMessages.value];
+            const deduped = Array.from(new Map(combined.map(m => [m.id, m])).values());
+            pendingMessages.value = deduped.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+          }
         }
       }
       
@@ -297,8 +356,9 @@ export default defineComponent({
        refreshing
     } = usePullToRefresh({
       onRefresh: async () => {
-        await startSub();      // 重逻辑
-        updateLocalRefs();     // UI 刷新
+        // Light refresh: just show pending messages, don't rebuild subscription
+        logger.info("[轻刷新] 合并pending消息到显示列表");
+        showPendingMessages();
       }
     });
 
@@ -783,13 +843,17 @@ export default defineComponent({
         ]);
         readyForPending.value = true;
         
-        // On initial load, show all messages directly
+        // On initial load, show only messages from the last 3 days
+        const now = Math.floor(Date.now() / 1000);
+        const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
+        
         messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
         if (isInitialLoad.value) {
-          // First time loading - show all messages
-          displayedMessages.value = [...messagesRef.value];
+          // First time loading - show only last 3 days
+          const recentMessages = messagesRef.value.filter(m => (m.created_at || 0) >= threeDaysAgo);
+          displayedMessages.value = recentMessages;
           isInitialLoad.value = false;
-          logger.info(`初始加载: 显示 ${displayedMessages.value.length} 条消息`);
+          logger.info(`初始加载: 仅显示最近3天的 ${displayedMessages.value.length} 条消息（共 ${messagesRef.value.length} 条本地缓存）`);
         } else {
           // Subsequent refresh - new messages go to pending
           updateLocalRefs();
@@ -810,10 +874,17 @@ export default defineComponent({
         const relays = getRelaysFromStorage();
         logger.info(`使用中继: ${relays.join(', ')}`);
         
-        // First, backfill historical messages
+        // First, backfill historical messages - set backfilling flag
         logger.info("开始回填历史消息...");
-        // await backfillMessages(friendSet, relays);
-        backfillMessages(friendSet, relays).catch(console.error);
+        isBackfilling.value = true;
+        
+        // Await backfill to complete before starting realtime subscription
+        await backfillMessages(friendSet, relays);
+        
+        // Backfill complete, switch to realtime mode
+        isBackfilling.value = false;
+        logger.info("[回填完成] 切换到实时模式");
+        
         // ⭐ 从本地取回填断点（关键）
         const messageBreakpoint =
         loadBackfillBreakpoint(`messages_${keys.pkHex}`) || 0;
@@ -1035,6 +1106,8 @@ export default defineComponent({
       replyingToAuthor,
       messageTimeRange,
       showPendingMessages,
+      showOlderLocalMessages,
+      showOlderLocal,
       container,
       pullDistance,
       refreshing
@@ -1374,6 +1447,48 @@ export default defineComponent({
 .group-count {
   color: #64748b;
 }
+
+.show-older-container {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0;
+}
+
+.show-older-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  border: 1px solid #cbd5e1;
+  padding: 10px 20px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #475569;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.show-older-btn:hover {
+  background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.show-older-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.show-older-icon {
+  font-size: 16px;
+}
+
+.show-older-text {
+  font-size: 14px;
+}
+
 .highlight {
   animation: flash 1.5s ease;
 }
