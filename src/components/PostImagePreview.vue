@@ -27,7 +27,6 @@ import { defineComponent, computed, ref, onBeforeUnmount, watch } from "vue";
 import { extractImageUrls } from "@/utils/extractImageUrls";
 import { decodeEncryptedImageRef, isEncryptedImageRef } from "@/utils/encryptedImageRef";
 import { base64ToBytes } from "@/nostr/crypto";
-import { decryptImageBytes } from "@/utils/imageCrypto";
 
 interface ImageItem {
   url: string;
@@ -85,12 +84,6 @@ export default defineComponent({
             ["decrypt"]
           );
           
-          const decryptedBytes = await decryptImageBytes(key, {
-            iv: metadata.iv,
-            ct: new TextEncoder().encode("") // We need to pass the actual ciphertext
-          });
-          
-          // Actually, we need to use the fetched bytes directly
           const ivBytes = base64ToBytes(metadata.iv);
           const decrypted = await crypto.subtle.decrypt(
             { name: "AES-GCM", iv: ivBytes },
@@ -121,7 +114,11 @@ export default defineComponent({
       
       // Clear previous object URLs
       objectUrls.forEach(url => {
-        try { URL.revokeObjectURL(url); } catch {}
+        try { 
+          URL.revokeObjectURL(url); 
+        } catch (error) {
+          console.error("Failed to revoke object URL:", error);
+        }
       });
       objectUrls.clear();
       
@@ -142,7 +139,11 @@ export default defineComponent({
     onBeforeUnmount(() => {
       // Clean up object URLs
       objectUrls.forEach(url => {
-        try { URL.revokeObjectURL(url); } catch {}
+        try { 
+          URL.revokeObjectURL(url); 
+        } catch (error) {
+          console.error("Failed to revoke object URL:", error);
+        }
       });
       objectUrls.clear();
     });

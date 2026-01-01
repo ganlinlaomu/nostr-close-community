@@ -47,12 +47,13 @@ export function decodeEncryptedImageRef(ref: string): EncryptedImageMetadata | n
       !metadata.iv ||
       !metadata.key
     ) {
+      console.error("Invalid encrypted image metadata:", metadata);
       return null;
     }
     
     return metadata;
   } catch (e) {
-    console.error("Failed to decode encrypted image reference:", e);
+    console.error("Failed to decode encrypted image reference:", ref, e);
     return null;
   }
 }
