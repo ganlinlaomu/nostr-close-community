@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { useKeyStore } from "./keys";
 import { getRelaysFromStorage, subscribe, publish } from "@/nostr/relays";
 import { logger } from "@/utils/logger";
+import { db, type DBFriend } from "@/db/dexie";
 
 export type Friend = {
   id?: string; // optional internal id
@@ -20,6 +21,58 @@ type StoredFriendData = {
 function storageKeyFor(pkHex: string | null | undefined) {
   if (!pkHex) return null;
   return `nostr_friends_${pkHex}`;
+}
+
+// One-time migration from localStorage to Dexie
+async function migrateFromLocalStorage(pk: string) {
+  const key = storageKeyFor(pk);
+  if (!key) return;
+  
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      let localData: StoredFriendData | null = null;
+      
+      // Handle both old format (array) and new format (object with timestamp)
+      if (Array.isArray(parsed)) {
+        localData = {
+          list: parsed,
+          lastSyncTimestamp: 0
+        };
+      } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.list)) {
+        localData = parsed;
+      }
+      
+      if (localData && localData.list.length > 0) {
+        console.log(`[Migration] Found ${localData.list.length} friends in localStorage for ${pk}`);
+        
+        // Bulk insert into Dexie
+        const friends: DBFriend[] = localData.list.map(f => ({
+          pubkey: f.pubkey,
+          name: f.name,
+          groups: f.groups,
+          group: f.group,
+          note: f.note
+        }));
+        
+        await db.friends.bulkPut(friends);
+        console.log(`[Migration] Migrated ${friends.length} friends to Dexie`);
+        
+        // Store timestamp in meta table
+        await db.meta.put({
+          key: `friends_sync_timestamp_${pk}`,
+          value: localData.lastSyncTimestamp
+        });
+        
+        // Remove from localStorage after successful migration
+        localStorage.removeItem(key);
+        console.log(`[Migration] Removed localStorage key: ${key}`);
+      }
+    }
+  } catch (error) {
+    console.error("[Migration] Failed to migrate friends from localStorage:", error);
+  }
 }
 
 export const useFriendsStore = defineStore("friends", {
@@ -54,121 +107,136 @@ export const useFriendsStore = defineStore("friends", {
       // if already loaded for same pk, skip
       if (this.loadedFor === targetPk) return;
       this.loadedFor = targetPk;
-      const key = storageKeyFor(targetPk);
-      if (!key) {
-        this.list = [];
-        return;
-      }
-      try {
-        const raw = localStorage.getItem(key);
-        let localData: StoredFriendData | null = null;
-        
-        // Parse local storage data
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw);
-            // Handle both old format (array) and new format (object with timestamp)
-            if (Array.isArray(parsed)) {
-              // Old format: just an array of friends, no timestamp
-              localData = {
-                list: parsed,
-                lastSyncTimestamp: 0 // Unknown timestamp for old data
-              };
-            } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.list)) {
-              // New format: object with list and timestamp
-              localData = parsed;
-            }
-          } catch (e) {
-            logger.warn("Failed to parse local friend data", e);
-          }
-        }
 
-        // If NIP-04 is supported, fetch from relays to compare with local data
-        if (ks.isLoggedIn && ks.supportsNip04) {
-          const relayFetched = await this.fetchFromRelays();
-          // Note: fetchFromRelays() updates this.lastSyncTimestamp if data is found
-          const fetchedTimestamp = this.lastSyncTimestamp;
-          
-          if (relayFetched) {
-            // We got data from relay
-            if (!localData || localData.list.length === 0) {
-              // No local data or empty local data, use relay data
-              logger.info("Using relay data (no local data)");
-              return;
-            } else if (fetchedTimestamp > localData.lastSyncTimestamp) {
-              // Relay data is newer, already loaded by fetchFromRelays
-              logger.info(`Using relay data (newer: ${fetchedTimestamp} > ${localData.lastSyncTimestamp})`);
-              return;
-            } else if (fetchedTimestamp < localData.lastSyncTimestamp) {
-              // Local data is newer, restore local and publish to relay
-              logger.info(`Using local data (newer: ${localData.lastSyncTimestamp} > ${fetchedTimestamp})`);
-              this.list = localData.list;
-              this.lastSyncTimestamp = localData.lastSyncTimestamp;
-              // Publish local data to relay since it's newer
-              this.publishToRelays().catch(e => logger.warn("Failed to publish newer local data", e));
-              return;
-            } else {
-              // Timestamps are equal, use relay data (it's already loaded)
-              logger.info("Local and relay data have same timestamp, using relay data");
-              return;
-            }
+      // First, check for and migrate any localStorage data
+      await migrateFromLocalStorage(targetPk);
+
+      // Load from Dexie first
+      let dexieData: Friend[] = [];
+      let dexieTimestamp = 0;
+      
+      try {
+        // Load friends from Dexie
+        const dbFriends = await db.friends.toArray();
+        dexieData = dbFriends.map(f => ({
+          pubkey: f.pubkey,
+          name: f.name,
+          groups: f.groups,
+          group: f.group,
+          note: f.note
+        }));
+        
+        // Load timestamp from meta table
+        const metaEntry = await db.meta.get(`friends_sync_timestamp_${targetPk}`);
+        if (metaEntry) {
+          dexieTimestamp = metaEntry.value || 0;
+        }
+        
+        console.log(`[Friends] Loaded ${dexieData.length} friends from Dexie (timestamp: ${dexieTimestamp})`);
+      } catch (error) {
+        console.error("[Friends] Failed to load from Dexie:", error);
+      }
+
+      // Set local state to Dexie data first (for offline-first display)
+      this.list = dexieData;
+      this.lastSyncTimestamp = dexieTimestamp;
+
+      // If NIP-04 is supported, fetch from relays to compare with local data
+      if (ks.isLoggedIn && ks.supportsNip04) {
+        const relayFetched = await this.fetchFromRelays();
+        // Note: fetchFromRelays() updates this.lastSyncTimestamp if data is found
+        const fetchedTimestamp = this.lastSyncTimestamp;
+        
+        if (relayFetched) {
+          // We got data from relay
+          if (dexieData.length === 0) {
+            // No local data or empty local data, use relay data (already loaded by fetchFromRelays)
+            logger.info("Using relay data (no local data)");
+            await this.save(); // Save to Dexie
+          } else if (fetchedTimestamp > dexieTimestamp) {
+            // Relay data is newer, already loaded by fetchFromRelays
+            logger.info(`Using relay data (newer: ${fetchedTimestamp} > ${dexieTimestamp})`);
+            await this.save(); // Save to Dexie
+          } else if (fetchedTimestamp < dexieTimestamp) {
+            // Local data is newer, restore local and publish to relay
+            logger.info(`Using local data (newer: ${dexieTimestamp} > ${fetchedTimestamp})`);
+            this.list = dexieData;
+            this.lastSyncTimestamp = dexieTimestamp;
+            // Publish local data to relay since it's newer
+            this.publishToRelays().catch(e => logger.warn("Failed to publish newer local data", e));
           } else {
-            // No data from relay (or fetch failed)
-            if (localData && localData.list.length > 0) {
-              // Use local data and publish to relay
-              logger.info("Using local data (relay has no data or fetch failed)");
-              this.list = localData.list;
-              this.lastSyncTimestamp = localData.lastSyncTimestamp;
-              // Publish to relay to ensure sync
-              this.publishToRelays().catch(e => logger.warn("Failed to publish local data to relay", e));
-              return;
-            } else {
-              // No data anywhere
-              this.list = [];
-              this.lastSyncTimestamp = 0;
-              return;
-            }
+            // Timestamps are equal, use relay data (it's already loaded)
+            logger.info("Local and relay data have same timestamp, using relay data");
+            await this.save(); // Ensure Dexie is up to date
           }
         } else {
-          // NIP-04 not supported, just use local data
-          if (localData) {
-            this.list = localData.list;
-            this.lastSyncTimestamp = localData.lastSyncTimestamp;
+          // No data from relay (or fetch failed)
+          if (dexieData.length > 0) {
+            // Use local data and publish to relay
+            logger.info("Using local data (relay has no data or fetch failed)");
+            // Publish to relay to ensure sync
+            this.publishToRelays().catch(e => logger.warn("Failed to publish local data to relay", e));
           } else {
+            // No data anywhere
             this.list = [];
             this.lastSyncTimestamp = 0;
           }
         }
-      } catch (e) {
-        logger.error("Error loading friend list", e);
-        this.list = [];
-        this.lastSyncTimestamp = 0;
       }
     },
 
     // save current list to storage under current loadedFor pk
-    save() {
-      const key = storageKeyFor(this.loadedFor || "");
-      if (!key) return;
+    async save() {
+      if (!this.loadedFor) return;
+      
       try {
-        const data: StoredFriendData = {
-          list: this.list,
-          lastSyncTimestamp: this.lastSyncTimestamp
-        };
-        localStorage.setItem(key, JSON.stringify(data));
-      } catch {
-        // ignore storage errors
+        // Save friends to Dexie
+        const friends: DBFriend[] = this.list.map(f => ({
+          pubkey: f.pubkey,
+          name: f.name,
+          groups: f.groups,
+          group: f.group,
+          note: f.note
+        }));
+        
+        // Use bulkPut for atomic upsert operation
+        // First, get all existing pubkeys to determine what needs to be deleted
+        const existingFriends = await db.friends.toArray();
+        const existingPubkeys = new Set(existingFriends.map(f => f.pubkey));
+        const newPubkeys = new Set(friends.map(f => f.pubkey));
+        
+        // Delete friends that are no longer in the list
+        const toDelete = existingFriends
+          .filter(f => !newPubkeys.has(f.pubkey))
+          .map(f => f.pubkey);
+        
+        if (toDelete.length > 0) {
+          await db.friends.bulkDelete(toDelete);
+        }
+        
+        // Upsert all current friends
+        await db.friends.bulkPut(friends);
+        
+        // Save timestamp to meta table
+        await db.meta.put({
+          key: `friends_sync_timestamp_${this.loadedFor}`,
+          value: this.lastSyncTimestamp
+        });
+        
+        console.log(`[Friends] Saved ${friends.length} friends to Dexie`);
+      } catch (error) {
+        console.error("[Friends] Failed to save to Dexie:", error);
       }
     },
 
-    add(friend: Friend) {
+    async add(friend: Friend) {
       if (!friend || !friend.pubkey) return false;
       if (!friend.name || !friend.name.trim()) return false; // require name
       // prevent duplicate by pubkey
       if (this.list.find((f) => f.pubkey === friend.pubkey)) return false;
       this.list.push({ ...friend });
       this.version++;
-      this.save();
+      await this.save();
       // Sync to relays in background (don't wait) - only if NIP-04 is supported
       const ks = useKeyStore();
       if (ks.supportsNip04) {
@@ -177,12 +245,12 @@ export const useFriendsStore = defineStore("friends", {
       return true;
     },
 
-    remove(pubkey: string) {
+    async remove(pubkey: string) {
       const idx = this.list.findIndex((f) => f.pubkey === pubkey);
       if (idx === -1) return false;
       this.list.splice(idx, 1);
       this.version++;
-      this.save();
+      await this.save();
       // Sync to relays in background (don't wait) - only if NIP-04 is supported
       const ks = useKeyStore();
       if (ks.supportsNip04) {
@@ -191,14 +259,14 @@ export const useFriendsStore = defineStore("friends", {
       return true;
     },
 
-    update(pubkey: string, patch: Partial<Friend>) {
+    async update(pubkey: string, patch: Partial<Friend>) {
       const f = this.list.find((x) => x.pubkey === pubkey);
       if (!f) return false;
       // Don't allow empty name
       if (patch.name !== undefined && !patch.name.trim()) return false;
       Object.assign(f, patch);
       this.version++;
-      this.save();
+      await this.save();
       // Sync to relays in background (don't wait) - only if NIP-04 is supported
       const ks = useKeyStore();
       if (ks.supportsNip04) {
@@ -209,14 +277,28 @@ export const useFriendsStore = defineStore("friends", {
 
     // Reset in-memory friend list for current loadedFor.
     // If removeFromStorage is true, also remove the stored list for that pk.
-    reset(removeFromStorage = false) {
-      const key = storageKeyFor(this.loadedFor || "");
+    async reset(removeFromStorage = false) {
+      const pk = this.loadedFor || "";
       this.list = [];
-      if (removeFromStorage && key) {
+      
+      if (removeFromStorage && pk) {
         try {
-          localStorage.removeItem(key);
-        } catch {}
+          // Remove from Dexie
+          await db.friends.clear();
+          await db.meta.delete(`friends_sync_timestamp_${pk}`);
+        } catch (error) {
+          console.error("[Friends] Failed to remove from Dexie:", error);
+        }
+        
+        // Also clean up any remaining localStorage keys
+        const key = storageKeyFor(pk);
+        if (key) {
+          try {
+            localStorage.removeItem(key);
+          } catch {}
+        }
       }
+      
       this.loadedFor = "";
     },
 

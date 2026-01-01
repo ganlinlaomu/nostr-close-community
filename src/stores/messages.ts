@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { useKeyStore } from "./keys";
+import { db, type DBMessage } from "@/db/dexie";
 
 export type InboxItem = {
   id: string;
@@ -29,6 +30,69 @@ function outboxKeyFor(pk: string | null | undefined) {
   return `nostr_outbox_${pk}`;
 }
 
+// One-time migration from localStorage to Dexie
+async function migrateFromLocalStorage(pk: string) {
+  const inboxKey = inboxKeyFor(pk);
+  const outboxKey = outboxKeyFor(pk);
+  
+  try {
+    // Migrate inbox
+    if (inboxKey) {
+      const rawInbox = localStorage.getItem(inboxKey);
+      if (rawInbox) {
+        const inbox: InboxItem[] = JSON.parse(rawInbox);
+        console.log(`[Migration] Found ${inbox.length} inbox messages in localStorage for ${pk}`);
+        
+        // Bulk insert into Dexie (will skip duplicates due to primary key)
+        const inboxMessages: DBMessage[] = inbox.map(item => ({
+          id: item.id,
+          pubkey: item.pubkey,
+          content: item.content,
+          created_at: item.created_at,
+          type: "inbox" as const,
+          _localMeta: item._localMeta
+        }));
+        
+        await db.messages.bulkPut(inboxMessages);
+        console.log(`[Migration] Migrated ${inbox.length} inbox messages to Dexie`);
+        
+        // Remove from localStorage after successful migration
+        localStorage.removeItem(inboxKey);
+        console.log(`[Migration] Removed localStorage key: ${inboxKey}`);
+      }
+    }
+    
+    // Migrate outbox
+    if (outboxKey) {
+      const rawOutbox = localStorage.getItem(outboxKey);
+      if (rawOutbox) {
+        const outbox: OutboxItem[] = JSON.parse(rawOutbox);
+        console.log(`[Migration] Found ${outbox.length} outbox messages in localStorage for ${pk}`);
+        
+        // Bulk insert into Dexie
+        const outboxMessages: DBMessage[] = outbox.map(item => ({
+          id: item.id,
+          pubkey: pk, // outbox items are from current user
+          content: item.content,
+          created_at: item.created_at,
+          sent_at: item.sent_at,
+          type: "outbox" as const,
+          relayResults: item.relayResults
+        }));
+        
+        await db.messages.bulkPut(outboxMessages);
+        console.log(`[Migration] Migrated ${outbox.length} outbox messages to Dexie`);
+        
+        // Remove from localStorage after successful migration
+        localStorage.removeItem(outboxKey);
+        console.log(`[Migration] Removed localStorage key: ${outboxKey}`);
+      }
+    }
+  } catch (error) {
+    console.error("[Migration] Failed to migrate messages from localStorage:", error);
+  }
+}
+
 export const useMessagesStore = defineStore("messages", {
   state: () => ({
     inbox: [] as InboxItem[],
@@ -48,46 +112,95 @@ export const useMessagesStore = defineStore("messages", {
       if (this.loadedFor === targetPk) return;
       this.loadedFor = targetPk;
 
-      // load inbox
+      // First, check for and migrate any localStorage data
+      await migrateFromLocalStorage(targetPk);
+
+      // Load inbox from Dexie (limit to recent 200 messages, sorted by created_at descending)
       try {
-        const ik = inboxKeyFor(targetPk);
-        if (ik) {
-          const rawI = localStorage.getItem(ik);
-          this.inbox = rawI ? JSON.parse(rawI) : [];
-        } else {
-          this.inbox = [];
-        }
-      } catch {
+        const inboxMessages = await db.messages
+          .where("type")
+          .equals("inbox")
+          .and(msg => msg.pubkey !== targetPk) // exclude own messages
+          .sortBy("created_at");
+        
+        // Reverse to get newest first, then take 200
+        inboxMessages.reverse();
+        this.inbox = inboxMessages.slice(0, 200).map(msg => ({
+          id: msg.id,
+          pubkey: msg.pubkey,
+          content: msg.content,
+          created_at: msg.created_at,
+          _localMeta: msg._localMeta
+        }));
+        
+        console.log(`[Messages] Loaded ${this.inbox.length} inbox messages from Dexie`);
+      } catch (error) {
+        console.error("[Messages] Failed to load inbox from Dexie:", error);
         this.inbox = [];
       }
 
-      // load outbox
+      // Load outbox from Dexie (limit to recent 500 messages)
       try {
-        const ok = outboxKeyFor(targetPk);
-        if (ok) {
-          const rawO = localStorage.getItem(ok);
-          this.outbox = rawO ? JSON.parse(rawO) : [];
-        } else {
-          this.outbox = [];
-        }
-      } catch {
+        const outboxMessages = await db.messages
+          .where("type")
+          .equals("outbox")
+          .sortBy("created_at");
+        
+        // Reverse to get newest first, then take 500
+        outboxMessages.reverse();
+        this.outbox = outboxMessages.slice(0, 500).map(msg => ({
+          id: msg.id,
+          created_at: msg.created_at,
+          sent_at: msg.sent_at || msg.created_at,
+          content: msg.content,
+          relayResults: msg.relayResults || []
+        }));
+        
+        console.log(`[Messages] Loaded ${this.outbox.length} outbox messages from Dexie`);
+      } catch (error) {
+        console.error("[Messages] Failed to load outbox from Dexie:", error);
         this.outbox = [];
       }
     },
 
-    saveInbox() {
-      const key = inboxKeyFor(this.loadedFor || "");
-      if (!key) return;
-      try { localStorage.setItem(key, JSON.stringify(this.inbox)); } catch {}
+    async saveInbox() {
+      // Save to Dexie instead of localStorage
+      try {
+        const messages: DBMessage[] = this.inbox.map(item => ({
+          id: item.id,
+          pubkey: item.pubkey,
+          content: item.content,
+          created_at: item.created_at,
+          type: "inbox" as const,
+          _localMeta: item._localMeta
+        }));
+        
+        await db.messages.bulkPut(messages);
+      } catch (error) {
+        console.error("[Messages] Failed to save inbox to Dexie:", error);
+      }
     },
 
-    saveOutbox() {
-      const key = outboxKeyFor(this.loadedFor || "");
-      if (!key) return;
-      try { localStorage.setItem(key, JSON.stringify(this.outbox)); } catch {}
+    async saveOutbox() {
+      // Save to Dexie instead of localStorage
+      try {
+        const messages: DBMessage[] = this.outbox.map(item => ({
+          id: item.id,
+          pubkey: this.loadedFor || "", // current user's pubkey
+          content: item.content,
+          created_at: item.created_at,
+          sent_at: item.sent_at,
+          type: "outbox" as const,
+          relayResults: item.relayResults
+        }));
+        
+        await db.messages.bulkPut(messages);
+      } catch (error) {
+        console.error("[Messages] Failed to save outbox to Dexie:", error);
+      }
     },
 
-    addInbox(item: InboxItem) {
+    async addInbox(item: InboxItem) {
       if (!item || !item.id) return;
       
       // Check if message already exists
@@ -107,7 +220,7 @@ export const useMessagesStore = defineStore("messages", {
             ...existing,
             _localMeta: item._localMeta
           };
-          this.saveInbox();
+          await this.saveInbox();
         }
         // All other cases: keep existing as-is
         return;
@@ -117,25 +230,39 @@ export const useMessagesStore = defineStore("messages", {
       this.inbox.unshift(item);
       // keep bounded history
       if (this.inbox.length > 1000) this.inbox.splice(1000);
-      this.saveInbox();
+      
+      // Save to Dexie
+      await this.saveInbox();
     },
 
-    addOutbox(item: OutboxItem) {
+    async addOutbox(item: OutboxItem) {
       if (!item || !item.id) return;
       this.outbox.unshift(item);
       if (this.outbox.length > 500) this.outbox.splice(500);
-      this.saveOutbox();
+      
+      // Save to Dexie
+      await this.saveOutbox();
     },
 
     // remove in-memory lists for current user, optionally remove persisted storage
-    reset(removeFromStorage = false) {
+    async reset(removeFromStorage = false) {
       const pk = this.loadedFor || "";
-      const ik = inboxKeyFor(pk);
-      const ok = outboxKeyFor(pk);
       this.inbox = [];
       this.outbox = [];
       this.loadedFor = "";
-      if (removeFromStorage) {
+      
+      if (removeFromStorage && pk) {
+        try {
+          // Remove from Dexie
+          await db.messages.where("type").equals("inbox").delete();
+          await db.messages.where("type").equals("outbox").delete();
+        } catch (error) {
+          console.error("[Messages] Failed to remove from Dexie:", error);
+        }
+        
+        // Also clean up any remaining localStorage keys
+        const ik = inboxKeyFor(pk);
+        const ok = outboxKeyFor(pk);
         try { if (ik) localStorage.removeItem(ik); } catch {}
         try { if (ok) localStorage.removeItem(ok); } catch {}
       }
@@ -143,6 +270,8 @@ export const useMessagesStore = defineStore("messages", {
 
     // debug: list stored pks that have inbox/outbox saved
     storedPks(): string[] {
+      // This is now less useful since Dexie doesn't store by pk-based keys
+      // But we keep it for backward compatibility
       try {
         const out: string[] = [];
         for (let i = 0; i < localStorage.length; i++) {
