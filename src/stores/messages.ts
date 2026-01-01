@@ -95,11 +95,13 @@ export const useMessagesStore = defineStore("messages", {
       if (existingIndex !== -1) {
         // Message already exists - handle _localMeta intelligently:
         // - If new item has _localMeta but existing doesn't: add it (relay echo arrived first)
-        // - If both have _localMeta: keep existing (locally created version has priority)
+        // - If both have _localMeta: keep existing (already correct, locally created version)
         // - If only existing has _localMeta: keep existing (preserve local metadata)
+        // - If neither has _localMeta: no update needed
         const existing = this.inbox[existingIndex];
         
         if (item._localMeta && !existing._localMeta) {
+          // Only case where we update: new has metadata but existing doesn't
           // Create a new object to ensure Vue reactivity
           this.inbox[existingIndex] = {
             ...existing,
@@ -107,6 +109,7 @@ export const useMessagesStore = defineStore("messages", {
           };
           this.saveInbox();
         }
+        // All other cases: keep existing as-is
         return;
       }
       

@@ -545,10 +545,10 @@ export default defineComponent({
         const { signed } = await posts.publishNip44PerMessage(recips, fullContent);
 
         // Add message to inbox with _localMeta immediately after publishing
-        // This call executes in the same event loop turn after the await resolves,
-        // minimizing (though not eliminating) the race condition window where relay
-        // echoes could arrive. The duplicate check in addInbox() ensures that whichever
-        // version arrives first is handled correctly.
+        // This executes as soon as the await resolves, minimizing the race condition
+        // window where relay echoes could arrive. The addInbox() method in the store
+        // handles duplicate detection and intelligently preserves _localMeta regardless
+        // of arrival order.
         msgs.addInbox({
           id: signed.id,
           pubkey: keys.pkHex,
