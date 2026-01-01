@@ -323,6 +323,7 @@ export default defineComponent({
       // If still no blossom servers after migration, use defaults
       if (settings.blossomList.length === 0) {
         settings.updateBlossomServers([...DEFAULT_BLOSSOM_SERVERS]);
+        saveBlossomsToStorage();
       }
     }
 
