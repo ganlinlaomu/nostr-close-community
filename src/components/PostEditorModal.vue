@@ -142,6 +142,8 @@ import { useMessagesStore } from "@/stores/messages";
 import { useUIStore } from "@/stores/ui";
 import { uploadImageToBlossom, getBlossomConfig } from "@/utils/blossom";
 import { resizeImageFile } from "@/utils/imageResize";
+import { encodeEncryptedImageRef, type EncryptedImageMetadata } from "@/utils/encryptedImageRef";
+import { bytesToBase64 } from "@/nostr/crypto";
 
 type UploadItem = {
   id: string;
@@ -152,6 +154,10 @@ type UploadItem = {
   url?: string;
   errorShort?: string;
   errorDetails?: string;
+  // Encryption metadata for encrypted uploads
+  encryptionKey?: CryptoKey;
+  encryptionIv?: string;
+  originalMime?: string;
 };
 
 export default defineComponent({
@@ -354,13 +360,49 @@ export default defineComponent({
           maxSize: 1920,
           quality: 0.82
        });
-        const descriptor = await uploadImageToBlossom(resizedFile, {
+        
+        // Generate encryption key and IV
+        const encryptionKey = await crypto.subtle.generateKey(
+          { name: "AES-GCM", length: 256 },
+          true,
+          ["encrypt", "decrypt"]
+        );
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const originalMime = resizedFile.type || "image/jpeg";
+        
+        // Read file bytes
+        const fileBytes = new Uint8Array(await resizedFile.arrayBuffer());
+        
+        // Encrypt the bytes
+        const encryptedBytes = await crypto.subtle.encrypt(
+          { name: "AES-GCM", iv },
+          encryptionKey,
+          fileBytes
+        );
+        
+        // Create a new File from encrypted bytes with octet-stream type
+        const encryptedFile = new File(
+          [encryptedBytes],
+          resizedFile.name.replace(/\.[^.]*$/, '') + ".enc",
+          { type: "application/octet-stream" }
+        );
+        
+        // Upload encrypted file
+        const descriptor = await uploadImageToBlossom(encryptedFile, {
           includeAuthIfRequired: true,
           signEvent: signEventWrapper,
           onProgress: (p:number) => { updateUploadItem(item.id, { progress: p }); }
         });
-        updateUploadItem(item.id, { url: descriptor.url, status: "done", progress: 100 });
-        // Don't automatically insert URL into textarea - just store it
+        
+        // Store encryption metadata
+        updateUploadItem(item.id, { 
+          url: descriptor.url, 
+          status: "done", 
+          progress: 100,
+          encryptionKey,
+          encryptionIv: bytesToBase64(iv),
+          originalMime
+        });
       } catch (err:any) {
         console.error("upload error raw:", err);
         const errorShort = err && err.message ? String(err.message) : "上传失败";
@@ -467,7 +509,27 @@ export default defineComponent({
           // Add images as markdown at the end
           if (fullContent.length > 0 && !fullContent.endsWith("\n")) fullContent += "\n";
           for (const img of uploadedImages) {
-            fullContent += `![](${img.url})\n`;
+            // Create encrypted image reference
+            if (img.encryptionKey && img.encryptionIv && img.originalMime) {
+              // Export key to raw bytes
+              const keyBytes = await crypto.subtle.exportKey("raw", img.encryptionKey);
+              const keyBase64 = bytesToBase64(new Uint8Array(keyBytes));
+              
+              const metadata: EncryptedImageMetadata = {
+                v: 1,
+                url: img.url,
+                mime: img.originalMime,
+                alg: "AES-GCM",
+                iv: img.encryptionIv,
+                key: keyBase64
+              };
+              
+              const encryptedRef = encodeEncryptedImageRef(metadata);
+              fullContent += `![](${encryptedRef})\n`;
+            } else {
+              // Fallback to plain URL (shouldn't happen with new code)
+              fullContent += `![](${img.url})\n`;
+            }
           }
         }
         
