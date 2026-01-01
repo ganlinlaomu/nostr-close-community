@@ -1067,12 +1067,12 @@ export default defineComponent({
         if (bottomSentinel) {
           bottomObserver.value = new IntersectionObserver(
             (entries) => {
-              // IntersectionObserver guarantees at least one entry for the observed element
-              atBottom.value = entries[0].isIntersecting;
+              // Guard against empty entries array in edge cases
+              atBottom.value = entries.length > 0 && entries[0].isIntersecting;
             },
             {
               root: null, // viewport
-              rootMargin: '100px', // Trigger 100px before bottom edge is reached for better UX
+              rootMargin: '100px', // Extend intersection area by 100px for earlier trigger when approaching bottom
               threshold: 0 // Trigger as soon as sentinel enters the extended area
             }
           );
@@ -1561,8 +1561,12 @@ export default defineComponent({
 }
 
 .bottom-sentinel {
+  position: absolute;
+  bottom: 0;
   height: 1px;
-  visibility: hidden;
+  width: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 </style>
