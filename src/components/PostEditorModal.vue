@@ -544,9 +544,11 @@ export default defineComponent({
         // Publish the message to relays
         const { signed } = await posts.publishNip44PerMessage(recips, fullContent);
 
-        // Immediately add message to inbox with _localMeta to prevent race condition
-        // This must happen synchronously after publishing completes so that any relay
-        // echo will be blocked by the duplicate check in addInbox
+        // Add message to inbox with _localMeta immediately after publishing
+        // This call executes in the same event loop turn after the await resolves,
+        // minimizing (though not eliminating) the race condition window where relay
+        // echoes could arrive. The duplicate check in addInbox() ensures that whichever
+        // version arrives first is handled correctly.
         msgs.addInbox({
           id: signed.id,
           pubkey: keys.pkHex,

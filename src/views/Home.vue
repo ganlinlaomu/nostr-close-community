@@ -348,8 +348,8 @@ export default defineComponent({
       // Check if message already exists in inbox
       const existing = msgs.inbox.find((m) => m.id === evt.id);
       if (existing) {
-        // Message already exists - preserve any existing _localMeta
-        // This prevents relay echoes from overwriting locally-added metadata
+        // Message already exists - the stores layer (addInbox) handles preservation
+        // of _localMeta, so we just return false to skip adding this duplicate
         return false;
       }
       

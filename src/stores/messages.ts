@@ -93,13 +93,18 @@ export const useMessagesStore = defineStore("messages", {
       // Check if message already exists
       const existingIndex = this.inbox.findIndex((m) => m.id === item.id);
       if (existingIndex !== -1) {
-        // Message already exists
+        // Message already exists - handle _localMeta intelligently:
+        // - If new item has _localMeta but existing doesn't: add it (relay echo arrived first)
+        // - If both have _localMeta: keep existing (locally created version has priority)
+        // - If only existing has _localMeta: keep existing (preserve local metadata)
         const existing = this.inbox[existingIndex];
         
-        // If the new item has _localMeta but the existing one doesn't, update it
-        // This handles the case where a relay echo arrived before the local version with metadata
         if (item._localMeta && !existing._localMeta) {
-          existing._localMeta = item._localMeta;
+          // Create a new object to ensure Vue reactivity
+          this.inbox[existingIndex] = {
+            ...existing,
+            _localMeta: item._localMeta
+          };
           this.saveInbox();
         }
         return;

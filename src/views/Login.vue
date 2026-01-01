@@ -311,20 +311,12 @@ export default defineComponent({
     };
 
     const showNsecLogin = () => {
-      // Blur any focused button to prevent hover state persistence
-      if (document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
-      }
       showNsec.value = true;
       showBunker.value = false;
       errorMessage.value = "";
     };
 
     const showBunkerLogin = () => {
-      // Blur any focused button to prevent hover state persistence
-      if (document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
-      }
       showBunker.value = true;
       showNsec.value = false;
       errorMessage.value = "";
