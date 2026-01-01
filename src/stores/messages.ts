@@ -6,6 +6,10 @@ export type InboxItem = {
   pubkey: string;
   created_at: number;
   content: string;
+  _localMeta?: {
+    groupCount: number;
+    groups: Array<{ name: string; count: number }>;
+  };
 };
 
 export type OutboxItem = {

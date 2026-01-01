@@ -61,7 +61,7 @@
         <!-- Private Key Login -->
         <button
           class="btn"
-          @click="showNsec = true"
+          @click="showNsecLogin"
           :disabled="loading"
           aria-label="Login with private key"
         >
@@ -72,7 +72,7 @@
         <!-- Bunker Login -->
         <button
           class="btn"
-          @click="showBunker = true"
+          @click="showBunkerLogin"
           :disabled="loading"
           aria-label="Login with remote signer"
         >
@@ -273,8 +273,13 @@ export default defineComponent({
     /* ---------------------------
      * 登录方式
      * --------------------------- */
-    const loginWithExtension = () =>
-      handleLogin(() => ks.loginWithExtension());
+    const loginWithExtension = () => {
+      // Hide other login forms and clear error
+      showNsec.value = false;
+      showBunker.value = false;
+      errorMessage.value = "";
+      return handleLogin(() => ks.loginWithExtension());
+    };
 
     function isValidBunkerInput(v: string) {
       return v.startsWith("bunker://") || v.includes("@");
@@ -300,6 +305,18 @@ export default defineComponent({
       if (loading.value) return;
       showBunker.value = false;
       bunkerInput.value = "";
+      errorMessage.value = "";
+    };
+
+    const showNsecLogin = () => {
+      showNsec.value = true;
+      showBunker.value = false;
+      errorMessage.value = "";
+    };
+
+    const showBunkerLogin = () => {
+      showBunker.value = true;
+      showNsec.value = false;
       errorMessage.value = "";
     };
 
@@ -361,6 +378,8 @@ export default defineComponent({
       errorMessage,
       loading,
       loginWithExtension,
+      showNsecLogin,
+      showBunkerLogin,
       doLoginBunker,
       cancelBunker,
       doLoginNsec,
