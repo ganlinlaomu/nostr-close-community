@@ -577,7 +577,7 @@ export default defineComponent({
   if (!mid) return;
 
   // Helper to safely truncate IDs for logging
-  const truncateId = (id: string | undefined) => id ? id.substring(0, Math.min(8, id.length)) : 'none';
+  const truncateId = (id: string | undefined) => id ? id.substring(0, 8) : 'none';
   
   logger.info(`[Notification Jump] Starting: mid=${truncateId(mid)}, cid=${truncateId(cid)}, rid=${truncateId(rid)}`);
 
@@ -626,7 +626,7 @@ export default defineComponent({
 
   const msgReady = await waitForMessage();
   if (!msgReady) {
-    logger.warn("[Notification Jump] Failed: message did not appear in displayedMessages", mid);
+    logger.warn("[Notification Jump] Failed: message did not appear in displayedMessages", truncateId(mid));
     return;
   }
 
@@ -644,15 +644,15 @@ export default defineComponent({
   if (rid) {
     // Jump to reply
     targetId = `reply-${rid}`;
-    logger.info(`[Notification Jump] Target: reply ${targetId}`);
+    logger.info(`[Notification Jump] Target: reply-${truncateId(rid)}`);
   } else if (cid) {
     // Jump to top-level comment
     targetId = `comment-${cid}`;
-    logger.info(`[Notification Jump] Target: comment ${targetId}`);
+    logger.info(`[Notification Jump] Target: comment-${truncateId(cid)}`);
   } else {
     // Jump to message
     targetId = `msg-${mid}`;
-    logger.info(`[Notification Jump] Target: message ${targetId}`);
+    logger.info(`[Notification Jump] Target: msg-${truncateId(mid)}`);
   }
 
   // Step 5: Wait for target element to appear in DOM
