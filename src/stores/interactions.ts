@@ -331,15 +331,30 @@ export const useInteractionsStore = defineStore("interactions", {
 
   const notifications = useNotificationsStore();
 
+  // Distinguish between top-level comments and replies
+  let commentId: string | undefined;
+  let replyId: string | undefined;
+  
+  if (interaction.type === "comment") {
+    const comment = interaction as Comment;
+    if (comment.parentCommentId) {
+      // This is a reply (second-level comment)
+      commentId = comment.parentCommentId; // Parent comment for context
+      replyId = comment.id; // The reply itself
+    } else {
+      // This is a top-level comment
+      commentId = comment.id;
+      replyId = undefined;
+    }
+  }
+
   notifications.addNotification({
     id: evt.id,
     type: interaction.type,            // 'like' | 'comment'
     from: interaction.author,           // 谁点的
     messageId: interaction.messageId,   // 哪条消息
-    commentId:
-      interaction.type === "comment"
-        ? interaction.id
-        : undefined,
+    commentId,                          // Top-level comment or parent of reply
+    replyId,                            // Reply ID if this is a second-level comment
     created_at: interaction.timestamp,
     read: false,
   });

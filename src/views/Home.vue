@@ -104,7 +104,7 @@
                 
                 <!-- 回复列表 -->
                 <div v-if="getReplies(m.id, comment.id).length > 0" class="replies-list">
-                  <div v-for="reply in getReplies(m.id, comment.id)" :key="reply.id" class="comment-item reply-item">
+                  <div v-for="reply in getReplies(m.id, comment.id)" :key="reply.id" :id="`reply-${reply.id}`" class="comment-item reply-item">
                     <div class="comment-header small">
                       <strong>{{ displayName(reply.author) }}</strong>
                       <span class="muted"> · {{ toLocalTime(reply.timestamp) }}</span>
@@ -563,14 +563,59 @@ export default defineComponent({
     }
 
   async function handleNotificationJump() {
+  // Get query params: mid (message), cid (comment/parent), rid (reply)
   const mid = route.query.mid as string | undefined;
-  const iid = route.query.iid as string | undefined;
- 
-
+  let cid = route.query.cid as string | undefined;
+  const rid = route.query.rid as string | undefined;
+  
+  // Backward compatibility: treat old 'iid' as 'cid'
+  if (!cid && route.query.iid) {
+    cid = route.query.iid as string;
+    logger.info("[Notification Jump] Using legacy iid parameter as cid (backward compatibility)");
+  }
 
   if (!mid) return;
 
-  // ① 等消息本身存在（点赞能跳就是靠这个）
+  // Helper to safely truncate IDs for logging
+  const truncateId = (id: string | undefined) => id ? id.substring(0, 8) : 'none';
+  
+  logger.info(`[Notification Jump] Starting: mid=${truncateId(mid)}, cid=${truncateId(cid)}, rid=${truncateId(rid)}`);
+
+  // Step 1: Ensure message is in displayedMessages
+  // If not, check pendingMessages and msgs.inbox, then merge it
+  let msgInDisplayed = displayedMessages.value.some(m => m.id === mid);
+  
+  if (!msgInDisplayed) {
+    logger.info("[Notification Jump] Message not in displayedMessages, attempting to merge from pending/inbox");
+    
+    // Check if message exists in pendingMessages
+    const msgInPending = pendingMessages.value.find(m => m.id === mid);
+    if (msgInPending) {
+      logger.info("[Notification Jump] Found target message in pendingMessages, merging to displayedMessages");
+      // Merge only this message (not all pending messages)
+      const sortedDisplayed = [...displayedMessages.value, msgInPending].sort(
+        (a, b) => (b.created_at || 0) - (a.created_at || 0)
+      );
+      displayedMessages.value = sortedDisplayed;
+      // Remove from pending
+      pendingMessages.value = pendingMessages.value.filter(m => m.id !== mid);
+      msgInDisplayed = true;
+    } else {
+      // Check if message exists in msgs.inbox
+      const msgInInbox = msgs.inbox.find(m => m.id === mid);
+      if (msgInInbox) {
+        logger.info("[Notification Jump] Found target message in msgs.inbox, merging to displayedMessages");
+        // Merge only this message
+        const sortedDisplayed = [...displayedMessages.value, msgInInbox].sort(
+          (a, b) => (b.created_at || 0) - (a.created_at || 0)
+        );
+        displayedMessages.value = sortedDisplayed;
+        msgInDisplayed = true;
+      }
+    }
+  }
+
+  // Step 2: Wait for message to appear in DOM (with timeout)
   const waitForMessage = async () => {
     for (let i = 0; i < 20; i++) {
       if (displayedMessages.value.some(m => m.id === mid)) return true;
@@ -581,19 +626,36 @@ export default defineComponent({
 
   const msgReady = await waitForMessage();
   if (!msgReady) {
-    console.warn("通知跳转失败：消息未出现", mid);
+    logger.warn("[Notification Jump] Failed: message did not appear in displayedMessages", truncateId(mid));
     return;
   }
 
-  // ② 如果是评论，强制展开评论区
-  if (iid) {
+  // Step 3: If comment or reply, expand comments section
+  if (cid || rid) {
+    logger.info("[Notification Jump] Expanding comments section");
     showingComments.value.add(mid);
     showingComments.value = new Set(showingComments.value);
+    // Wait for Vue to update DOM
+    await nextTick();
   }
 
-  // ③ 等评论 DOM 真正渲染出来（核心）
-  const targetId = iid ? `comment-${iid}` : `msg-${mid}`;
+  // Step 4: Determine target element ID
+  let targetId: string;
+  if (rid) {
+    // Jump to reply
+    targetId = `reply-${rid}`;
+    logger.info(`[Notification Jump] Target: reply-${truncateId(rid)}`);
+  } else if (cid) {
+    // Jump to top-level comment
+    targetId = `comment-${cid}`;
+    logger.info(`[Notification Jump] Target: comment-${truncateId(cid)}`);
+  } else {
+    // Jump to message
+    targetId = `msg-${mid}`;
+    logger.info(`[Notification Jump] Target: msg-${truncateId(mid)}`);
+  }
 
+  // Step 5: Wait for target element to appear in DOM
   const waitForElement = async () => {
     for (let i = 0; i < 40; i++) {
       const el = document.getElementById(targetId);
@@ -606,11 +668,12 @@ export default defineComponent({
   const el = await waitForElement();
 
   if (!el) {
-    console.warn("通知跳转失败：DOM 未找到", targetId);
+    logger.warn("[Notification Jump] Failed: DOM element not found", targetId);
     return;
   }
 
-  // ④ 滚动 + 高亮
+  // Step 6: Scroll to element and highlight
+  logger.info(`[Notification Jump] Success: scrolling to ${targetId}`);
   el.scrollIntoView({
     behavior: "smooth",
     block: "center"
