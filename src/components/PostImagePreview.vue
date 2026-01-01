@@ -6,6 +6,7 @@
       :alt="altText"
       class="post-image-first"
       @error="onError(0)"
+      @click="openViewer(0)"
       loading="lazy"
     />
     <div v-else class="gallery" :class="galleryClass">
@@ -16,9 +17,18 @@
         :alt="altText"
         class="gallery-item"
         @error="onError(idx)"
+        @click="openViewer(idx)"
         loading="lazy"
       />
     </div>
+    
+    <!-- Image Viewer Modal -->
+    <ImageViewer
+      :visible="viewerVisible"
+      :images="imageUrls"
+      :initialIndex="viewerIndex"
+      @close="closeViewer"
+    />
   </div>
 </template>
 
@@ -27,6 +37,7 @@ import { defineComponent, computed, ref, onBeforeUnmount, watch } from "vue";
 import { extractImageUrls } from "@/utils/extractImageUrls";
 import { decodeEncryptedImageRef, isEncryptedImageRef } from "@/utils/encryptedImageRef";
 import { base64ToBytes } from "@/nostr/crypto";
+import ImageViewer from "@/components/ImageViewer.vue";
 
 interface ImageItem {
   url: string;
@@ -35,6 +46,7 @@ interface ImageItem {
 
 export default defineComponent({
   name: "PostImagePreview",
+  components: { ImageViewer },
   props: {
     content: { type: String, required: true },
     max: { type: Number, default: 9 },
@@ -46,6 +58,10 @@ export default defineComponent({
     const images = ref<ImageItem[]>([]);
     const objectUrls = new Set<string>();
     
+    // Image viewer state
+    const viewerVisible = ref(false);
+    const viewerIndex = ref(0);
+    
     // Compute gallery class based on number of images for better browser compatibility
     const galleryClass = computed(() => {
       const count = images.value.length;
@@ -54,6 +70,18 @@ export default defineComponent({
       if (count === 4) return 'gallery-four';
       return 'gallery-grid';
     });
+    
+    // Get array of image URLs for viewer
+    const imageUrls = computed(() => images.value.map(img => img.url).filter(url => url !== ""));
+
+    function openViewer(index: number) {
+      viewerIndex.value = index;
+      viewerVisible.value = true;
+    }
+
+    function closeViewer() {
+      viewerVisible.value = false;
+    }
 
     async function processImageUrl(url: string): Promise<ImageItem> {
       if (isEncryptedImageRef(url)) {
@@ -148,7 +176,7 @@ export default defineComponent({
       objectUrls.clear();
     });
 
-    return { images, onError, failed, galleryClass };
+    return { images, onError, failed, galleryClass, viewerVisible, viewerIndex, imageUrls, openViewer, closeViewer };
   }
 });
 </script>
@@ -160,6 +188,11 @@ export default defineComponent({
   border-radius: 8px;
   display: block;
   margin: 8px 0;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+.post-image-first:hover {
+  opacity: 0.9;
 }
 .gallery {
   display: grid;
@@ -192,6 +225,11 @@ export default defineComponent({
   border-radius: 6px;
   object-fit: cover;
   background: #f1f5f9;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+.gallery-item:hover {
+  opacity: 0.9;
 }
 @media (min-width: 720px) {
   .gallery { gap: 6px; }
