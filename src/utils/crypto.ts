@@ -42,10 +42,14 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
 }
 
 /**
- * Convert Uint8Array to base64 string
+ * Convert Uint8Array to base64 string (safe for large arrays)
  */
 function arrayToBase64(arr: Uint8Array): string {
-  return btoa(String.fromCharCode(...arr));
+  let binary = '';
+  for (let i = 0; i < arr.length; i++) {
+    binary += String.fromCharCode(arr[i]);
+  }
+  return btoa(binary);
 }
 
 /**
@@ -58,6 +62,20 @@ function base64ToArray(base64: string): Uint8Array {
     bytes[i] = binaryString.charCodeAt(i);
   }
   return bytes;
+}
+
+/**
+ * Convert Uint8Array to base64 string (exported for external use)
+ */
+export function uint8ArrayToBase64(arr: Uint8Array): string {
+  return arrayToBase64(arr);
+}
+
+/**
+ * Convert base64 string to Uint8Array (exported for external use)
+ */
+export function base64ToUint8Array(base64: string): Uint8Array {
+  return base64ToArray(base64);
 }
 
 /**

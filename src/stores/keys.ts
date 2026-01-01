@@ -15,6 +15,8 @@ import {
   retrieveEncryptedKey,
   removeEncryptedKey,
   hasEncryptedKey,
+  uint8ArrayToBase64,
+  base64ToUint8Array,
   type EncryptedData
 } from "@/utils/crypto";
 
@@ -302,11 +304,7 @@ export const useKeyStore = defineStore("keys", {
         if (storedKey) {
           try {
             // Restore from base64
-            const bytes = atob(storedKey);
-            clientSecretKey = new Uint8Array(bytes.length);
-            for (let i = 0; i < bytes.length; i++) {
-              clientSecretKey[i] = bytes.charCodeAt(i);
-            }
+            clientSecretKey = base64ToUint8Array(storedKey);
           } catch {
             // If restore fails, generate new
             clientSecretKey = crypto.getRandomValues(new Uint8Array(32));
@@ -345,7 +343,7 @@ export const useKeyStore = defineStore("keys", {
           localStorage.setItem("loginTimestamp", String(this.loginTimestamp));
           localStorage.setItem("bunkerInput", bunkerInput);
           // Store client secret key for reconnection (base64 encoded)
-          const keyBase64 = btoa(String.fromCharCode(...clientSecretKey));
+          const keyBase64 = uint8ArrayToBase64(clientSecretKey);
           localStorage.setItem("bunkerClientSecretKey", keyBase64);
           localStorage.removeItem("skHex"); // Ensure no private key is stored
         } catch {}
@@ -549,11 +547,7 @@ export const useKeyStore = defineStore("keys", {
           const storedKey = localStorage.getItem("bunkerClientSecretKey");
           if (storedKey) {
             try {
-              const bytes = atob(storedKey);
-              clientSecretKey = new Uint8Array(bytes.length);
-              for (let i = 0; i < bytes.length; i++) {
-                clientSecretKey[i] = bytes.charCodeAt(i);
-              }
+              clientSecretKey = base64ToUint8Array(storedKey);
             } catch {
               console.warn("[keys] Failed to restore bunker client secret, generating new");
               clientSecretKey = crypto.getRandomValues(new Uint8Array(32));
@@ -567,13 +561,22 @@ export const useKeyStore = defineStore("keys", {
             bunkerPointer
           );
 
-          // Connect with timeout
+          // Connect with timeout (properly cleanup timeout on success)
+          let timeoutId: ReturnType<typeof setTimeout> | null = null;
           const connectPromise = signer.sendRequest("connect", []);
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error("Bunker connection timeout")), 10000)
-          );
+          const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error("Bunker connection timeout")), 10000);
+          });
           
-          await Promise.race([connectPromise, timeoutPromise]);
+          try {
+            await Promise.race([connectPromise, timeoutPromise]);
+            // Clear timeout if connect succeeds
+            if (timeoutId !== null) clearTimeout(timeoutId);
+          } catch (e) {
+            // Clear timeout if connect fails
+            if (timeoutId !== null) clearTimeout(timeoutId);
+            throw e;
+          }
 
           this.bunkerSigner = signer;
           this.bunkerClientSecretKey = clientSecretKey;
