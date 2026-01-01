@@ -630,13 +630,45 @@ export default defineComponent({
     return;
   }
 
-  // Step 3: If comment or reply, expand comments section
+  // Step 3: If comment or reply, ensure interactions are loaded and expand comments section
   if (cid || rid) {
+    logger.info("[Notification Jump] Waiting for interactions to load for comment/reply");
+    
+    // Wait for interactions to be loaded for this message (with timeout)
+    const waitForInteractions = async () => {
+      for (let i = 0; i < 30; i++) {
+        const comments = interactions.getComments(mid);
+        // Check if the specific comment or reply exists in interactions
+        if (cid) {
+          const commentExists = comments.some((c: any) => c.id === cid || c.parentCommentId === cid);
+          if (commentExists) {
+            logger.info("[Notification Jump] Interactions loaded, found comment", truncateId(cid));
+            return true;
+          }
+        }
+        if (rid) {
+          const replyExists = comments.some((c: any) => c.id === rid);
+          if (replyExists) {
+            logger.info("[Notification Jump] Interactions loaded, found reply", truncateId(rid));
+            return true;
+          }
+        }
+        await new Promise(r => setTimeout(r, 100));
+      }
+      logger.warn("[Notification Jump] Timeout waiting for interactions");
+      return false;
+    };
+    
+    await waitForInteractions();
+    
+    // Expand comments section
     logger.info("[Notification Jump] Expanding comments section");
     showingComments.value.add(mid);
     showingComments.value = new Set(showingComments.value);
     // Wait for Vue to update DOM
     await nextTick();
+    // Give extra time for rendering complex comment threads
+    await new Promise(r => setTimeout(r, 100));
   }
 
   // Step 4: Determine target element ID
@@ -657,10 +689,10 @@ export default defineComponent({
 
   // Step 5: Wait for target element to appear in DOM
   const waitForElement = async () => {
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 50; i++) {
       const el = document.getElementById(targetId);
       if (el) return el;
-      await new Promise(r => setTimeout(r, 50));
+      await new Promise(r => setTimeout(r, 100));
     }
     return null;
   };
@@ -738,6 +770,7 @@ export default defineComponent({
         // Determine time range for backfill - always clamp to 3-day window
         let since: number;
         let until: number = now;
+        const isFirstLogin = !savedBreakpoint || savedBreakpoint === 0;
         
         if (savedBreakpoint && savedBreakpoint > 0) {
           // Clamp to 3-day window even with saved breakpoint
@@ -748,7 +781,7 @@ export default defineComponent({
         } else {
           since = threeDaysAgo;
           logger.info(
-          `无断点，拉取最近3天: since=${new Date(since * 1000).toLocaleString()}`
+          `首次登录，拉取最近3天: since=${new Date(since * 1000).toLocaleString()}`
           );
         }
         
@@ -871,8 +904,13 @@ export default defineComponent({
             if (newestTimestamp > 0) {
               saveBackfillBreakpoint(breakpointKey, newestTimestamp);
               logger.info(`保存消息断点: ${new Date(newestTimestamp * 1000).toLocaleString()} (解密了 ${decryptedEvents} 条)`);
+            } else if (isFirstLogin) {
+              // First login with no decrypted messages: save current time to prevent repeated 3-day pulls
+              // This ensures next login will only fetch new messages since this attempt
+              saveBackfillBreakpoint(breakpointKey, now);
+              logger.info(`首次登录无解密消息，保存当前时间断点以避免重复拉取: ${new Date(now * 1000).toLocaleString()}`);
             } else {
-              // No messages were decrypted - do NOT advance the breakpoint
+              // Not first login and no messages decrypted - do NOT advance the breakpoint
               // Keep the previous breakpoint unchanged to allow subsequent backfills to retry the same window
               logger.info(`跳过断点更新: 未解密任何消息 (获取了 ${fetchedEvents} 条事件)`);
             }
