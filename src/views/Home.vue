@@ -142,7 +142,7 @@
       </div>
       
       <!-- Bottom sentinel for scroll detection -->
-      <div id="bottom-sentinel" class="bottom-sentinel"></div>
+      <div ref="bottomSentinelRef" id="bottom-sentinel" class="bottom-sentinel"></div>
       
       <!-- Show older messages button - only appears when at bottom -->
       <div v-if="hasOlderLocalMessages && atBottom" class="show-older-container">
@@ -209,6 +209,7 @@ export default defineComponent({
     const showOlderLocal = ref(false); // Whether to show older local messages
     const atBottom = ref(false); // Track if user has scrolled to bottom of message list
     const bottomObserver = ref<IntersectionObserver | null>(null); // IntersectionObserver for bottom detection
+    const bottomSentinelRef = ref<HTMLElement | null>(null); // Template ref for bottom sentinel element
 
     // Computed property to check if there are older messages beyond the 3-day window
     const hasOlderLocalMessages = computed(() => {
@@ -1062,12 +1063,14 @@ export default defineComponent({
       // Set up IntersectionObserver for bottom sentinel
       // Use nextTick to ensure DOM is fully rendered
       nextTick(() => {
-        const bottomSentinel = document.getElementById('bottom-sentinel');
+        const bottomSentinel = bottomSentinelRef.value;
         if (bottomSentinel) {
           bottomObserver.value = new IntersectionObserver(
             (entries) => {
               // Only one element is observed, so directly access the first entry
-              atBottom.value = entries[0].isIntersecting;
+              if (entries.length > 0) {
+                atBottom.value = entries[0].isIntersecting;
+              }
             },
             {
               root: null, // viewport
@@ -1155,6 +1158,7 @@ export default defineComponent({
       showOlderLocal,
       hasOlderLocalMessages,
       atBottom,
+      bottomSentinelRef,
       container,
       pullDistance,
       refreshing
