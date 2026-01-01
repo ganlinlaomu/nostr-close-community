@@ -6,7 +6,7 @@ import { VitePWA } from "vite-plugin-pwa";
 const DEFAULT_PORT = 5173;
 
 
-const rawAllowed = (process.env.ALLOWED_HOSTS ?? "localhost,127.0.0.1,pwa.lostr.space").trim();
+const rawAllowed = (process.env.ALLOWED_HOSTS ?? "localhost,127.0.0.1,test.lostr.space").trim();
 const ALLOWED_HOSTS = rawAllowed === "" ? [] : rawAllowed.split(",").map(s => s.trim());
 
 export default defineConfig({
