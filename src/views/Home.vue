@@ -30,14 +30,6 @@
       <h4 style="margin: 0 0 12px 0;">好友动态</h4>
       <div v-if="displayedMessages.length === 0" class="small">还没有消息</div>
       
-      <!-- Show older messages button -->
-      <div v-if="!showOlderLocal && displayedMessages.length > 0" class="show-older-container">
-        <button class="show-older-btn" @click="showOlderLocalMessages">
-          <span class="show-older-icon">📜</span>
-          <span class="show-older-text">显示更早消息（本地）</span>
-        </button>
-      </div>
-      
       <div class="list">
         <div v-for="m in displayedMessages" :key="m.id" :id="`msg-${m.id}`" class="card">
           <div class="small">
@@ -148,6 +140,17 @@
         </div>
         </div>
       </div>
+      
+      <!-- Bottom sentinel for scroll detection -->
+      <div ref="bottomSentinelRef" class="bottom-sentinel"></div>
+      
+      <!-- Show older messages button - only appears when at bottom -->
+      <div v-if="hasOlderLocalMessages && atBottom" class="show-older-container">
+        <button class="show-older-btn" @click="showOlderLocalMessages">
+          <span class="show-older-icon">📜</span>
+          <span class="show-older-text">显示更早消息（本地）</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -204,8 +207,26 @@ export default defineComponent({
     const showingSendMeta = ref<Set<string>>(new Set());
     const isBackfilling = ref(false); // Track if currently backfilling (vs realtime)
     const showOlderLocal = ref(false); // Whether to show older local messages
+    const atBottom = ref(false); // Track if user has scrolled to bottom of message list
+    const bottomObserver = ref<IntersectionObserver | null>(null); // IntersectionObserver for bottom detection
+    const bottomSentinelRef = ref<HTMLElement | null>(null); // Template ref for bottom sentinel element
 
-    
+    // Computed property to check if there are older messages beyond the 3-day window
+    const hasOlderLocalMessages = computed(() => {
+      if (showOlderLocal.value) return false; // Already showing older messages
+      if (displayedMessages.value.length === 0) return false;
+      
+      const now = Math.floor(Date.now() / 1000);
+      const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
+      
+      // Check if there are any messages in inbox that are older than 3 days and not currently displayed
+      const displayedIds = new Set(displayedMessages.value.map(m => m.id));
+      const olderMessages = msgs.inbox.filter(m => 
+        (m.created_at || 0) < threeDaysAgo && !displayedIds.has(m.id)
+      );
+      
+      return olderMessages.length > 0;
+    });
     
     // State for comments UI
     const showingComments = ref<Set<string>>(new Set());
@@ -1038,6 +1059,26 @@ export default defineComponent({
     onMounted(() => { 
       startSub().catch(console.error); 
       handleNotificationJump();
+      
+      // Set up IntersectionObserver for bottom sentinel
+      // Use nextTick to ensure DOM is fully rendered
+      nextTick(() => {
+        const bottomSentinel = bottomSentinelRef.value;
+        if (bottomSentinel) {
+          bottomObserver.value = new IntersectionObserver(
+            (entries) => {
+              // Guard against empty entries array in edge cases
+              atBottom.value = entries.length > 0 && entries[0].isIntersecting;
+            },
+            {
+              root: null, // viewport
+              rootMargin: '100px', // Extend intersection area by 100px for earlier trigger when approaching bottom
+              threshold: 0 // Trigger as soon as sentinel enters the extended area
+            }
+          );
+          bottomObserver.value.observe(bottomSentinel);
+        }
+      });
     });
 
    watch(
@@ -1067,6 +1108,13 @@ export default defineComponent({
     }, { flush: 'post' });
 
     onBeforeUnmount(() => {
+      // Clean up IntersectionObserver
+      if (bottomObserver.value) {
+        bottomObserver.value.disconnect();
+        bottomObserver.value = null;
+      }
+      
+      // Clean up subscriptions
       if (sub) {
         try { if (typeof sub.close === "function") sub.close(); else if (typeof sub.unsub === "function") sub.unsub(); else if (typeof sub.unsubscribe === "function") sub.unsubscribe(); else if (typeof sub === "function") sub(); } catch {}
       }
@@ -1106,6 +1154,9 @@ export default defineComponent({
       showPendingMessages,
       showOlderLocalMessages,
       showOlderLocal,
+      hasOlderLocalMessages,
+      atBottom,
+      bottomSentinelRef,
       container,
       pullDistance,
       refreshing
@@ -1507,6 +1558,15 @@ export default defineComponent({
   position: sticky;
   top: 0;
   z-index: 10;
+}
+
+.bottom-sentinel {
+  position: absolute;
+  bottom: 0;
+  height: 1px;
+  width: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 </style>
