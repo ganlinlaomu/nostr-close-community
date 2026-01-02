@@ -256,8 +256,8 @@ export default defineComponent({
         }
         displayedMessages.value = merged;
         
-        // Update lastSeen watermark to the newest message timestamp
-        lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, sortedPending);
+        // Update lastSeen watermark to the newest message timestamp across all displayed messages
+        lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, merged);
         logger.info(`更新 lastSeenCreatedAt: ${new Date(lastSeenCreatedAt.value * 1000).toLocaleString()}`);
         
         pendingMessages.value = [];
@@ -1523,9 +1523,9 @@ export default defineComponent({
 .load-more-container {
   display: flex;
   justify-content: center;
-  padding: 20px 12px;
+  padding: var(--load-more-padding) 12px;
   /* Add safe area padding for bottom navigation bar */
-  padding-bottom: calc(20px + var(--bottom-nav-height) + env(safe-area-inset-bottom));
+  padding-bottom: calc(var(--load-more-padding) + var(--bottom-nav-height) + env(safe-area-inset-bottom));
 }
 
 .load-more-btn {

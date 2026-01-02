@@ -51,10 +51,15 @@ export function setLastSeenCreatedAt(userPkHex: string, timestamp: number): void
 export function updateLastSeenToNewest(userPkHex: string, messages: Array<{ created_at?: number }>): number {
   if (!userPkHex || !messages || messages.length === 0) return 0;
   
-  const newestTimestamp = messages.reduce((max, msg) => {
-    const ts = msg.created_at || 0;
-    return ts > max ? ts : max;
-  }, 0);
+  // Find the newest timestamp - since messages are often sorted by created_at desc,
+  // check first element first for potential early exit
+  let newestTimestamp = messages[0]?.created_at || 0;
+  for (let i = 1; i < messages.length; i++) {
+    const ts = messages[i]?.created_at || 0;
+    if (ts > newestTimestamp) {
+      newestTimestamp = ts;
+    }
+  }
   
   if (newestTimestamp > 0) {
     setLastSeenCreatedAt(userPkHex, newestTimestamp);
