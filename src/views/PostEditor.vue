@@ -192,6 +192,20 @@ import { usePostsStore } from "@/stores/posts";
 import { useMessagesStore } from "@/stores/messages";
 import { useUIStore } from "@/stores/ui";
 import { uploadImageToBlossom, getBlossomConfig } from "@/utils/blossom";
+import { 
+  generateVideoEncryptionKey, 
+  encryptVideoBytes,
+  encryptVideoChunk,
+  chunkFile,
+  deriveChunkIV,
+  VIDEO_SIZE_THRESHOLD,
+  CHUNK_SIZE,
+  type EncryptedVideoMetadata,
+  type EncryptedChunkMetadata
+} from "@/utils/videoCrypto";
+import { uploadChunks, uploadSingleFile } from "@/utils/chunkedUpload";
+import { encodeEncryptedVideoRef } from "@/utils/encryptedVideoRef";
+import { bytesToBase64 } from "@/nostr/crypto";
 
 // Video metadata format constants
 const VIDEO_METADATA_PREFIX = '[video:';
@@ -323,6 +337,7 @@ export default defineComponent({
       url: string;
       provider: string;
       embedUrl?: string;
+      encryptedMetadata?: EncryptedVideoMetadata; // Store encrypted video metadata
     } | null>(null);
 
     function parseVideoUrl(url: string): { url: string; provider: string; embedUrl?: string } | null {
@@ -414,20 +429,136 @@ export default defineComponent({
       updateUploadItem(item.id, { status: "uploading", progress: 0, errorShort: undefined, errorDetails: undefined });
 
       try {
-        const descriptor = await uploadImageToBlossom(item.file, {
-          includeAuthIfRequired: true,
-          signEvent: signEventWrapper,
-          onProgress: (p:number) => { updateUploadItem(item.id, { progress: p }); }
-        });
+        const file = item.file;
+        const isLargeFile = file.size >= VIDEO_SIZE_THRESHOLD;
         
-        // Set as video preview
-        videoPreview.value = {
-          url: descriptor.url,
-          provider: 'Hosted',
-          embedUrl: descriptor.url
-        };
+        // Update progress: 0-5% preparation
+        updateUploadItem(item.id, { progress: 2 });
         
-        updateUploadItem(item.id, { url: descriptor.url, status: "done", progress: 100 });
+        // Generate encryption key
+        const encryptionKey = await generateVideoEncryptionKey();
+        const baseIv = crypto.getRandomValues(new Uint8Array(12));
+        
+        updateUploadItem(item.id, { progress: 5 });
+        
+        if (isLargeFile) {
+          // Chunked encryption and upload for large files
+          const encryptedChunks: Blob[] = [];
+          const chunkMetadata: EncryptedChunkMetadata[] = [];
+          const chunks = Array.from(chunkFile(file, CHUNK_SIZE));
+          const totalChunks = chunks.length;
+          
+          // Encrypt chunks (5-15% progress)
+          for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            const chunkBytes = new Uint8Array(await chunk.data.arrayBuffer());
+            const chunkIv = deriveChunkIV(baseIv, i);
+            const encryptedChunk = await encryptVideoChunk(encryptionKey, chunkBytes, chunkIv);
+            encryptedChunks.push(new Blob([encryptedChunk], { type: "application/octet-stream" }));
+            
+            const encryptProgress = 5 + ((i + 1) / totalChunks) * 10;
+            updateUploadItem(item.id, { progress: encryptProgress });
+          }
+          
+          // Upload chunks (15-95% progress)
+          const uploadedChunks = await uploadChunks(encryptedChunks, {
+            signEvent: signEventWrapper,
+            onProgress: (_chunkIndex, _chunkProgress, totalProgress) => {
+              updateUploadItem(item.id, { progress: totalProgress });
+            }
+          });
+          
+          // Build chunk metadata
+          for (const uploadedChunk of uploadedChunks) {
+            const chunkIv = deriveChunkIV(baseIv, uploadedChunk.index);
+            chunkMetadata.push({
+              index: uploadedChunk.index,
+              iv: bytesToBase64(chunkIv),
+              size: uploadedChunk.size,
+              storageUrl: uploadedChunk.url
+            });
+          }
+          
+          // Export key for metadata
+          const keyBytes = await crypto.subtle.exportKey("raw", encryptionKey);
+          
+          // Create encrypted video metadata
+          const metadata: EncryptedVideoMetadata = {
+            v: 1,
+            type: "video",
+            alg: "AES-GCM",
+            baseIv: bytesToBase64(baseIv),
+            key: bytesToBase64(new Uint8Array(keyBytes)),
+            chunkSize: CHUNK_SIZE,
+            totalSize: file.size,
+            mime: file.type || "video/mp4",
+            parts: chunkMetadata
+          };
+          
+          // Create encrypted video reference
+          const encryptedRef = encodeEncryptedVideoRef(metadata);
+          
+          // Set as video preview with encrypted metadata
+          videoPreview.value = {
+            url: encryptedRef,
+            provider: 'Encrypted (Chunked)',
+            embedUrl: undefined, // Will be decrypted on demand
+            encryptedMetadata: metadata
+          };
+          
+          updateUploadItem(item.id, { url: encryptedRef, status: "done", progress: 100 });
+        } else {
+          // Single-shot encryption for small files
+          updateUploadItem(item.id, { progress: 10 });
+          
+          const fileBytes = new Uint8Array(await file.arrayBuffer());
+          const { iv, ct } = await encryptVideoBytes(encryptionKey, fileBytes);
+          
+          updateUploadItem(item.id, { progress: 15 });
+          
+          // Create encrypted blob and upload
+          const encryptedBlob = new Blob([new TextEncoder().encode(ct)], { type: "application/octet-stream" });
+          const uploadedUrl = await uploadSingleFile(encryptedBlob, file.type, {
+            signEvent: signEventWrapper,
+            onProgress: (_chunkIndex, _chunkProgress, totalProgress) => {
+              updateUploadItem(item.id, { progress: totalProgress });
+            }
+          });
+          
+          // Export key for metadata
+          const keyBytes = await crypto.subtle.exportKey("raw", encryptionKey);
+          
+          // Create encrypted video metadata (single part)
+          const metadata: EncryptedVideoMetadata = {
+            v: 1,
+            type: "video",
+            alg: "AES-GCM",
+            baseIv: bytesToBase64(baseIv),
+            key: bytesToBase64(new Uint8Array(keyBytes)),
+            chunkSize: file.size, // Single chunk = file size
+            totalSize: file.size,
+            mime: file.type || "video/mp4",
+            parts: [{
+              index: 0,
+              iv,
+              size: encryptedBlob.size,
+              storageUrl: uploadedUrl
+            }]
+          };
+          
+          // Create encrypted video reference
+          const encryptedRef = encodeEncryptedVideoRef(metadata);
+          
+          // Set as video preview with encrypted metadata
+          videoPreview.value = {
+            url: encryptedRef,
+            provider: 'Encrypted',
+            embedUrl: undefined, // Will be decrypted on demand
+            encryptedMetadata: metadata
+          };
+          
+          updateUploadItem(item.id, { url: encryptedRef, status: "done", progress: 100 });
+        }
         
         // Remove from uploads list since we show it in videoPreview
         const idx = uploads.value.findIndex(u => u.id === item.id);
@@ -623,14 +754,21 @@ export default defineComponent({
         // Add video if present
         if (videoPreview.value) {
           if (fullContent.length > 0 && !fullContent.endsWith("\n")) fullContent += "\n";
-          // Store video metadata as JSON in a special format using constants
-          const videoData = {
-            type: 'video',
-            url: videoPreview.value.url,
-            provider: videoPreview.value.provider,
-            embedUrl: videoPreview.value.embedUrl
-          };
-          fullContent += `${VIDEO_METADATA_PREFIX}${JSON.stringify(videoData)}${VIDEO_METADATA_SUFFIX}\n`;
+          
+          // Check if it's an encrypted video ref
+          if (videoPreview.value.encryptedMetadata) {
+            // Use markdown format for encrypted videos: ![](blossom+aesgcm+video:...)
+            fullContent += `![](${videoPreview.value.url})\n`;
+          } else {
+            // Legacy format for unencrypted video URLs
+            const videoData = {
+              type: 'video',
+              url: videoPreview.value.url,
+              provider: videoPreview.value.provider,
+              embedUrl: videoPreview.value.embedUrl
+            };
+            fullContent += `${VIDEO_METADATA_PREFIX}${JSON.stringify(videoData)}${VIDEO_METADATA_SUFFIX}\n`;
+          }
         }
         
         const { signed } = await posts.publishNip44PerMessage(recips, fullContent);
