@@ -1135,10 +1135,10 @@ export default defineComponent({
    // This ensures that when friends are added or removed, the subscription
    // automatically updates to include/exclude them
    watch(() => friends.version, (newVersion, oldVersion) => {
-     // Only restart if this is not the initial load and version actually changed
-     if (oldVersion !== undefined && newVersion !== oldVersion && !isInitialLoad.value) {
+     // Only restart if this is not the initial load
+     if (oldVersion !== undefined && !isInitialLoad.value) {
        logger.info(`好友列表版本变化 (${oldVersion} -> ${newVersion})，重新启动订阅`);
-       startSub().catch(console.error);
+       startSub().catch(e => logger.error('Failed to restart subscription after friends change', e));
      }
    });
    
