@@ -129,9 +129,12 @@ export default defineComponent({
   transform: translateZ(0);
   will-change: transform;
   -webkit-transform: translateZ(0);
-  /* Ensure visibility */
-  visibility: visible;
-  opacity: 1;
+  /* Ensure visibility - critical for mobile */
+  visibility: visible !important;
+  opacity: 1 !important;
+  display: flex !important;
+  /* Prevent any layout shifts */
+  contain: layout style paint;
 }
 .nav-item {
   display: flex;

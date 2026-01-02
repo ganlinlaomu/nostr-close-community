@@ -75,7 +75,8 @@ function go(n: any) {
 <style scoped>
 .notifications-page {
   padding: 12px;
-  padding-bottom: calc(12px + var(--bottom-nav-height) + env(safe-area-inset-bottom));
+  /* Increased bottom padding to ensure last notification is always visible */
+  padding-bottom: calc(20px + var(--bottom-nav-height) + env(safe-area-inset-bottom));
 }
 
 .page-header {

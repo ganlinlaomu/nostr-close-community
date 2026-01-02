@@ -5,7 +5,8 @@
   --accent: #1976d2;
   --z-bottom-nav: 99999;
   --bottom-nav-height: 80px;
-  --load-more-padding: 20px;
+  /* Increased padding to ensure load-more button is always above bottom bar */
+  --load-more-padding: 40px;
 }
 
 /* 基础盒模型 */
@@ -136,6 +137,14 @@ textarea {
   backface-visibility: hidden;
 
   z-index: var(--z-bottom-nav);
+  
+  /* 强制可见性，防止消失 */
+  visibility: visible !important;
+  opacity: 1 !important;
+  display: flex !important;
+  
+  /* 防止布局偏移 */
+  contain: layout style paint;
 }
 
 /* 兼容不支持 svh 的旧浏览器 */

@@ -632,10 +632,40 @@ export default defineComponent({
   }
 
   // ④ 滚动 + 高亮
-  el.scrollIntoView({
-    behavior: "smooth",
-    block: "center"
-  });
+  // Use custom scroll calculation to prevent bottom bar from disappearing
+  // when scrolling to elements near the bottom
+  await nextTick();
+  
+  // Get the scrollable container
+  const scrollContainer = document.querySelector('body > #app');
+  if (scrollContainer) {
+    const rect = el.getBoundingClientRect();
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const bottomBarHeight = 80; // var(--bottom-nav-height)
+    const safeOffset = 20; // Extra padding for safety
+    
+    // Calculate the desired scroll position
+    // We want the element to be visible but not too close to the bottom bar
+    const targetScrollTop = scrollContainer.scrollTop + rect.top - containerRect.top - safeOffset;
+    
+    // Check if scrolling would place the element too close to the bottom
+    const viewportHeight = containerRect.height;
+    const elementBottomRelative = rect.bottom - containerRect.top;
+    
+    if (elementBottomRelative > viewportHeight - bottomBarHeight - safeOffset) {
+      // Element would be hidden by bottom bar, adjust scroll position
+      scrollContainer.scrollTop = targetScrollTop - (viewportHeight - bottomBarHeight - rect.height - safeOffset * 2);
+    } else {
+      // Safe to scroll normally
+      scrollContainer.scrollTop = targetScrollTop;
+    }
+  } else {
+    // Fallback to scrollIntoView if container not found
+    el.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  }
 
   el.classList.add("highlight");
   setTimeout(() => el.classList.remove("highlight"), 1500);
