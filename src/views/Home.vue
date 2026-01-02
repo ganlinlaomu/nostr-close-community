@@ -183,8 +183,10 @@ const plainImgUrlRE = /(https?:\/\/[^\s)]+?\.(?:png|jpe?g|gif|webp|avif|svg)(?:\
 // This is needed to prevent raw encrypted markdown from appearing in the message text area
 // while PostImagePreview handles the actual decryption and rendering
 const mdEncryptedImageRE = /!\[[^\]]*?\]\(\s*(blossom\+aesgcm:[^\s)]+)\s*\)/gi;
+// Match encrypted video references in markdown: ![](blossom+aesgcm+video:...)
+const mdEncryptedVideoRE = /!\[[^\]]*?\]\(\s*(blossom\+aesgcm\+video:[^\s)]+)\s*\)/gi;
 
-// Video pattern: [video:{json}] - constant for video metadata format
+// Video pattern: [video:{json}] - constant for video metadata format (legacy)
 const VIDEO_METADATA_PREFIX = '[video:';
 const VIDEO_METADATA_SUFFIX = ']';
 const videoDataRE = /\[video:(\{[^\]]+\})\]/g;
@@ -439,8 +441,10 @@ export default defineComponent({
       s = s.replace(mdEncryptedImageRE, "");
       // remove plain image urls
       s = s.replace(plainImgUrlRE, "");
-      // remove video data
+      // remove legacy video data [video:{...}]
       s = s.replace(videoDataRE, "");
+      // remove encrypted video markdown ![](blossom+aesgcm+video:...)
+      s = s.replace(mdEncryptedVideoRE, "");
       // collapse multiple blank lines and trim
       s = s.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
       return s;
@@ -454,6 +458,28 @@ export default defineComponent({
     function extractVideoData(content: string): any {
       if (!content) return null;
       
+      // First try to extract encrypted video refs from markdown: ![](blossom+aesgcm+video:...)
+      const encryptedMatches = content.match(mdEncryptedVideoRE);
+      if (encryptedMatches && encryptedMatches.length > 0) {
+        try {
+          // Extract the blossom+aesgcm+video:... URL from markdown
+          const match = encryptedMatches[0];
+          const urlMatch = match.match(/blossom\+aesgcm\+video:[^\s)]+/);
+          if (urlMatch) {
+            const encryptedRef = urlMatch[0];
+            return {
+              type: 'video',
+              url: encryptedRef,
+              provider: 'Encrypted',
+              embedUrl: undefined // Will be decrypted on demand by VideoPlayer
+            };
+          }
+        } catch (e) {
+          console.error('Failed to parse encrypted video reference:', e);
+        }
+      }
+      
+      // Fallback to legacy format: [video:{json}]
       // Use match() instead of exec() to avoid stateful regex behavior
       const matches = content.match(videoDataRE);
       
