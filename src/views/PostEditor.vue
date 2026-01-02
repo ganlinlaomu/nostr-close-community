@@ -333,12 +333,19 @@ export default defineComponent({
         };
       }
       
-      // Default: treat as direct URL
-      return {
-        url: trimmedUrl,
-        provider: 'External',
-        embedUrl: trimmedUrl
-      };
+      // Check if it's a valid URL, otherwise don't treat as video
+      try {
+        new URL(trimmedUrl);
+        // Valid URL but not a recognized video platform - treat as external
+        return {
+          url: trimmedUrl,
+          provider: 'External',
+          embedUrl: trimmedUrl
+        };
+      } catch {
+        // Not a valid URL, return null
+        return null;
+      }
     }
 
     function removeVideo() {
