@@ -243,30 +243,68 @@ export default defineComponent({
     // State for message time range display
     const messageTimeRange = ref<string>("");
     
+    /**
+     * Merge two sorted arrays of messages with de-duplication by message ID
+     * @param array1 First sorted array (descending by created_at)
+     * @param array2 Second sorted array (descending by created_at)
+     * @returns Merged and de-duplicated array, sorted by created_at (descending)
+     */
+    function mergeSortedMessagesWithDedup<T extends { id: string; created_at?: number }>(
+      array1: T[],
+      array2: T[]
+    ): T[] {
+      const merged: T[] = [];
+      const seenIds = new Set<string>();
+      let i = 0, j = 0;
+      
+      while (i < array1.length || j < array2.length) {
+        if (i >= array1.length) {
+          // Add remaining items from array2 (de-duplicating)
+          for (let k = j; k < array2.length; k++) {
+            if (!seenIds.has(array2[k].id)) {
+              merged.push(array2[k]);
+              seenIds.add(array2[k].id);
+            }
+          }
+          break;
+        }
+        if (j >= array2.length) {
+          // Add remaining items from array1 (de-duplicating)
+          for (let k = i; k < array1.length; k++) {
+            if (!seenIds.has(array1[k].id)) {
+              merged.push(array1[k]);
+              seenIds.add(array1[k].id);
+            }
+          }
+          break;
+        }
+        // Merge based on timestamp, but de-duplicate by id
+        if ((array1[i].created_at || 0) >= (array2[j].created_at || 0)) {
+          if (!seenIds.has(array1[i].id)) {
+            merged.push(array1[i]);
+            seenIds.add(array1[i].id);
+          }
+          i++;
+        } else {
+          if (!seenIds.has(array2[j].id)) {
+            merged.push(array2[j]);
+            seenIds.add(array2[j].id);
+          }
+          j++;
+        }
+      }
+      
+      return merged;
+    }
+    
     
     function showPendingMessages() {
       if (pendingMessages.value.length > 0) {
         logger.info(`手动显示 ${pendingMessages.value.length} 条待显示消息`);
         // Sort pending messages first
         const sortedPending = [...pendingMessages.value].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-        // Use efficient merge since both arrays are already sorted
-        const merged: any[] = [];
-        let i = 0, j = 0;
-        while (i < sortedPending.length || j < displayedMessages.value.length) {
-          if (i >= sortedPending.length) {
-            merged.push(...displayedMessages.value.slice(j));
-            break;
-          }
-          if (j >= displayedMessages.value.length) {
-            merged.push(...sortedPending.slice(i));
-            break;
-          }
-          if ((sortedPending[i].created_at || 0) >= (displayedMessages.value[j].created_at || 0)) {
-            merged.push(sortedPending[i++]);
-          } else {
-            merged.push(displayedMessages.value[j++]);
-          }
-        }
+        // Use efficient merge with de-duplication
+        const merged = mergeSortedMessagesWithDedup(sortedPending, displayedMessages.value);
         displayedMessages.value = merged;
         
         // Update lastSeen watermark to the newest message timestamp across all displayed messages
@@ -299,25 +337,8 @@ export default defineComponent({
           logger.info(`收到 ${ownMessages.length} 条自己的新消息，立即显示`);
           // Sort own messages first
           const sortedOwn = ownMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-          // Merge with displayedMessages using efficient sorted merge
-          const merged: InboxItem[] = [];
-          let i = 0, j = 0;
-          while (i < sortedOwn.length || j < displayedMessages.value.length) {
-            if (i >= sortedOwn.length) {
-              merged.push(...displayedMessages.value.slice(j));
-              break;
-            }
-            if (j >= displayedMessages.value.length) {
-              merged.push(...sortedOwn.slice(i));
-              break;
-            }
-            if ((sortedOwn[i].created_at || 0) >= (displayedMessages.value[j].created_at || 0)) {
-              merged.push(sortedOwn[i++]);
-            } else {
-              merged.push(displayedMessages.value[j++]);
-            }
-          }
-          displayedMessages.value = merged;
+          // Merge with displayedMessages using efficient sorted merge with de-duplication
+          displayedMessages.value = mergeSortedMessagesWithDedup(sortedOwn, displayedMessages.value);
         }
         
         // Others' messages: filter by lastSeenCreatedAt before adding to pending queue
