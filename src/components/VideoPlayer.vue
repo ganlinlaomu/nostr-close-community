@@ -1,7 +1,13 @@
 <template>
   <div class="video-player-container">
+    <!-- Encrypted video player -->
+    <EncryptedVideoPlayer 
+      v-if="isEncrypted && encryptedMetadata"
+      :metadata="encryptedMetadata"
+    />
+    
     <!-- Direct video rendering without thumbnail -->
-    <div class="video-player">
+    <div v-else class="video-player">
       <!-- YouTube embed -->
       <iframe
         v-if="videoData.provider === 'YouTube' && videoData.embedUrl"
@@ -44,16 +50,38 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, PropType } from 'vue';
+import { defineComponent, PropType, computed } from 'vue';
 import type { VideoData } from '@/utils/videoUtils';
+import { isEncryptedVideoRef, decodeEncryptedVideoRef } from '@/utils/encryptedVideoRef';
+import EncryptedVideoPlayer from './EncryptedVideoPlayer.vue';
 
 export default defineComponent({
   name: 'VideoPlayer',
+  components: {
+    EncryptedVideoPlayer
+  },
   props: {
     videoData: {
       type: Object as PropType<VideoData>,
       required: true
     }
+  },
+  setup(props) {
+    // Check if the video URL is an encrypted reference
+    const isEncrypted = computed(() => {
+      return isEncryptedVideoRef(props.videoData.url);
+    });
+
+    // Decode encrypted metadata if available
+    const encryptedMetadata = computed(() => {
+      if (!isEncrypted.value) return null;
+      return decodeEncryptedVideoRef(props.videoData.url);
+    });
+
+    return {
+      isEncrypted,
+      encryptedMetadata
+    };
   }
 });
 </script>

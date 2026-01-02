@@ -176,6 +176,7 @@ import { uploadImageToBlossom, getBlossomConfig } from "@/utils/blossom";
 import { resizeImageFile } from "@/utils/imageResize";
 import { compressImageToTargetSize } from "@/utils/imageCompression";
 import { encodeEncryptedImageRef, type EncryptedImageMetadata } from "@/utils/encryptedImageRef";
+import { encodeEncryptedVideoRef, type EncryptedVideoMetadata } from "@/utils/encryptedVideoRef";
 import { bytesToBase64 } from "@/nostr/crypto";
 import { parseVideoUrl as parseVideoUrlUtil } from "@/utils/videoUtils";
 
@@ -514,22 +515,70 @@ export default defineComponent({
       updateUploadItem(item.id, { status: "uploading", progress: 0, errorShort: undefined, errorDetails: undefined });
 
       try {
-        // Note: Videos are uploaded directly without compression/resizing (unlike images in startUpload)
-        // Video files should not be processed with image compression logic
-        const descriptor = await uploadImageToBlossom(item.file, {
+        // Generate encryption key and IV for video
+        const encryptionKey = await crypto.subtle.generateKey(
+          { name: "AES-GCM", length: 256 },
+          true,
+          ["encrypt", "decrypt"]
+        );
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const originalMime = item.file.type || "video/mp4";
+        
+        // Read file bytes
+        const fileBytes = new Uint8Array(await item.file.arrayBuffer());
+        
+        // Encrypt the bytes
+        const encryptedBytes = await crypto.subtle.encrypt(
+          { name: "AES-GCM", iv },
+          encryptionKey,
+          fileBytes
+        );
+        
+        // Create a new File from encrypted bytes with octet-stream type
+        const encryptedFile = new File(
+          [encryptedBytes],
+          item.file.name.replace(/\.[^.]*$/, '') + ".enc",
+          { type: "application/octet-stream" }
+        );
+        
+        // Upload encrypted file
+        const descriptor = await uploadImageToBlossom(encryptedFile, {
           includeAuthIfRequired: true,
           signEvent: signEventWrapper,
           onProgress: (p:number) => { updateUploadItem(item.id, { progress: p }); }
         });
         
-        // Set as video preview
-        videoPreview.value = {
+        // Export encryption key to base64
+        const keyBytes = await crypto.subtle.exportKey("raw", encryptionKey);
+        const keyBase64 = bytesToBase64(new Uint8Array(keyBytes));
+        const ivBase64 = bytesToBase64(iv);
+        
+        // Create encrypted video reference
+        const encryptedRef = encodeEncryptedVideoRef({
+          v: 1,
           url: descriptor.url,
-          provider: 'Hosted',
-          embedUrl: descriptor.url
+          mime: originalMime,
+          alg: "AES-GCM",
+          iv: ivBase64,
+          key: keyBase64,
+          size: item.file.size
+        });
+        
+        // Set as video preview with encrypted reference
+        videoPreview.value = {
+          url: encryptedRef,
+          provider: 'Encrypted',
+          embedUrl: encryptedRef
         };
         
-        updateUploadItem(item.id, { url: descriptor.url, status: "done", progress: 100 });
+        updateUploadItem(item.id, { 
+          url: descriptor.url, 
+          status: "done", 
+          progress: 100,
+          encryptionKey,
+          encryptionIv: ivBase64,
+          originalMime
+        });
         
         // Remove from uploads list since we show it in videoPreview
         const idx = uploads.value.findIndex(u => u.id === item.id);
