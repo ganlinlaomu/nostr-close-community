@@ -169,6 +169,7 @@ import PostImagePreview from "@/components/PostImagePreview.vue";
 import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
 import { useRoute } from "vue-router";
 import { usePullToRefresh } from "@/components/usePullToRefresh";
+import { getLastSeenCreatedAt, setLastSeenCreatedAt, updateLastSeenToNewest } from "@/utils/lastSeen";
 
 
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
@@ -194,6 +195,7 @@ export default defineComponent({
     const readyForPending = ref(false);
     const route = useRoute();
     const notificationJumpDone = ref(false);
+    const lastSeenCreatedAt = ref(0); // Track the watermark for filtering pending messages
 
 
     const status = ref("未连接");
@@ -253,6 +255,11 @@ export default defineComponent({
           }
         }
         displayedMessages.value = merged;
+        
+        // Update lastSeen watermark to the newest message timestamp across all displayed messages
+        lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, merged);
+        logger.info(`更新 lastSeenCreatedAt: ${new Date(lastSeenCreatedAt.value * 1000).toLocaleString()}`);
+        
         pendingMessages.value = [];
         updateMessageTimeRange();
       }
@@ -300,15 +307,23 @@ export default defineComponent({
           displayedMessages.value = merged;
         }
         
-        // Others' messages: add to pending queue (wait for explicit refresh)
+        // Others' messages: filter by lastSeenCreatedAt before adding to pending queue
         if (othersMessages.length > 0) {
-          logger.info(`收到 ${othersMessages.length} 条其他用户的新消息，等待刷新显示`);
-          // Sort other messages by timestamp (newest first) before adding
-          const sortedOthers = othersMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-          // Merge with existing pending messages, de-duplicate by id, and keep sorted
-          const combined = [...sortedOthers, ...pendingMessages.value];
-          const deduped = Array.from(new Map(combined.map(m => [m.id, m])).values());
-          pendingMessages.value = deduped.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+          const currentLastSeen = lastSeenCreatedAt.value;
+          // Only consider messages newer than lastSeen as "new"
+          const trulyNewMessages = othersMessages.filter(msg => (msg.created_at || 0) > currentLastSeen);
+          
+          if (trulyNewMessages.length > 0) {
+            logger.info(`收到 ${trulyNewMessages.length} 条其他用户的新消息（晚于 lastSeen），等待刷新显示`);
+            // Sort other messages by timestamp (newest first) before adding
+            const sortedOthers = trulyNewMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+            // Merge with existing pending messages, de-duplicate by id, and keep sorted
+            const combined = [...sortedOthers, ...pendingMessages.value];
+            const deduped = Array.from(new Map(combined.map(m => [m.id, m])).values());
+            pendingMessages.value = deduped.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+          } else {
+            logger.debug(`收到 ${othersMessages.length} 条其他用户的消息，但都不晚于 lastSeen (${new Date(currentLastSeen * 1000).toLocaleString()})，不显示提示`);
+          }
         }
       }
       
@@ -825,6 +840,10 @@ export default defineComponent({
           return;
         }
         
+        // Initialize lastSeenCreatedAt from localStorage
+        lastSeenCreatedAt.value = getLastSeenCreatedAt(keys.pkHex);
+        logger.info(`初始化 lastSeenCreatedAt: ${lastSeenCreatedAt.value > 0 ? new Date(lastSeenCreatedAt.value * 1000).toLocaleString() : '未设置'}`);
+        
         // 同步加载本地缓存的消息和互动数据
         await Promise.all([
           msgs.load(),
@@ -840,6 +859,12 @@ export default defineComponent({
           currentPage.value = 1;
           isInitialLoad.value = false;
           logger.info(`首屏加载: 显示 ${displayedMessages.value.length} 条消息（共 ${messagesRef.value.length} 条）`);
+          
+          // If lastSeenCreatedAt not set, initialize it to the newest displayed message
+          if (lastSeenCreatedAt.value === 0 && displayedMessages.value.length > 0) {
+            lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, displayedMessages.value);
+            logger.info(`首次初始化 lastSeenCreatedAt: ${new Date(lastSeenCreatedAt.value * 1000).toLocaleString()}`);
+          }
         } else {
           // 后续刷新：新消息进入待显示队列
           updateLocalRefs();
@@ -1171,8 +1196,8 @@ export default defineComponent({
 }
 
 .new-messages-notification {
-  position: fixed;
-  top: 20px;
+  position: sticky;
+  top: 0;
   left: 50%;
   transform: translateX(-50%);
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -1187,17 +1212,20 @@ export default defineComponent({
   z-index: 999;
   font-size: 14px;
   font-weight: 500;
+  margin-bottom: 12px;
   animation: slideDown 0.3s ease;
   transition: all 0.2s;
+  width: fit-content;
+  max-width: calc(100% - 24px);
 }
 
 .new-messages-notification:hover {
-  transform: translateX(-50%) translateY(2px);
+  transform: translateX(-50%) scale(1.02);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
 }
 
 .new-messages-notification:active {
-  transform: translateX(-50%) scale(0.95);
+  transform: translateX(-50%) scale(0.98);
 }
 
 @keyframes slideDown {
@@ -1495,7 +1523,9 @@ export default defineComponent({
 .load-more-container {
   display: flex;
   justify-content: center;
-  padding: 20px 12px;
+  padding: var(--load-more-padding) 12px;
+  /* Add safe area padding for bottom navigation bar */
+  padding-bottom: calc(var(--load-more-padding) + var(--bottom-nav-height) + env(safe-area-inset-bottom));
 }
 
 .load-more-btn {
