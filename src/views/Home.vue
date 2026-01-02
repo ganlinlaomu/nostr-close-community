@@ -658,12 +658,14 @@ export default defineComponent({
     // Determine if element needs scrolling
     if (elementTop < SCROLL_SAFE_OFFSET) {
       // Element is above viewport, scroll to bring it to top with safe offset
-      scrollContainer.scrollTop = scrollContainer.scrollTop + elementTop - SCROLL_SAFE_OFFSET;
+      const targetTop = scrollContainer.scrollTop + elementTop - SCROLL_SAFE_OFFSET;
+      scrollContainer.scrollTo({ top: targetTop, behavior: 'smooth' });
     } else if (elementBottom > safeViewportBottom) {
       // Element extends into bottom bar area
       // Try to scroll to show it at the top of safe area
       const desiredScrollDelta = elementTop - SCROLL_SAFE_OFFSET;
-      scrollContainer.scrollTop = scrollContainer.scrollTop + desiredScrollDelta;
+      const targetTop = scrollContainer.scrollTop + desiredScrollDelta;
+      scrollContainer.scrollTo({ top: targetTop, behavior: 'smooth' });
     }
     // If element is already fully visible in safe area, no scroll needed
   } else {
