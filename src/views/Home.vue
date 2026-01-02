@@ -576,6 +576,11 @@ export default defineComponent({
   return Object.fromEntries(qs.entries());
 }
 
+    // Helper to check if query has notification params
+    function hasNotificationParams(query: any): boolean {
+      return !!(query.mid || query.iid);
+    }
+
 
   async function handleNotificationJump() {
   const q = getHashQuery();
@@ -1172,6 +1177,14 @@ export default defineComponent({
         updateLocalRefs();
       }
     }, { flush: 'post' });
+    
+    // Watch for route query changes to handle notification jump state
+    watch(() => route.query, (newQuery, oldQuery) => {
+      // If we had notification jump params but they're now gone, reset the state
+      if (hasNotificationParams(oldQuery) && !hasNotificationParams(newQuery)) {
+        notificationJumpDone.value = false;
+      }
+    });
 
     onBeforeUnmount(() => {
       if (sub) {
@@ -1233,6 +1246,7 @@ export default defineComponent({
   position: relative;
   min-height: 100vh;
   overscroll-behavior: contain;
+  padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
 }
 
 
@@ -1410,6 +1424,7 @@ export default defineComponent({
 
 .comment-input {
   flex: 1;
+  min-width: 0; /* Allow flex item to shrink below its content size */
   padding: 8px 12px;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
@@ -1417,6 +1432,7 @@ export default defineComponent({
   font-size: 16px;
   box-sizing: border-box;
   max-width: 100%;
+  width: 100%;
   /* Better mobile input handling */
   -webkit-appearance: none;
   touch-action: manipulation;
@@ -1436,6 +1452,8 @@ export default defineComponent({
   cursor: pointer;
   font-size: 13px;
   transition: all 0.2s;
+  flex-shrink: 0; /* Prevent button from shrinking */
+  white-space: nowrap; /* Prevent text wrapping */
 }
 
 .comment-submit:hover:not(:disabled) {
@@ -1516,6 +1534,9 @@ export default defineComponent({
 .comment-input-wrapper {
   display: flex;
   gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .send-meta {
@@ -1586,8 +1607,6 @@ export default defineComponent({
   display: flex;
   justify-content: center;
   padding: var(--load-more-padding) 12px;
-  /* Add safe area padding for bottom navigation bar */
-  padding-bottom: calc(var(--load-more-padding) + var(--bottom-nav-height) + env(safe-area-inset-bottom));
 }
 
 .load-more-btn {

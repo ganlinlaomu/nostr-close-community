@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory, RouteRecordRaw } from "vue-router";
+import { nextTick } from "vue";
 import Login from "@/views/Login.vue";
 import Home from "@/views/Home.vue";
 import PostEditor from "@/views/PostEditor.vue";
@@ -66,7 +67,24 @@ const routes: Array<RouteRecordRaw> = [
 
 const router = createRouter({
   history: createWebHashHistory(),
-  routes
+  routes,
+  scrollBehavior(to, from, savedPosition) {
+    // If there's a saved position (browser back/forward), use it
+    if (savedPosition) {
+      return savedPosition;
+    }
+    // If navigating to a route with a hash (anchor), scroll to it
+    if (to.hash) {
+      return { el: to.hash, behavior: 'smooth' };
+    }
+    // For notification jumps with query params, let the component handle the scroll
+    if (to.query.mid || to.query.iid) {
+      // Return to top but let handleNotificationJump do the actual scroll
+      return { top: 0, behavior: 'instant' };
+    }
+    // Otherwise, scroll to top on navigation
+    return { top: 0, behavior: 'instant' };
+  }
 });
 
 // navigation guard
@@ -114,6 +132,23 @@ router.beforeEach(async (to, from, next) => {
     // On unexpected errors, be conservative and redirect to login
     return next({ path: "/login" });
   }
+});
+
+// After navigation, handle scroll for custom scroll container
+router.afterEach((to, from) => {
+  // Skip scroll reset for notification jumps (let component handle it)
+  if (to.query.mid || to.query.iid) {
+    return;
+  }
+  
+  // For normal navigation, scroll the #app container to top
+  // Use nextTick to ensure DOM is updated
+  nextTick(() => {
+    const appContainer = document.querySelector('body > #app');
+    if (appContainer) {
+      appContainer.scrollTop = 0;
+    }
+  });
 });
 
 export default router;
