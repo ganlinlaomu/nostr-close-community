@@ -257,8 +257,7 @@ export default defineComponent({
         displayedMessages.value = merged;
         
         // Update lastSeen watermark to the newest message timestamp
-        updateLastSeenToNewest(keys.pkHex, sortedPending);
-        lastSeenCreatedAt.value = getLastSeenCreatedAt(keys.pkHex);
+        lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, sortedPending);
         logger.info(`更新 lastSeenCreatedAt: ${new Date(lastSeenCreatedAt.value * 1000).toLocaleString()}`);
         
         pendingMessages.value = [];
@@ -863,8 +862,7 @@ export default defineComponent({
           
           // If lastSeenCreatedAt not set, initialize it to the newest displayed message
           if (lastSeenCreatedAt.value === 0 && displayedMessages.value.length > 0) {
-            updateLastSeenToNewest(keys.pkHex, displayedMessages.value);
-            lastSeenCreatedAt.value = getLastSeenCreatedAt(keys.pkHex);
+            lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, displayedMessages.value);
             logger.info(`首次初始化 lastSeenCreatedAt: ${new Date(lastSeenCreatedAt.value * 1000).toLocaleString()}`);
           }
         } else {
