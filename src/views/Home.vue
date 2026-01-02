@@ -647,28 +647,30 @@ export default defineComponent({
     const rect = el.getBoundingClientRect();
     const containerRect = scrollContainer.getBoundingClientRect();
     
-    // Calculate the desired scroll position to bring element into view
-    // Formula: current scroll position + element's distance from top - safe offset
-    const targetScrollTop = scrollContainer.scrollTop + rect.top - containerRect.top - SCROLL_SAFE_OFFSET;
+    // Calculate where the element currently is in the viewport
+    const elementTop = rect.top - containerRect.top;
+    const elementBottom = rect.bottom - containerRect.top;
     
-    // Check if scrolling would place the element too close to the bottom bar
+    // Calculate safe viewing area (viewport minus bottom bar)
     const viewportHeight = containerRect.height;
-    const elementBottomRelative = rect.bottom - containerRect.top;
-    const availableSpace = viewportHeight - BOTTOM_NAV_HEIGHT - SCROLL_SAFE_OFFSET;
+    const safeViewportBottom = viewportHeight - BOTTOM_NAV_HEIGHT - SCROLL_SAFE_OFFSET;
     
-    if (elementBottomRelative > availableSpace) {
-      // Element would be hidden by bottom bar, adjust scroll position
-      // Move element higher up to ensure it's fully visible above the bottom bar
-      const adjustedOffset = viewportHeight - BOTTOM_NAV_HEIGHT - rect.height - (SCROLL_SAFE_OFFSET * 2);
-      scrollContainer.scrollTop = targetScrollTop - adjustedOffset;
-    } else {
-      // Safe to scroll normally - element will be visible above bottom bar
-      scrollContainer.scrollTop = targetScrollTop;
+    // Determine if element needs scrolling
+    if (elementTop < SCROLL_SAFE_OFFSET) {
+      // Element is above viewport, scroll to bring it to top with safe offset
+      scrollContainer.scrollTop = scrollContainer.scrollTop + elementTop - SCROLL_SAFE_OFFSET;
+    } else if (elementBottom > safeViewportBottom) {
+      // Element extends into bottom bar area
+      // Try to scroll to show it at the top of safe area
+      const desiredScrollDelta = elementTop - SCROLL_SAFE_OFFSET;
+      scrollContainer.scrollTop = scrollContainer.scrollTop + desiredScrollDelta;
     }
+    // If element is already fully visible in safe area, no scroll needed
   } else {
     // Fallback to scrollIntoView if container not found
+    // Use instant behavior to match custom scroll implementation
     el.scrollIntoView({
-      behavior: "smooth",
+      behavior: "auto",
       block: "start"
     });
   }
