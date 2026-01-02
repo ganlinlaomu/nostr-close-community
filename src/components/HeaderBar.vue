@@ -129,7 +129,9 @@ export default defineComponent({
   transform: translateZ(0);
   will-change: transform;
   -webkit-transform: translateZ(0);
-  /* Ensure visibility - critical for mobile */
+  /* Ensure visibility - critical for mobile
+   * Note: !important is necessary to override any dynamic styles during scroll/navigation
+   */
   visibility: visible !important;
   opacity: 1 !important;
   display: flex !important;

@@ -138,7 +138,12 @@ textarea {
 
   z-index: var(--z-bottom-nav);
   
-  /* 强制可见性，防止消失 */
+  /* 强制可见性，防止消失 
+   * Note: !important is necessary here to override any dynamic styles or 
+   * scroll-related visibility changes that might occur during navigation jumps
+   * or when scrollIntoView is called. This ensures the bottom bar always stays
+   * visible regardless of scroll position or page state.
+   */
   visibility: visible !important;
   opacity: 1 !important;
   display: flex !important;

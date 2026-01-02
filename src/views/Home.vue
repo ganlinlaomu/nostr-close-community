@@ -197,6 +197,11 @@ const videoUrlPatterns = getVideoUrlRemovalPatterns();
 const SECONDS_PER_DAY = 24 * 60 * 60;
 const THREE_DAYS_IN_SECONDS = 3 * SECONDS_PER_DAY;
 
+// Constants for scroll and layout calculations
+const BOTTOM_NAV_HEIGHT = 80; // Must match --bottom-nav-height in styles.css
+const SCROLL_SAFE_OFFSET = 20; // Extra padding to ensure elements are fully visible
+const SCROLL_CONTAINER_SELECTOR = 'body > #app'; // Main scrollable container
+
 export default defineComponent({
   name: "Home",
   components: { PostImagePreview, VideoPlayer },
@@ -637,26 +642,27 @@ export default defineComponent({
   await nextTick();
   
   // Get the scrollable container
-  const scrollContainer = document.querySelector('body > #app');
+  const scrollContainer = document.querySelector(SCROLL_CONTAINER_SELECTOR) as HTMLElement | null;
   if (scrollContainer) {
     const rect = el.getBoundingClientRect();
     const containerRect = scrollContainer.getBoundingClientRect();
-    const bottomBarHeight = 80; // var(--bottom-nav-height)
-    const safeOffset = 20; // Extra padding for safety
     
-    // Calculate the desired scroll position
-    // We want the element to be visible but not too close to the bottom bar
-    const targetScrollTop = scrollContainer.scrollTop + rect.top - containerRect.top - safeOffset;
+    // Calculate the desired scroll position to bring element into view
+    // Formula: current scroll position + element's distance from top - safe offset
+    const targetScrollTop = scrollContainer.scrollTop + rect.top - containerRect.top - SCROLL_SAFE_OFFSET;
     
-    // Check if scrolling would place the element too close to the bottom
+    // Check if scrolling would place the element too close to the bottom bar
     const viewportHeight = containerRect.height;
     const elementBottomRelative = rect.bottom - containerRect.top;
+    const availableSpace = viewportHeight - BOTTOM_NAV_HEIGHT - SCROLL_SAFE_OFFSET;
     
-    if (elementBottomRelative > viewportHeight - bottomBarHeight - safeOffset) {
+    if (elementBottomRelative > availableSpace) {
       // Element would be hidden by bottom bar, adjust scroll position
-      scrollContainer.scrollTop = targetScrollTop - (viewportHeight - bottomBarHeight - rect.height - safeOffset * 2);
+      // Move element higher up to ensure it's fully visible above the bottom bar
+      const adjustedOffset = viewportHeight - BOTTOM_NAV_HEIGHT - rect.height - (SCROLL_SAFE_OFFSET * 2);
+      scrollContainer.scrollTop = targetScrollTop - adjustedOffset;
     } else {
-      // Safe to scroll normally
+      // Safe to scroll normally - element will be visible above bottom bar
       scrollContainer.scrollTop = targetScrollTop;
     }
   } else {
