@@ -147,7 +147,7 @@
           @click="loadMoreMessages" 
           :disabled="isLoadingMore"
         >
-          <span v-if="!isLoadingMore">加载更多 (还有 {{ messagesRef.length - displayedMessages.length }} 条)</span>
+          <span v-if="!isLoadingMore">加载更多 (还有 {{ remainingMessagesCount }} 条)</span>
           <span v-else>加载中...</span>
         </button>
       </div>
@@ -213,6 +213,9 @@ export default defineComponent({
       return messagesRef.value.length > displayedMessages.value.length;
     });
     const isLoadingMore = ref(false);
+    const remainingMessagesCount = computed(() => {
+      return messagesRef.value.length - displayedMessages.value.length;
+    });
 
     
     
@@ -1130,7 +1133,8 @@ export default defineComponent({
       // Pagination
       hasMore,
       isLoadingMore,
-      loadMoreMessages
+      loadMoreMessages,
+      remainingMessagesCount
       
     };
   }

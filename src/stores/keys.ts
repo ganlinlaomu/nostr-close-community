@@ -638,6 +638,7 @@ export const useKeyStore = defineStore("keys", {
     } finally {
       this.isRestoring = false;
     }
+  },
     /**
      * register(options?)
      * - Creates a new keypair (or uses provided skHex) and logs in the user.

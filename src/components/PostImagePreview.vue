@@ -68,6 +68,7 @@ export default defineComponent({
     const images = ref<ImageItem[]>([]);
     const objectUrls = new Set<string>();
     const itemRefs = ref<(HTMLElement | null)[]>([]);
+    const itemIndexMap = new Map<HTMLElement, number>(); // 元素到索引的映射
     const observer = ref<IntersectionObserver | null>(null);
     
     // Image viewer state
@@ -84,13 +85,21 @@ export default defineComponent({
     });
     
     // Get array of image URLs for viewer (只返回已加载的图片)
-    const imageUrls = computed(() => 
-      images.value.filter(img => img.shouldLoad && img.url !== "").map(img => img.url)
-    );
+    const imageUrls = computed(() => {
+      const urls: string[] = [];
+      for (const img of images.value) {
+        if (img.shouldLoad && img.url !== "") {
+          urls.push(img.url);
+        }
+      }
+      return urls;
+    });
 
     function setItemRef(el: any, idx: number) {
       if (el) {
-        itemRefs.value[idx] = el as HTMLElement;
+        const element = el as HTMLElement;
+        itemRefs.value[idx] = element;
+        itemIndexMap.set(element, idx); // 建立映射
       }
     }
 
@@ -213,10 +222,11 @@ export default defineComponent({
     }
     
     function setupIntersectionObserver() {
-      // 清理旧的 observer
+      // 清理旧的 observer 和映射
       if (observer.value) {
         observer.value.disconnect();
       }
+      itemIndexMap.clear();
       
       // 等待 DOM 更新后再设置 observer
       nextTick(() => {
@@ -224,13 +234,15 @@ export default defineComponent({
           (entries) => {
             entries.forEach((entry) => {
               if (entry.isIntersecting) {
-                // 找到对应的图片索引
-                const idx = itemRefs.value.findIndex(ref => ref === entry.target);
-                if (idx !== -1 && !images.value[idx].shouldLoad) {
+                // 使用映射快速查找索引 O(1)
+                const idx = itemIndexMap.get(entry.target as HTMLElement);
+                if (idx !== undefined && !images.value[idx].shouldLoad) {
                   // 图片进入视口，开始加载
                   decryptAndLoadImage(images.value[idx], idx);
                   // 停止观察这个元素
                   observer.value?.unobserve(entry.target);
+                  // 移除映射
+                  itemIndexMap.delete(entry.target as HTMLElement);
                 }
               }
             });
@@ -275,6 +287,9 @@ export default defineComponent({
         observer.value.disconnect();
         observer.value = null;
       }
+      
+      // Clean up index map
+      itemIndexMap.clear();
       
       // Clean up object URLs
       objectUrls.forEach(url => {
