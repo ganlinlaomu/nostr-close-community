@@ -139,6 +139,18 @@
         </div>
         </div>
       </div>
+      
+      <!-- 加载更多按钮 -->
+      <div v-if="hasMore" class="load-more-container">
+        <button 
+          class="load-more-btn" 
+          @click="loadMoreMessages" 
+          :disabled="isLoadingMore"
+        >
+          <span v-if="!isLoadingMore">加载更多 (还有 {{ remainingMessagesCount }} 条)</span>
+          <span v-else>加载中...</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -193,6 +205,17 @@ export default defineComponent({
     const pendingMessages = ref([] as any[]); // Messages fetched but not yet displayed
     const isInitialLoad = ref(true); // Track if this is the first load
     const showingSendMeta = ref<Set<string>>(new Set());
+    
+    // 分页相关状态
+    const PAGE_SIZE = 20; // 每页显示 20 条
+    const currentPage = ref(1); // 当前页码
+    const hasMore = computed(() => {
+      return messagesRef.value.length > displayedMessages.value.length;
+    });
+    const isLoadingMore = ref(false);
+    const remainingMessagesCount = computed(() => {
+      return messagesRef.value.length - displayedMessages.value.length;
+    });
 
     
     
@@ -290,7 +313,29 @@ export default defineComponent({
       }
       
       updateMessageTimeRange();
-       }
+    }
+    
+    // 加载更多消息
+    function loadMoreMessages() {
+      if (isLoadingMore.value || !hasMore.value) return;
+      
+      isLoadingMore.value = true;
+      logger.info(`加载更多消息，当前页: ${currentPage.value}`);
+      
+      // 使用 setTimeout 模拟异步加载，避免阻塞主线程
+      setTimeout(() => {
+        const startIndex = displayedMessages.value.length;
+        const endIndex = Math.min(startIndex + PAGE_SIZE, messagesRef.value.length);
+        const newMessages = messagesRef.value.slice(startIndex, endIndex);
+        
+        displayedMessages.value = [...displayedMessages.value, ...newMessages];
+        currentPage.value++;
+        isLoadingMore.value = false;
+        updateMessageTimeRange();
+        
+        logger.info(`加载了 ${newMessages.length} 条消息，总共显示 ${displayedMessages.value.length} 条`);
+      }, 100);
+    }
     const {
        container,
        pullDistance,
@@ -770,6 +815,8 @@ export default defineComponent({
     async function startSub() {
       try {
         logger.info("开始订阅流程");
+        
+        // ============ 阶段1：首屏本地数据加载（同步，快速） ============
         friends.load().catch(console.error);
         logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
         
@@ -777,21 +824,24 @@ export default defineComponent({
           status.value = "未登录";
           return;
         }
+        
+        // 同步加载本地缓存的消息和互动数据
         await Promise.all([
           msgs.load(),
           interactions.load()
         ]);
         readyForPending.value = true;
         
-        // On initial load, show all messages directly
+        // 首屏只显示最新 20 条消息
         messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
         if (isInitialLoad.value) {
-          // First time loading - show all messages
-          displayedMessages.value = [...messagesRef.value];
+          // 首次加载：只显示前 20 条
+          displayedMessages.value = messagesRef.value.slice(0, PAGE_SIZE);
+          currentPage.value = 1;
           isInitialLoad.value = false;
-          logger.info(`初始加载: 显示 ${displayedMessages.value.length} 条消息`);
+          logger.info(`首屏加载: 显示 ${displayedMessages.value.length} 条消息（共 ${messagesRef.value.length} 条）`);
         } else {
-          // Subsequent refresh - new messages go to pending
+          // 后续刷新：新消息进入待显示队列
           updateLocalRefs();
         }
         updateMessageTimeRange();
@@ -799,7 +849,6 @@ export default defineComponent({
         const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
         if (keys.pkHex) friendSet.add(keys.pkHex);
         logger.info(`准备订阅 ${friendSet.size} 个作者（包括自己）`);
-        logger.debug(`好友公钥列表: ${Array.from(friendSet).slice(0, 5).map(pk => pk.slice(0, 8)).join(', ')}${friendSet.size > 5 ? `... (共${friendSet.size}个)` : ''}`);
         
         if (friendSet.size === 0) {
           status.value = "好友为空";
@@ -810,10 +859,38 @@ export default defineComponent({
         const relays = getRelaysFromStorage();
         logger.info(`使用中继: ${relays.join(', ')}`);
         
-        // First, backfill historical messages
-        logger.info("开始回填历史消息...");
-        // await backfillMessages(friendSet, relays);
-        backfillMessages(friendSet, relays).catch(console.error);
+        // ============ 阶段2：下一帧启动实时订阅（避免阻塞首屏渲染） ============
+        requestAnimationFrame(() => {
+          startRealtimeSubscription(friendSet, relays);
+        });
+        
+        // ============ 阶段3：空闲时启动回填（避免抢占主线程） ============
+        const scheduleBackfill = () => {
+          if (typeof requestIdleCallback !== 'undefined') {
+            requestIdleCallback(() => {
+              startBackfill(friendSet, relays);
+            }, { timeout: 2000 });
+          } else {
+            // 浏览器不支持 requestIdleCallback，使用 setTimeout 兜底
+            setTimeout(() => {
+              startBackfill(friendSet, relays);
+            }, 500);
+          }
+        };
+        scheduleBackfill();
+        
+      } catch (e) {
+        logger.error("startSub failed", e);
+        status.value = "订阅失败";
+      }
+    }
+    
+    // 阶段2：启动实时订阅
+    async function startRealtimeSubscription(friendSet: Set<string>, relays: string[]) {
+      try {
+        logger.info("启动实时订阅...");
+        
+        // 从本地取回填断点
         // ⭐ 从本地取回填断点（关键）
         const messageBreakpoint =
         loadBackfillBreakpoint(`messages_${keys.pkHex}`) || 0;
@@ -961,8 +1038,22 @@ export default defineComponent({
           logger.warn("subscribe to interactions failed", e);
         }
       } catch (e) {
-        logger.error("startSub failed", e);
-        status.value = "订阅失败";
+        logger.error("startRealtimeSubscription failed", e);
+      }
+    }
+    
+    // 阶段3：启动回填
+    async function startBackfill(friendSet: Set<string>, relays: string[]) {
+      try {
+        logger.info("开始回填历史数据...");
+        
+        // 串行执行回填，避免并发压力
+        await backfillMessages(friendSet, relays);
+        await backfillInteractions(relays);
+        
+        logger.info("回填完成");
+      } catch (e) {
+        logger.error("startBackfill failed", e);
       }
     }
 
@@ -1009,6 +1100,7 @@ export default defineComponent({
     return { 
       displayedMessages,
       pendingMessages,
+      messagesRef,
       toLocalTime, 
       shortPub, 
       status, 
@@ -1037,8 +1129,12 @@ export default defineComponent({
       showPendingMessages,
       container,
       pullDistance,
-      refreshing
-
+      refreshing,
+      // Pagination
+      hasMore,
+      isLoadingMore,
+      loadMoreMessages,
+      remainingMessagesCount
       
     };
   }
@@ -1394,6 +1490,39 @@ export default defineComponent({
   position: sticky;
   top: 0;
   z-index: 10;
+}
+
+.load-more-container {
+  display: flex;
+  justify-content: center;
+  padding: 20px 12px;
+}
+
+.load-more-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  transition: all 0.2s;
+}
+
+.load-more-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+}
+
+.load-more-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.load-more-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 </style>

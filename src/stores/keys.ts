@@ -67,7 +67,9 @@ export const useKeyStore = defineStore("keys", {
     loginTimestamp: 0 as number, // Unix timestamp when user logged in
     isEncrypted: false as boolean, // Whether the current login uses encrypted storage
     isUnlocked: false as boolean, // Whether the encrypted key has been unlocked
-    bunkerClientSecretKey: null as Uint8Array | null // Persisted bunker client secret for reconnection
+    bunkerClientSecretKey: null as Uint8Array | null, // Persisted bunker client secret for reconnection
+    isRestoring: false as boolean, // Whether session restoration is in progress
+    isRestored: false as boolean // Whether session restoration has completed
   }),
   getters: {
     /**
@@ -516,16 +518,21 @@ export const useKeyStore = defineStore("keys", {
     },
     
     async restoreSession() {
-      const method = localStorage.getItem("loginMethod") as
-        | "sk"
-        | "nip07"
-        | "nip46"
-        | null;
+      this.isRestoring = true;
+      try {
+        const method = localStorage.getItem("loginMethod") as
+          | "sk"
+          | "nip07"
+          | "nip46"
+          | null;
 
-      const pk = localStorage.getItem("pkHex");
-      const isEncrypted = localStorage.getItem("isEncrypted") === "true";
+        const pk = localStorage.getItem("pkHex");
+        const isEncrypted = localStorage.getItem("isEncrypted") === "true";
 
-      if (!method || !pk) return;
+        if (!method || !pk) {
+          this.isRestored = true;
+          return;
+        }
 
       this.loginMethod = method;
       this.pkHex = pk;
@@ -534,55 +541,57 @@ export const useKeyStore = defineStore("keys", {
 
       if (method === "nip46") {
         const bunkerInput = localStorage.getItem("bunkerInput");
-        if (!bunkerInput) {
-          this.logout();
-          return;
-        }
-
-        try {
-          const bunkerPointer = await parseBunkerInput(bunkerInput);
-          
-          // Try to restore the client secret key
-          let clientSecretKey: Uint8Array;
-          const storedKey = localStorage.getItem("bunkerClientSecretKey");
-          if (storedKey) {
-            try {
-              clientSecretKey = base64ToUint8Array(storedKey);
-            } catch {
-              console.warn("[keys] Failed to restore bunker client secret, generating new");
+        if (bunkerInput) {
+          try {
+            const bunkerPointer = await parseBunkerInput(bunkerInput);
+            
+            // Try to restore the client secret key
+            let clientSecretKey: Uint8Array;
+            const storedKey = localStorage.getItem("bunkerClientSecretKey");
+            if (storedKey) {
+              try {
+                clientSecretKey = base64ToUint8Array(storedKey);
+              } catch {
+                console.warn("[keys] Failed to restore bunker client secret, generating new");
+                clientSecretKey = crypto.getRandomValues(new Uint8Array(32));
+              }
+            } else {
               clientSecretKey = crypto.getRandomValues(new Uint8Array(32));
             }
-          } else {
-            clientSecretKey = crypto.getRandomValues(new Uint8Array(32));
-          }
 
-          const signer = BunkerSigner.fromBunker(
-            clientSecretKey,
-            bunkerPointer
-          );
+            const signer = BunkerSigner.fromBunker(
+              clientSecretKey,
+              bunkerPointer
+            );
 
-          // Connect with timeout (properly cleanup timeout on success)
-          let timeoutId: ReturnType<typeof setTimeout> | null = null;
-          const connectPromise = signer.sendRequest("connect", []);
-          const timeoutPromise = new Promise((_, reject) => {
-            timeoutId = setTimeout(() => reject(new Error("Bunker connection timeout")), 10000);
-          });
-          
-          try {
-            await Promise.race([connectPromise, timeoutPromise]);
-            // Clear timeout if connect succeeds
-            if (timeoutId !== null) clearTimeout(timeoutId);
+            // Connect with timeout (properly cleanup timeout on success)
+            let timeoutId: ReturnType<typeof setTimeout> | null = null;
+            const connectPromise = signer.sendRequest("connect", []);
+            const timeoutPromise = new Promise((_, reject) => {
+              timeoutId = setTimeout(() => reject(new Error("Bunker connection timeout")), 10000);
+            });
+            
+            try {
+              await Promise.race([connectPromise, timeoutPromise]);
+              // Clear timeout if connect succeeds
+              if (timeoutId !== null) clearTimeout(timeoutId);
+            } catch (e) {
+              // Clear timeout if connect fails
+              if (timeoutId !== null) clearTimeout(timeoutId);
+              throw e;
+            }
+
+            this.bunkerSigner = signer;
+            this.bunkerClientSecretKey = clientSecretKey;
           } catch (e) {
-            // Clear timeout if connect fails
-            if (timeoutId !== null) clearTimeout(timeoutId);
-            throw e;
+            console.error("[keys] bunker restore failed", e);
+            this.logout();
+            this.isRestored = true;
+            return;
           }
-
-          this.bunkerSigner = signer;
-          this.bunkerClientSecretKey = clientSecretKey;
-        } catch (e) {
-          console.error("[keys] bunker restore failed", e);
+        } else {
           this.logout();
+          this.isRestored = true;
           return;
         }
       }
@@ -593,6 +602,7 @@ export const useKeyStore = defineStore("keys", {
           this.isEncrypted = true;
           this.isUnlocked = false;
           // Don't load stores yet, wait for unlock
+          this.isRestored = true;
           return;
         } else {
           // Plain text private key
@@ -620,7 +630,15 @@ export const useKeyStore = defineStore("keys", {
           await settings.load(this.pkHex);
         } catch {}
       }
-    },
+      
+      this.isRestored = true;
+    } catch (error) {
+      console.error("[keys] restoreSession error", error);
+      this.isRestored = true;
+    } finally {
+      this.isRestoring = false;
+    }
+  },
     /**
      * register(options?)
      * - Creates a new keypair (or uses provided skHex) and logs in the user.

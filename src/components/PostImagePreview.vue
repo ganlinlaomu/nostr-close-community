@@ -10,16 +10,25 @@
       loading="lazy"
     />
     <div v-else class="gallery" :class="galleryClass">
-      <img
-        v-for="(img, idx) in images"
+      <div 
+        v-for="(img, idx) in images" 
         :key="idx"
-        :src="img.url"
-        :alt="altText"
-        class="gallery-item"
-        @error="onError(idx)"
-        @click="openViewer(idx)"
-        loading="lazy"
-      />
+        class="gallery-item-wrapper"
+        :ref="el => setItemRef(el, idx)"
+      >
+        <img
+          v-if="img.shouldLoad"
+          :src="img.url"
+          :alt="altText"
+          class="gallery-item"
+          @error="onError(idx)"
+          @click="openViewer(idx)"
+          loading="lazy"
+        />
+        <div v-else class="gallery-item gallery-item-placeholder">
+          <span class="loading-icon">⏳</span>
+        </div>
+      </div>
     </div>
     
     <!-- Image Viewer Modal -->
@@ -33,7 +42,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, computed, ref, onBeforeUnmount, watch } from "vue";
+import { defineComponent, computed, ref, onBeforeUnmount, watch, onMounted, nextTick } from "vue";
 import { extractImageUrls } from "@/utils/extractImageUrls";
 import { decodeEncryptedImageRef, isEncryptedImageRef } from "@/utils/encryptedImageRef";
 import { base64ToBytes } from "@/nostr/crypto";
@@ -42,6 +51,7 @@ import ImageViewer from "@/components/ImageViewer.vue";
 interface ImageItem {
   url: string;
   isEncrypted: boolean;
+  shouldLoad: boolean; // 控制是否应该加载此图片
 }
 
 export default defineComponent({
@@ -57,6 +67,9 @@ export default defineComponent({
     const extractedUrls = computed(() => extractImageUrls(props.content || ""));
     const images = ref<ImageItem[]>([]);
     const objectUrls = new Set<string>();
+    const itemRefs = ref<(HTMLElement | null)[]>([]);
+    const itemIndexMap = new Map<HTMLElement, number>(); // 元素到索引的映射
+    const observer = ref<IntersectionObserver | null>(null);
     
     // Image viewer state
     const viewerVisible = ref(false);
@@ -71,12 +84,38 @@ export default defineComponent({
       return 'gallery-grid';
     });
     
-    // Get array of image URLs for viewer
-    const imageUrls = computed(() => images.value.map(img => img.url).filter(url => url !== ""));
+    // Get array of image URLs for viewer (只返回已加载的图片)
+    const imageUrls = computed(() => {
+      const urls: string[] = [];
+      for (const img of images.value) {
+        if (img.shouldLoad && img.url !== "") {
+          urls.push(img.url);
+        }
+      }
+      return urls;
+    });
+
+    function setItemRef(el: any, idx: number) {
+      if (el) {
+        const element = el as HTMLElement;
+        itemRefs.value[idx] = element;
+        itemIndexMap.set(element, idx); // 建立映射
+      }
+    }
 
     function openViewer(index: number) {
-      viewerIndex.value = index;
-      viewerVisible.value = true;
+      // 点击图片时，确保该图片已加载
+      if (images.value[index] && !images.value[index].shouldLoad) {
+        images.value[index].shouldLoad = true;
+        // 等待图片加载后再打开查看器
+        nextTick(() => {
+          viewerIndex.value = index;
+          viewerVisible.value = true;
+        });
+      } else {
+        viewerIndex.value = index;
+        viewerVisible.value = true;
+      }
     }
 
     function closeViewer() {
@@ -85,53 +124,70 @@ export default defineComponent({
 
     async function processImageUrl(url: string): Promise<ImageItem> {
       if (isEncryptedImageRef(url)) {
-        // Decrypt encrypted image reference
-        const metadata = decodeEncryptedImageRef(url);
-        if (!metadata) {
-          console.error("Invalid encrypted image reference format:", url);
-          return { url: "", isEncrypted: true };
-        }
-
-        try {
-          // Fetch encrypted blob
-          const response = await fetch(metadata.url);
-          if (!response.ok) {
-            console.error("Failed to fetch encrypted image:", metadata.url, response.status);
-            return { url: "", isEncrypted: true };
-          }
-          
-          const encryptedBytes = new Uint8Array(await response.arrayBuffer());
-          
-          // Import key and decrypt
-          const keyBytes = base64ToBytes(metadata.key);
-          const key = await crypto.subtle.importKey(
-            "raw",
-            keyBytes,
-            "AES-GCM",
-            false,
-            ["decrypt"]
-          );
-          
-          const ivBytes = base64ToBytes(metadata.iv);
-          const decrypted = await crypto.subtle.decrypt(
-            { name: "AES-GCM", iv: ivBytes },
-            key,
-            encryptedBytes
-          );
-          
-          // Create object URL from decrypted bytes
-          const blob = new Blob([decrypted], { type: metadata.mime });
-          const objectUrl = URL.createObjectURL(blob);
-          objectUrls.add(objectUrl);
-          
-          return { url: objectUrl, isEncrypted: true };
-        } catch (error) {
-          console.error("Failed to decrypt image:", url, error);
-          return { url: "", isEncrypted: true };
-        }
+        // 延迟解密，先返回占位符
+        return { url, isEncrypted: true, shouldLoad: false };
       } else {
-        // Plain http(s) URL
-        return { url, isEncrypted: false };
+        // Plain http(s) URL，也延迟加载
+        return { url, isEncrypted: false, shouldLoad: false };
+      }
+    }
+    
+    async function decryptAndLoadImage(item: ImageItem, idx: number): Promise<void> {
+      if (!item.isEncrypted || item.url === "" || item.shouldLoad) {
+        // 非加密图片或已加载，直接标记为应该显示
+        if (!item.shouldLoad) {
+          images.value[idx].shouldLoad = true;
+        }
+        return;
+      }
+      
+      // 解密加密图片
+      const metadata = decodeEncryptedImageRef(item.url);
+      if (!metadata) {
+        console.error("Invalid encrypted image reference format:", item.url);
+        images.value[idx].shouldLoad = true; // 标记为已尝试加载
+        return;
+      }
+
+      try {
+        // Fetch encrypted blob
+        const response = await fetch(metadata.url);
+        if (!response.ok) {
+          console.error("Failed to fetch encrypted image:", metadata.url, response.status);
+          images.value[idx].shouldLoad = true;
+          return;
+        }
+        
+        const encryptedBytes = new Uint8Array(await response.arrayBuffer());
+        
+        // Import key and decrypt
+        const keyBytes = base64ToBytes(metadata.key);
+        const key = await crypto.subtle.importKey(
+          "raw",
+          keyBytes,
+          "AES-GCM",
+          false,
+          ["decrypt"]
+        );
+        
+        const ivBytes = base64ToBytes(metadata.iv);
+        const decrypted = await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: ivBytes },
+          key,
+          encryptedBytes
+        );
+        
+        // Create object URL from decrypted bytes
+        const blob = new Blob([decrypted], { type: metadata.mime });
+        const objectUrl = URL.createObjectURL(blob);
+        objectUrls.add(objectUrl);
+        
+        // 更新图片 URL 并标记为应该加载
+        images.value[idx].url = objectUrl;
+        images.value[idx].shouldLoad = true;
+      } catch (error) {
+        console.error("Failed to decrypt image:", item.url, error);
+        images.value[idx].shouldLoad = true; // 即使失败也标记为已尝试
       }
     }
 
@@ -150,21 +206,91 @@ export default defineComponent({
       });
       objectUrls.clear();
       
-      // Process all image URLs
+      // Process all image URLs (创建占位符)
       const processed = await Promise.all(urls.map(processImageUrl));
-      images.value = processed.filter(img => img.url !== "");
+      images.value = processed;
+      
+      // 如果只显示第一张图片（showAll=false），立即加载
+      if (!props.showAll && images.value.length > 0) {
+        await decryptAndLoadImage(images.value[0], 0);
+      }
+      
+      // 设置 IntersectionObserver（仅在 showAll 模式下）
+      if (props.showAll) {
+        setupIntersectionObserver();
+      }
+    }
+    
+    function setupIntersectionObserver() {
+      // 清理旧的 observer 和映射
+      if (observer.value) {
+        observer.value.disconnect();
+      }
+      itemIndexMap.clear();
+      
+      // 等待 DOM 更新后再设置 observer
+      nextTick(() => {
+        observer.value = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                // 使用映射快速查找索引 O(1)
+                const idx = itemIndexMap.get(entry.target as HTMLElement);
+                if (idx !== undefined && !images.value[idx].shouldLoad) {
+                  // 图片进入视口，开始加载
+                  decryptAndLoadImage(images.value[idx], idx);
+                  // 停止观察这个元素
+                  observer.value?.unobserve(entry.target);
+                  // 移除映射
+                  itemIndexMap.delete(entry.target as HTMLElement);
+                }
+              }
+            });
+          },
+          {
+            root: null,
+            rootMargin: '50px', // 提前 50px 开始加载
+            threshold: 0.01
+          }
+        );
+        
+        // 观察所有图片容器
+        itemRefs.value.forEach((ref) => {
+          if (ref && observer.value) {
+            observer.value.observe(ref);
+          }
+        });
+      });
     }
 
     // Watch for changes in content or display mode
-    watch([() => props.content, () => props.showAll, () => props.max], loadImages, { immediate: true });
+    watch([() => props.content, () => props.showAll, () => props.max], () => {
+      loadImages();
+    }, { immediate: true });
 
     const failed = ref<Record<number, boolean>>({});
 
     function onError(idx: number) {
       failed.value[idx] = true;
     }
+    
+    onMounted(() => {
+      // 组件挂载后设置观察器
+      if (props.showAll && images.value.length > 0) {
+        setupIntersectionObserver();
+      }
+    });
 
     onBeforeUnmount(() => {
+      // Clean up observer
+      if (observer.value) {
+        observer.value.disconnect();
+        observer.value = null;
+      }
+      
+      // Clean up index map
+      itemIndexMap.clear();
+      
       // Clean up object URLs
       objectUrls.forEach(url => {
         try { 
@@ -176,7 +302,18 @@ export default defineComponent({
       objectUrls.clear();
     });
 
-    return { images, onError, failed, galleryClass, viewerVisible, viewerIndex, imageUrls, openViewer, closeViewer };
+    return { 
+      images, 
+      onError, 
+      failed, 
+      galleryClass, 
+      viewerVisible, 
+      viewerIndex, 
+      imageUrls, 
+      openViewer, 
+      closeViewer,
+      setItemRef
+    };
   }
 });
 </script>
@@ -219,9 +356,14 @@ export default defineComponent({
 .gallery-four {
   grid-template-columns: repeat(2, 1fr);
 }
-.gallery-item {
+.gallery-item-wrapper {
   width: 100%;
   aspect-ratio: 1;
+  position: relative;
+}
+.gallery-item {
+  width: 100%;
+  height: 100%;
   border-radius: 6px;
   object-fit: cover;
   background: #f1f5f9;
@@ -230,6 +372,21 @@ export default defineComponent({
 }
 .gallery-item:hover {
   opacity: 0.9;
+}
+.gallery-item-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  cursor: default;
+}
+.loading-icon {
+  font-size: 24px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
 }
 @media (min-width: 720px) {
   .gallery { gap: 6px; }

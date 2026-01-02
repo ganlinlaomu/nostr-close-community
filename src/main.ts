@@ -12,17 +12,17 @@ const pinia = createPinia();
 app.use(pinia);
 app.use(router);
 
-(async () => {
-  // 🔑 在 mount 之前恢复登录态
-  const keys = useKeyStore();
+// 🚀 优先渲染：先 mount，再恢复会话（避免首屏白屏）
+app.mount("#app");
 
+// 异步恢复登录态，不阻塞首屏渲染
+(async () => {
+  const keys = useKeyStore();
   try {
     await keys.restoreSession();
   } catch (e) {
     console.error("[main] restoreSession failed", e);
   }
-
-  app.mount("#app");
 })();
 
 // register service worker for production
