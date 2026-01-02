@@ -13,18 +13,19 @@
             class="editor-textarea"
             placeholder="写点什么...（将加密发送给你的好友）"
             rows="8"
+            @paste="onPaste"
           ></textarea>
 
-          <!-- 图片上传区域 -->
+          <!-- 图片/视频上传区域 -->
           <div class="upload-panel">
             <div class="upload-controls">
               <label
                 class="upload-btn"
                 :class="{ disabled: !uploadEnabled || uploadingAny }"
-                :title="uploadEnabled ? (uploadingAny ? '上传中...' : '上传图片') : '未配置 blossom_upload_url'"
+                :title="uploadEnabled ? (uploadingAny ? '上传中...' : '上传图片/视频') : '未配置 blossom_upload_url'"
               >
-                <input type="file" accept="image/*" multiple @change="onFilesSelected" :disabled="!uploadEnabled || uploadingAny" />
-                上传图片
+                <input type="file" accept="image/*,video/*" multiple @change="onFilesSelected" :disabled="!uploadEnabled || uploadingAny" />
+                上传图片/视频
               </label>
 
               <div class="upload-config-hint small">
@@ -69,6 +70,25 @@
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- Video preview -->
+          <div v-if="videoPreview" class="video-preview-item">
+            <div class="video-thumb-container">
+              <div class="video-placeholder">
+                <div class="play-icon">▶</div>
+                <div class="video-info">
+                  <div class="video-provider">{{ videoPreview.provider }}</div>
+                  <div class="small">{{ videoPreview.url }}</div>
+                </div>
+              </div>
+              <button type="button" class="remove-btn" @click="removeVideo" title="删除视频">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
             </div>
           </div>
 
@@ -146,6 +166,10 @@ import { compressImageToTargetSize } from "@/utils/imageCompression";
 import { encodeEncryptedImageRef, type EncryptedImageMetadata } from "@/utils/encryptedImageRef";
 import { bytesToBase64 } from "@/nostr/crypto";
 
+// Video metadata format constants
+const VIDEO_METADATA_PREFIX = '[video:';
+const VIDEO_METADATA_SUFFIX = ']';
+
 type UploadItem = {
   id: string;
   file: File;
@@ -185,7 +209,8 @@ export default defineComponent({
     const canSend = computed(() => {
       const hasText = content.value.trim().length > 0;
       const hasUploadedImages = uploads.value.some(u => u.status === 'done' && u.url);
-      return hasText || hasUploadedImages;
+      const hasVideo = videoPreview.value !== null;
+      return hasText || hasUploadedImages || hasVideo;
     });
 
     // groups derived from friends list
@@ -269,6 +294,64 @@ export default defineComponent({
     const uploadEnabled = ref(false);
     const uploadingAny = computed(() => uploads.value.some(u => u.status === "uploading"));
 
+    // Video support
+    const videoPreview = ref<{
+      url: string;
+      provider: string;
+      embedUrl?: string;
+    } | null>(null);
+
+    function parseVideoUrl(url: string): { url: string; provider: string; embedUrl?: string } | null {
+      if (!url || !url.trim()) return null;
+      
+      const trimmedUrl = url.trim();
+      
+      // YouTube patterns
+      const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+      const youtubeMatch = trimmedUrl.match(youtubeRegex);
+      if (youtubeMatch) {
+        const videoId = youtubeMatch[1];
+        return {
+          url: trimmedUrl,
+          provider: 'YouTube',
+          embedUrl: `https://www.youtube.com/embed/${videoId}`
+        };
+      }
+      
+      // Vimeo patterns
+      const vimeoRegex = /(?:vimeo\.com\/)(\d+)/i;
+      const vimeoMatch = trimmedUrl.match(vimeoRegex);
+      if (vimeoMatch) {
+        const videoId = vimeoMatch[1];
+        return {
+          url: trimmedUrl,
+          provider: 'Vimeo',
+          embedUrl: `https://player.vimeo.com/video/${videoId}`
+        };
+      }
+      
+      // Direct video URL (mp4, webm, ogg)
+      const videoExtRegex = /\.(mp4|webm|ogg)(\?.*)?$/i;
+      if (videoExtRegex.test(trimmedUrl)) {
+        return {
+          url: trimmedUrl,
+          provider: 'Direct',
+          embedUrl: trimmedUrl
+        };
+      }
+      
+      // Default: treat as direct URL
+      return {
+        url: trimmedUrl,
+        provider: 'External',
+        embedUrl: trimmedUrl
+      };
+    }
+
+    function removeVideo() {
+      videoPreview.value = null;
+    }
+
     // Immutable update helper for upload items to ensure Vue reactivity
     function updateUploadItem(id: string, patch: Partial<UploadItem>) {
       const idx = uploads.value.findIndex(u => u.id === id);
@@ -295,11 +378,41 @@ export default defineComponent({
       if (!files || files.length === 0) return;
       for (let i=0;i<files.length;i++){
         const f = files[i];
-        const item: UploadItem = { id: toId(), file: f, preview: makePreview(f), status: "pending", progress: 0 };
-        uploads.value.push(item);
-        void startUpload(item);
+        // Check if it's a video file
+        if (f.type.startsWith('video/')) {
+          // For video files, use video upload
+          const item: UploadItem = { 
+            id: toId(), 
+            file: f, 
+            preview: null, // Videos don't need local preview
+            status: "pending", 
+            progress: 0 
+          };
+          uploads.value.push(item);
+          void startVideoUpload(item);
+        } else {
+          // For image files, use image upload
+          const item: UploadItem = { id: toId(), file: f, preview: makePreview(f), status: "pending", progress: 0 };
+          uploads.value.push(item);
+          void startUpload(item);
+        }
       }
       input.value = "";
+    }
+
+    function onPaste(e: ClipboardEvent) {
+      const text = e.clipboardData?.getData('text');
+      if (!text || !text.trim()) return;
+      
+      // Check if pasted text is a video URL
+      const parsed = parseVideoUrl(text);
+      if (parsed) {
+        // Prevent default paste to avoid pasting the URL in textarea
+        e.preventDefault();
+        // Set video preview
+        videoPreview.value = parsed;
+        ui.addToast("已识别视频链接", 1000, "success");
+      }
     }
      
     // signEvent wrapper: prefer keys.signEvent -> window.nostr.signEvent -> nostr-tools v2 local signing (skHex)
@@ -425,6 +538,38 @@ export default defineComponent({
       }
     }
 
+    async function startVideoUpload(item: UploadItem) {
+      updateUploadItem(item.id, { status: "uploading", progress: 0, errorShort: undefined, errorDetails: undefined });
+
+      try {
+        const descriptor = await uploadImageToBlossom(item.file, {
+          includeAuthIfRequired: true,
+          signEvent: signEventWrapper,
+          onProgress: (p:number) => { updateUploadItem(item.id, { progress: p }); }
+        });
+        
+        // Set as video preview
+        videoPreview.value = {
+          url: descriptor.url,
+          provider: 'Hosted',
+          embedUrl: descriptor.url
+        };
+        
+        updateUploadItem(item.id, { url: descriptor.url, status: "done", progress: 100 });
+        
+        // Remove from uploads list since we show it in videoPreview
+        const idx = uploads.value.findIndex(u => u.id === item.id);
+        if (idx !== -1) uploads.value.splice(idx, 1);
+      } catch (err:any) {
+        console.error("video upload error:", err);
+        const errorShort = err && err.message ? String(err.message) : "上传失败";
+        let errorDetails: string;
+        try { errorDetails = err && err.details ? JSON.stringify(err.details, null, 2) : JSON.stringify(err, Object.getOwnPropertyNames(err), 2); } catch { errorDetails = String(err); }
+        updateUploadItem(item.id, { status: "error", errorShort, errorDetails });
+        ui.addToast(`视频上传失败: ${errorShort}`, 3000, "error");
+      }
+    }
+
     function insertImageUrl(item: UploadItem) {
       if (item.status === "done" && item.url) {
         if (content.value.length>0 && !content.value.endsWith("\n")) content.value += "\n";
@@ -543,6 +688,19 @@ export default defineComponent({
           }
         }
         
+        // Add video if present
+        if (videoPreview.value) {
+          if (fullContent.length > 0 && !fullContent.endsWith("\n")) fullContent += "\n";
+          // Store video metadata as JSON in a special format using constants
+          const videoData = {
+            type: 'video',
+            url: videoPreview.value.url,
+            provider: videoPreview.value.provider,
+            embedUrl: videoPreview.value.embedUrl
+          };
+          fullContent += `${VIDEO_METADATA_PREFIX}${JSON.stringify(videoData)}${VIDEO_METADATA_SUFFIX}\n`;
+        }
+        
         // Calculate group metadata before publishing
         const groupsMeta = allFriends.value
           ? [{ name: "全部好友", count: recipientsCount.value }]
@@ -587,7 +745,9 @@ export default defineComponent({
       visible, content, sending, allFriends, selectedGroups, groups, countByGroup,
       canSend, textarea, overlay, error, onSend, onClose, toggleAll, toggleGroup,
       recipientsCount, selectedSet, gLabel, friends, uploads, uploadEnabled, uploadingAny,
-      onFilesSelected, insertImageUrl, removeUpload, checkBlossom
+      onFilesSelected, insertImageUrl, removeUpload, checkBlossom,
+      // Video support
+      videoPreview, removeVideo, onPaste
     };
   }
 });
@@ -844,6 +1004,61 @@ export default defineComponent({
 .remove-btn:hover {
   background: #ef4444;
   transform: scale(1.1);
+}
+
+/* Video preview */
+.video-preview-item {
+  margin-top: 12px;
+}
+
+.video-thumb-container {
+  position: relative;
+  width: 100%;
+  min-height: 120px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #1f2937;
+  border: 2px solid #374151;
+  transition: all 0.2s ease;
+}
+
+.video-thumb-container:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+.video-placeholder {
+  width: 100%;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #e5e7eb;
+  padding: 16px;
+  gap: 8px;
+}
+
+.play-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.video-info {
+  text-align: center;
+  width: 100%;
+}
+
+.video-provider {
+  font-weight: 500;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.video-info .small {
+  color: #9ca3af;
+  word-break: break-all;
+  font-size: 12px;
 }
 
 /* chips UI */
