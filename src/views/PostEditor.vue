@@ -205,7 +205,7 @@ import {
 } from "@/utils/videoCrypto";
 import { uploadChunks, uploadSingleFile } from "@/utils/chunkedUpload";
 import { encodeEncryptedVideoRef } from "@/utils/encryptedVideoRef";
-import { bytesToBase64 } from "@/nostr/crypto";
+import { bytesToBase64, base64ToBytes } from "@/nostr/crypto";
 
 // Video metadata format constants
 const VIDEO_METADATA_PREFIX = '[video:';
@@ -517,7 +517,9 @@ export default defineComponent({
           updateUploadItem(item.id, { progress: 15 });
           
           // Create encrypted blob and upload
-          const encryptedBlob = new Blob([new TextEncoder().encode(ct)], { type: "application/octet-stream" });
+          // ct is base64-encoded, convert back to bytes
+          const encryptedBytes = base64ToBytes(ct);
+          const encryptedBlob = new Blob([encryptedBytes], { type: "application/octet-stream" });
           const uploadedUrl = await uploadSingleFile(encryptedBlob, file.type, {
             signEvent: signEventWrapper,
             onProgress: (_chunkIndex, _chunkProgress, totalProgress) => {
