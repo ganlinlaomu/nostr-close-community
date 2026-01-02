@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory, RouteRecordRaw } from "vue-router";
+import { nextTick } from "vue";
 import Login from "@/views/Login.vue";
 import Home from "@/views/Home.vue";
 import PostEditor from "@/views/PostEditor.vue";
@@ -142,13 +143,11 @@ router.afterEach((to, from) => {
   
   // For normal navigation, scroll the #app container to top
   // Use nextTick to ensure DOM is updated
-  import('vue').then(({ nextTick }) => {
-    nextTick(() => {
-      const appContainer = document.querySelector('body > #app');
-      if (appContainer) {
-        appContainer.scrollTop = 0;
-      }
-    });
+  nextTick(() => {
+    const appContainer = document.querySelector('body > #app');
+    if (appContainer) {
+      appContainer.scrollTop = 0;
+    }
   });
 });
 

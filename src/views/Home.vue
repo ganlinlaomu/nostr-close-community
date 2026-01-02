@@ -576,6 +576,11 @@ export default defineComponent({
   return Object.fromEntries(qs.entries());
 }
 
+    // Helper to check if query has notification params
+    function hasNotificationParams(query: any): boolean {
+      return !!(query.mid || query.iid);
+    }
+
 
   async function handleNotificationJump() {
   const q = getHashQuery();
@@ -1176,7 +1181,7 @@ export default defineComponent({
     // Watch for route query changes to handle notification jump state
     watch(() => route.query, (newQuery, oldQuery) => {
       // If we had notification jump params but they're now gone, reset the state
-      if ((oldQuery.mid || oldQuery.iid) && (!newQuery.mid && !newQuery.iid)) {
+      if (hasNotificationParams(oldQuery) && !hasNotificationParams(newQuery)) {
         notificationJumpDone.value = false;
       }
     });
@@ -1418,7 +1423,7 @@ export default defineComponent({
 }
 
 .comment-input {
-  flex: 1 1 auto;
+  flex: 1;
   min-width: 0; /* Allow flex item to shrink below its content size */
   padding: 8px 12px;
   border: 1px solid #e2e8f0;
