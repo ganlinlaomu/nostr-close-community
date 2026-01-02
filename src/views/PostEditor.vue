@@ -193,6 +193,10 @@ import { useMessagesStore } from "@/stores/messages";
 import { useUIStore } from "@/stores/ui";
 import { uploadImageToBlossom, getBlossomConfig } from "@/utils/blossom";
 
+// Video metadata format constants
+const VIDEO_METADATA_PREFIX = '[video:';
+const VIDEO_METADATA_SUFFIX = ']';
+
 type UploadItem = {
   id: string;
   file: File;
@@ -619,14 +623,14 @@ export default defineComponent({
         // Add video if present
         if (videoPreview.value) {
           if (fullContent.length > 0 && !fullContent.endsWith("\n")) fullContent += "\n";
-          // Store video metadata as JSON in a special format
+          // Store video metadata as JSON in a special format using constants
           const videoData = {
             type: 'video',
             url: videoPreview.value.url,
             provider: videoPreview.value.provider,
             embedUrl: videoPreview.value.embedUrl
           };
-          fullContent += `[video:${JSON.stringify(videoData)}]\n`;
+          fullContent += `${VIDEO_METADATA_PREFIX}${JSON.stringify(videoData)}${VIDEO_METADATA_SUFFIX}\n`;
         }
         
         const { signed } = await posts.publishNip44PerMessage(recips, fullContent);

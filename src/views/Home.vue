@@ -184,8 +184,10 @@ const plainImgUrlRE = /(https?:\/\/[^\s)]+?\.(?:png|jpe?g|gif|webp|avif|svg)(?:\
 // while PostImagePreview handles the actual decryption and rendering
 const mdEncryptedImageRE = /!\[[^\]]*?\]\(\s*(blossom\+aesgcm:[^\s)]+)\s*\)/gi;
 
-// Video pattern: [video:{json}]
-const videoDataRE = /\[video:(\{[^\]]+\})\]/gi;
+// Video pattern: [video:{json}] - constant for video metadata format
+const VIDEO_METADATA_PREFIX = '[video:';
+const VIDEO_METADATA_SUFFIX = ']';
+const videoDataRE = /\[video:(\{[^\]]+\})\]/g;
 
 // Constants for time calculations
 const SECONDS_PER_DAY = 24 * 60 * 60;
@@ -444,6 +446,7 @@ export default defineComponent({
       return s;
     }
 
+    // Alias for backward compatibility - removes both images and videos
     function textWithoutVideos(content: string): string {
       return textWithoutImages(content);
     }
@@ -451,14 +454,21 @@ export default defineComponent({
     function extractVideoData(content: string): any {
       if (!content) return null;
       
-      const match = videoDataRE.exec(content);
-      videoDataRE.lastIndex = 0; // Reset regex state
+      // Use match() instead of exec() to avoid stateful regex behavior
+      const matches = content.match(videoDataRE);
       
-      if (match && match[1]) {
+      if (matches && matches.length > 0) {
         try {
-          const videoData = JSON.parse(match[1]);
-          if (videoData.type === 'video' && videoData.url) {
-            return videoData;
+          // Extract JSON from first match
+          const match = matches[0];
+          const jsonStart = match.indexOf('{');
+          const jsonEnd = match.lastIndexOf('}');
+          if (jsonStart >= 0 && jsonEnd > jsonStart) {
+            const jsonStr = match.substring(jsonStart, jsonEnd + 1);
+            const videoData = JSON.parse(jsonStr);
+            if (videoData.type === 'video' && videoData.url) {
+              return videoData;
+            }
           }
         } catch (e) {
           console.error("Failed to parse video data:", e);
