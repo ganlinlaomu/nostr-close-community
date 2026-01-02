@@ -177,6 +177,7 @@ import { resizeImageFile } from "@/utils/imageResize";
 import { compressImageToTargetSize } from "@/utils/imageCompression";
 import { encodeEncryptedImageRef, type EncryptedImageMetadata } from "@/utils/encryptedImageRef";
 import { bytesToBase64 } from "@/nostr/crypto";
+import { parseVideoUrl as parseVideoUrlUtil } from "@/utils/videoUtils";
 
 // Video metadata format constants
 const VIDEO_METADATA_PREFIX = '[video:';
@@ -315,58 +316,8 @@ export default defineComponent({
     } | null>(null);
 
     function parseVideoUrl(url: string): { url: string; provider: string; embedUrl?: string; thumbnail?: string } | null {
-      if (!url || !url.trim()) return null;
-      
-      const trimmedUrl = url.trim();
-      
-      // YouTube patterns
-      const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
-      const youtubeMatch = trimmedUrl.match(youtubeRegex);
-      if (youtubeMatch) {
-        const videoId = youtubeMatch[1];
-        return {
-          url: trimmedUrl,
-          provider: 'YouTube',
-          embedUrl: `https://www.youtube.com/embed/${videoId}`,
-          thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
-        };
-      }
-      
-      // Vimeo patterns
-      const vimeoRegex = /(?:vimeo\.com\/)(\d+)/i;
-      const vimeoMatch = trimmedUrl.match(vimeoRegex);
-      if (vimeoMatch) {
-        const videoId = vimeoMatch[1];
-        return {
-          url: trimmedUrl,
-          provider: 'Vimeo',
-          embedUrl: `https://player.vimeo.com/video/${videoId}`
-        };
-      }
-      
-      // Direct video URL (mp4, webm, ogg)
-      const videoExtRegex = /\.(mp4|webm|ogg)(\?.*)?$/i;
-      if (videoExtRegex.test(trimmedUrl)) {
-        return {
-          url: trimmedUrl,
-          provider: 'Direct',
-          embedUrl: trimmedUrl
-        };
-      }
-      
-      // Check if it's a valid URL, otherwise don't treat as video
-      try {
-        new URL(trimmedUrl);
-        // Valid URL but not a recognized video platform - treat as external
-        return {
-          url: trimmedUrl,
-          provider: 'External',
-          embedUrl: trimmedUrl
-        };
-      } catch {
-        // Not a valid URL, return null
-        return null;
-      }
+      // Use the shared utility function
+      return parseVideoUrlUtil(url);
     }
 
     function removeVideo() {

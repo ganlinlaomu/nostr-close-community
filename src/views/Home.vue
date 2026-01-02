@@ -174,6 +174,7 @@ import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "
 import { useRoute } from "vue-router";
 import { usePullToRefresh } from "@/components/usePullToRefresh";
 import { getLastSeenCreatedAt, setLastSeenCreatedAt, updateLastSeenToNewest } from "@/utils/lastSeen";
+import { extractVideoData as extractVideoDataUtil, getVideoUrlRemovalPatterns } from "@/utils/videoUtils";
 
 
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
@@ -189,10 +190,8 @@ const VIDEO_METADATA_PREFIX = '[video:';
 const VIDEO_METADATA_SUFFIX = ']';
 const videoDataRE = /\[video:(\{[^\]]+\})\]/g;
 
-// Plain video URL patterns for detection
-const youtubeUrlRE = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/gi;
-const vimeoUrlRE = /(?:https?:\/\/)?(?:www\.)?vimeo\.com\/(\d+)/gi;
-const directVideoUrlRE = /https?:\/\/[^\s]+\.(?:mp4|webm|ogg)(?:\?[^\s]*)?/gi;
+// Get video URL removal patterns for text cleanup
+const videoUrlPatterns = getVideoUrlRemovalPatterns();
 
 // Constants for time calculations
 const SECONDS_PER_DAY = 24 * 60 * 60;
@@ -446,13 +445,10 @@ export default defineComponent({
       s = s.replace(plainImgUrlRE, "");
       // remove video data
       s = s.replace(videoDataRE, "");
-      // remove plain video URLs (reset regex lastIndex first)
-      youtubeUrlRE.lastIndex = 0;
-      vimeoUrlRE.lastIndex = 0;
-      directVideoUrlRE.lastIndex = 0;
-      s = s.replace(youtubeUrlRE, "");
-      s = s.replace(vimeoUrlRE, "");
-      s = s.replace(directVideoUrlRE, "");
+      // remove plain video URLs using patterns from utility
+      s = s.replace(videoUrlPatterns.youtubePattern, "");
+      s = s.replace(videoUrlPatterns.vimeoPattern, "");
+      s = s.replace(videoUrlPatterns.directVideoPattern, "");
       // collapse multiple blank lines and trim
       s = s.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
       return s;
@@ -464,72 +460,8 @@ export default defineComponent({
     }
 
     function extractVideoData(content: string): any {
-      if (!content) return null;
-      
-      // First, check for structured video metadata format: [video:{json}]
-      const matches = content.match(videoDataRE);
-      
-      if (matches && matches.length > 0) {
-        try {
-          // Extract JSON from first match
-          const match = matches[0];
-          const jsonStart = match.indexOf('{');
-          const jsonEnd = match.lastIndexOf('}');
-          if (jsonStart >= 0 && jsonEnd > jsonStart) {
-            const jsonStr = match.substring(jsonStart, jsonEnd + 1);
-            const videoData = JSON.parse(jsonStr);
-            if (videoData.type === 'video' && videoData.url) {
-              return videoData;
-            }
-          }
-        } catch (e) {
-          console.error("Failed to parse video data:", e);
-        }
-      }
-      
-      // Second, check for plain video URLs (YouTube, Vimeo, direct video)
-      // Reset regex lastIndex to ensure correct matching
-      youtubeUrlRE.lastIndex = 0;
-      vimeoUrlRE.lastIndex = 0;
-      directVideoUrlRE.lastIndex = 0;
-      
-      // Check for YouTube URLs
-      const youtubeMatch = youtubeUrlRE.exec(content);
-      if (youtubeMatch) {
-        const videoId = youtubeMatch[1];
-        return {
-          type: 'video',
-          url: youtubeMatch[0],
-          provider: 'YouTube',
-          embedUrl: `https://www.youtube.com/embed/${videoId}`,
-          thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
-        };
-      }
-      
-      // Check for Vimeo URLs
-      const vimeoMatch = vimeoUrlRE.exec(content);
-      if (vimeoMatch) {
-        const videoId = vimeoMatch[1];
-        return {
-          type: 'video',
-          url: vimeoMatch[0],
-          provider: 'Vimeo',
-          embedUrl: `https://player.vimeo.com/video/${videoId}`
-        };
-      }
-      
-      // Check for direct video URLs (mp4, webm, ogg)
-      const directMatch = directVideoUrlRE.exec(content);
-      if (directMatch) {
-        return {
-          type: 'video',
-          url: directMatch[0],
-          provider: 'Direct',
-          embedUrl: directMatch[0]
-        };
-      }
-      
-      return null;
+      // Use the shared utility function
+      return extractVideoDataUtil(content);
     }
 
     // Like functionality

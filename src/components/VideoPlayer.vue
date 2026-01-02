@@ -69,14 +69,7 @@
 
 <script lang="ts">
 import { defineComponent, ref, PropType, computed } from 'vue';
-
-export interface VideoData {
-  type: 'video';
-  url: string;
-  provider: string;
-  embedUrl?: string;
-  thumbnail?: string;
-}
+import { extractYouTubeVideoId, getYouTubeThumbnail, type VideoData } from '@/utils/videoUtils';
 
 export default defineComponent({
   name: 'VideoPlayer',
@@ -101,9 +94,9 @@ export default defineComponent({
       
       // Generate thumbnail for YouTube videos
       if (props.videoData.provider === 'YouTube' && props.videoData.embedUrl) {
-        const videoIdMatch = props.videoData.embedUrl.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
-        if (videoIdMatch) {
-          return `https://img.youtube.com/vi/${videoIdMatch[1]}/hqdefault.jpg`;
+        const videoId = extractYouTubeVideoId(props.videoData.embedUrl);
+        if (videoId) {
+          return getYouTubeThumbnail(videoId);
         }
       }
       
