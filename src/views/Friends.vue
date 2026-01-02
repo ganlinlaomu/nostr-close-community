@@ -75,12 +75,32 @@
 
           <div class="form-group">
             <label>分组标签</label>
-            <input 
-              v-model="formData.groupsInput" 
-              class="input" 
-              placeholder="如: 家人"
-            />
-            <div class="small" style="margin-top: 4px;">只能设置一个分组</div>
+            <div class="autocomplete-wrapper">
+              <input 
+                v-model="formData.groupsInput" 
+                class="input" 
+                placeholder="如: 家人（输入新组名或从已有分组中选择）"
+                @input="onGroupInput"
+                @focus="showGroupSuggestions = true"
+                @blur="onGroupBlur"
+                @keydown.down.prevent="navigateSuggestions(1)"
+                @keydown.up.prevent="navigateSuggestions(-1)"
+                @keydown.enter.prevent="selectHighlightedSuggestion"
+              />
+              <div v-if="showGroupSuggestions && filteredGroups.length > 0" class="suggestions-dropdown">
+                <div 
+                  v-for="(group, idx) in filteredGroups" 
+                  :key="group"
+                  class="suggestion-item"
+                  :class="{ 'highlighted': idx === highlightedIndex }"
+                  @mousedown.prevent="selectGroup(group)"
+                  @mouseenter="highlightedIndex = idx"
+                >
+                  {{ group }}
+                </div>
+              </div>
+            </div>
+            <div class="small" style="margin-top: 4px;">只能设置一个分组，输入新名称可创建新分组</div>
           </div>
 
           <div class="form-actions">
@@ -96,7 +116,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, onBeforeUnmount, watch } from "vue";
+import { defineComponent, ref, onMounted, onBeforeUnmount, watch, computed } from "vue";
 import { useFriendsStore, Friend } from "@/stores/friends";
 import { useUIStore } from "@/stores/ui";
 import { useKeyStore } from "@/stores/keys";
@@ -116,11 +136,37 @@ export default defineComponent({
     let hideTimeout: ReturnType<typeof setTimeout> | null = null;
     let fadeTimeout: ReturnType<typeof setTimeout> | null = null;
     
+    // Group autocomplete state
+    const showGroupSuggestions = ref(false);
+    const highlightedIndex = ref(-1);
+    
     const formData = ref({
       pubkey: "",
       name: "",
       groupsInput: "",
       originalPubkey: "" // for edit mode
+    });
+
+    // Get all existing groups from friends list
+    const existingGroups = computed(() => {
+      const groupSet = new Set<string>();
+      for (const friend of friends.list) {
+        if (friend.groups && friend.groups.length > 0) {
+          friend.groups.forEach(g => groupSet.add(g));
+        } else if (friend.group) {
+          groupSet.add(friend.group);
+        }
+      }
+      return Array.from(groupSet).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+    });
+
+    // Filter groups based on current input
+    const filteredGroups = computed(() => {
+      const input = formData.value.groupsInput.trim().toLowerCase();
+      if (!input) return existingGroups.value;
+      return existingGroups.value.filter(g => 
+        g.toLowerCase().includes(input)
+      );
     });
 
     // Watch for sync completion to show/hide success message
@@ -289,6 +335,45 @@ export default defineComponent({
       }
     };
 
+    // Group autocomplete handlers
+    const onGroupInput = () => {
+      showGroupSuggestions.value = true;
+      highlightedIndex.value = -1;
+    };
+
+    const onGroupBlur = () => {
+      // Delay hiding to allow click on suggestion
+      setTimeout(() => {
+        showGroupSuggestions.value = false;
+        highlightedIndex.value = -1;
+      }, 200);
+    };
+
+    const selectGroup = (group: string) => {
+      formData.value.groupsInput = group;
+      showGroupSuggestions.value = false;
+      highlightedIndex.value = -1;
+    };
+
+    const navigateSuggestions = (direction: number) => {
+      if (!showGroupSuggestions.value || filteredGroups.value.length === 0) return;
+      
+      const maxIndex = filteredGroups.value.length - 1;
+      highlightedIndex.value += direction;
+      
+      if (highlightedIndex.value < 0) {
+        highlightedIndex.value = maxIndex;
+      } else if (highlightedIndex.value > maxIndex) {
+        highlightedIndex.value = 0;
+      }
+    };
+
+    const selectHighlightedSuggestion = () => {
+      if (highlightedIndex.value >= 0 && highlightedIndex.value < filteredGroups.value.length) {
+        selectGroup(filteredGroups.value[highlightedIndex.value]);
+      }
+    };
+
     return {
       friends,
       showModal,
@@ -301,7 +386,16 @@ export default defineComponent({
       startEdit,
       closeModal,
       saveForm,
-      confirmDelete
+      confirmDelete,
+      // Group autocomplete
+      showGroupSuggestions,
+      filteredGroups,
+      highlightedIndex,
+      onGroupInput,
+      onGroupBlur,
+      selectGroup,
+      navigateSuggestions,
+      selectHighlightedSuggestion
     };
   }
 });
@@ -533,5 +627,41 @@ export default defineComponent({
   flex-direction: column;
   gap: 0;
   margin-top: 12px;
+}
+
+/* Autocomplete */
+.autocomplete-wrapper {
+  position: relative;
+}
+
+.suggestions-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.suggestion-item {
+  padding: 10px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  font-size: 14px;
+}
+
+.suggestion-item:hover,
+.suggestion-item.highlighted {
+  background-color: #f3f4f6;
+}
+
+.suggestion-item:last-child {
+  border-radius: 0 0 8px 8px;
 }
 </style>

@@ -72,6 +72,57 @@
             </div>
           </div>
 
+          <!-- 视频上传/外链区域 -->
+          <div class="video-panel">
+            <div class="video-controls">
+              <label
+                class="upload-btn"
+                :class="{ disabled: !uploadEnabled || uploadingAny }"
+                :title="uploadEnabled ? (uploadingAny ? '上传中...' : '上传视频') : '未配置 blossom_upload_url'"
+              >
+                <input type="file" accept="video/*" @change="onVideoFileSelected" :disabled="!uploadEnabled || uploadingAny" />
+                上传视频
+              </label>
+              
+              <div class="video-url-input">
+                <input 
+                  v-model="videoUrl" 
+                  class="input" 
+                  placeholder="或粘贴视频链接（YouTube、Vimeo、直接视频URL）"
+                  @blur="onVideoUrlBlur"
+                />
+                <button 
+                  v-if="videoUrl" 
+                  type="button" 
+                  class="clear-btn" 
+                  @click="clearVideoUrl"
+                  title="清除视频链接"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <!-- Video preview -->
+            <div v-if="videoPreview" class="video-preview-item">
+              <div class="video-thumb-container">
+                <div class="video-placeholder">
+                  <div class="play-icon">▶</div>
+                  <div class="video-info">
+                    <div class="video-provider">{{ videoPreview.provider }}</div>
+                    <div class="small">{{ videoPreview.url }}</div>
+                  </div>
+                </div>
+                <button type="button" class="remove-btn" @click="removeVideo" title="删除视频">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- recipients chips -->
           <div class="meta-row" style="margin-top:12px;">
             <strong>收件人选择</strong>
@@ -142,6 +193,10 @@ import { useMessagesStore } from "@/stores/messages";
 import { useUIStore } from "@/stores/ui";
 import { uploadImageToBlossom, getBlossomConfig } from "@/utils/blossom";
 
+// Video metadata format constants
+const VIDEO_METADATA_PREFIX = '[video:';
+const VIDEO_METADATA_SUFFIX = ']';
+
 type UploadItem = {
   id: string;
   file: File;
@@ -177,7 +232,8 @@ export default defineComponent({
     const canSend = computed(() => {
       const hasText = content.value.trim().length > 0;
       const hasUploadedImages = uploads.value.some(u => u.status === 'done' && u.url);
-      return hasText || hasUploadedImages;
+      const hasVideo = videoPreview.value !== null;
+      return hasText || hasUploadedImages || hasVideo;
     });
 
     // groups derived from friends list
@@ -260,6 +316,131 @@ export default defineComponent({
     const uploads = ref<UploadItem[]>([]);
     const uploadEnabled = ref(false);
     const uploadingAny = computed(() => uploads.value.some(u => u.status === "uploading"));
+
+    // Video support
+    const videoUrl = ref("");
+    const videoPreview = ref<{
+      url: string;
+      provider: string;
+      embedUrl?: string;
+    } | null>(null);
+
+    function parseVideoUrl(url: string): { url: string; provider: string; embedUrl?: string } | null {
+      if (!url || !url.trim()) return null;
+      
+      const trimmedUrl = url.trim();
+      
+      // YouTube patterns
+      const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+      const youtubeMatch = trimmedUrl.match(youtubeRegex);
+      if (youtubeMatch) {
+        const videoId = youtubeMatch[1];
+        return {
+          url: trimmedUrl,
+          provider: 'YouTube',
+          embedUrl: `https://www.youtube.com/embed/${videoId}`
+        };
+      }
+      
+      // Vimeo patterns
+      const vimeoRegex = /(?:vimeo\.com\/)(\d+)/i;
+      const vimeoMatch = trimmedUrl.match(vimeoRegex);
+      if (vimeoMatch) {
+        const videoId = vimeoMatch[1];
+        return {
+          url: trimmedUrl,
+          provider: 'Vimeo',
+          embedUrl: `https://player.vimeo.com/video/${videoId}`
+        };
+      }
+      
+      // Direct video URL (mp4, webm, ogg)
+      const videoExtRegex = /\.(mp4|webm|ogg)(\?.*)?$/i;
+      if (videoExtRegex.test(trimmedUrl)) {
+        return {
+          url: trimmedUrl,
+          provider: 'Direct',
+          embedUrl: trimmedUrl
+        };
+      }
+      
+      // Default: treat as direct URL
+      return {
+        url: trimmedUrl,
+        provider: 'External',
+        embedUrl: trimmedUrl
+      };
+    }
+
+    function onVideoUrlBlur() {
+      if (videoUrl.value) {
+        const parsed = parseVideoUrl(videoUrl.value);
+        if (parsed) {
+          videoPreview.value = parsed;
+        }
+      }
+    }
+
+    function clearVideoUrl() {
+      videoUrl.value = "";
+      videoPreview.value = null;
+    }
+
+    function removeVideo() {
+      videoPreview.value = null;
+      videoUrl.value = "";
+    }
+
+    function onVideoFileSelected(e: Event) {
+      const input = e.target as HTMLInputElement;
+      const files = input.files;
+      if (!files || files.length === 0) return;
+      const file = files[0];
+      
+      // Create upload item for video
+      const item: UploadItem = { 
+        id: toId(), 
+        file: file, 
+        preview: null, // Videos don't need local preview
+        status: "pending", 
+        progress: 0 
+      };
+      uploads.value.push(item);
+      void startVideoUpload(item);
+      input.value = "";
+    }
+
+    async function startVideoUpload(item: UploadItem) {
+      updateUploadItem(item.id, { status: "uploading", progress: 0, errorShort: undefined, errorDetails: undefined });
+
+      try {
+        const descriptor = await uploadImageToBlossom(item.file, {
+          includeAuthIfRequired: true,
+          signEvent: signEventWrapper,
+          onProgress: (p:number) => { updateUploadItem(item.id, { progress: p }); }
+        });
+        
+        // Set as video preview
+        videoPreview.value = {
+          url: descriptor.url,
+          provider: 'Hosted',
+          embedUrl: descriptor.url
+        };
+        
+        updateUploadItem(item.id, { url: descriptor.url, status: "done", progress: 100 });
+        
+        // Remove from uploads list since we show it in videoPreview
+        const idx = uploads.value.findIndex(u => u.id === item.id);
+        if (idx !== -1) uploads.value.splice(idx, 1);
+      } catch (err:any) {
+        console.error("video upload error:", err);
+        const errorShort = err && err.message ? String(err.message) : "上传失败";
+        let errorDetails: string;
+        try { errorDetails = err && err.details ? JSON.stringify(err.details, null, 2) : JSON.stringify(err, Object.getOwnPropertyNames(err), 2); } catch { errorDetails = String(err); }
+        updateUploadItem(item.id, { status: "error", errorShort, errorDetails });
+        ui.addToast(`视频上传失败: ${errorShort}`, 3000, "error");
+      }
+    }
 
     // Immutable update helper for upload items to ensure Vue reactivity
     function updateUploadItem(id: string, patch: Partial<UploadItem>) {
@@ -428,7 +609,7 @@ export default defineComponent({
       if (recips.length === 0) { error.value = "未指定收件人"; sending.value = false; return; }
 
       try {
-        // Build content with uploaded images appended
+        // Build content with uploaded images and video appended
         let fullContent = content.value;
         const uploadedImages = uploads.value.filter(u => u.status === 'done' && u.url);
         if (uploadedImages.length > 0) {
@@ -437,6 +618,19 @@ export default defineComponent({
           for (const img of uploadedImages) {
             fullContent += `![](${img.url})\n`;
           }
+        }
+        
+        // Add video if present
+        if (videoPreview.value) {
+          if (fullContent.length > 0 && !fullContent.endsWith("\n")) fullContent += "\n";
+          // Store video metadata as JSON in a special format using constants
+          const videoData = {
+            type: 'video',
+            url: videoPreview.value.url,
+            provider: videoPreview.value.provider,
+            embedUrl: videoPreview.value.embedUrl
+          };
+          fullContent += `${VIDEO_METADATA_PREFIX}${JSON.stringify(videoData)}${VIDEO_METADATA_SUFFIX}\n`;
         }
         
         const { signed } = await posts.publishNip44PerMessage(recips, fullContent);
@@ -456,7 +650,9 @@ export default defineComponent({
       visible, content, sending, allFriends, selectedGroups, groups, countByGroup,
       canSend, textarea, overlay, error, onSend, onClose, toggleAll, toggleGroup,
       recipientsCount, selectedSet, gLabel, friends, uploads, uploadEnabled, uploadingAny,
-      onFilesSelected, insertImageUrl, removeUpload, checkBlossom
+      onFilesSelected, insertImageUrl, removeUpload, checkBlossom,
+      // Video support
+      videoUrl, videoPreview, onVideoUrlBlur, clearVideoUrl, removeVideo, onVideoFileSelected
     };
   }
 });
@@ -586,6 +782,115 @@ export default defineComponent({
 }
 .upload-config-hint .ok { color: #16a34a; }
 .upload-config-hint .warn { color: #d97706; }
+
+/* Video panel */
+.video-panel {
+  margin-top: 16px;
+}
+
+.video-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.video-url-input {
+  position: relative;
+  width: 100%;
+}
+
+.video-url-input .input {
+  width: 100%;
+  padding: 10px;
+  padding-right: 40px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  font-size: 14px;
+}
+
+.video-url-input .input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.video-url-input .clear-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.video-url-input .clear-btn:hover {
+  background: #dc2626;
+  transform: translateY(-50%) scale(1.1);
+}
+
+.video-preview-item {
+  margin-top: 12px;
+}
+
+.video-thumb-container {
+  position: relative;
+  width: 100%;
+  min-height: 120px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #1f2937;
+  border: 2px solid #374151;
+  transition: all 0.2s ease;
+}
+
+.video-thumb-container:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+.video-placeholder {
+  width: 100%;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #e5e7eb;
+  padding: 16px;
+  gap: 8px;
+}
+
+.play-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.video-info {
+  text-align: center;
+  width: 100%;
+}
+
+.video-provider {
+  font-weight: 500;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.video-info .small {
+  color: #9ca3af;
+  word-break: break-all;
+  font-size: 12px;
+}
 
 /* previews - horizontal thumbnail layout */
 .previews { 
