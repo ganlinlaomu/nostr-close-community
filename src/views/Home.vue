@@ -1172,6 +1172,14 @@ export default defineComponent({
         updateLocalRefs();
       }
     }, { flush: 'post' });
+    
+    // Watch for route query changes to handle notification jump state
+    watch(() => route.query, (newQuery, oldQuery) => {
+      // If we had notification jump params but they're now gone, reset the state
+      if ((oldQuery.mid || oldQuery.iid) && (!newQuery.mid && !newQuery.iid)) {
+        notificationJumpDone.value = false;
+      }
+    });
 
     onBeforeUnmount(() => {
       if (sub) {
