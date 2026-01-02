@@ -1131,6 +1131,16 @@ export default defineComponent({
       }
    });
    
+   // Watch for changes to friend list (add/remove) and restart subscriptions
+   // This ensures that when friends are added or removed, the subscription
+   // automatically updates to include/exclude them
+   watch(() => friends.version, (newVersion, oldVersion) => {
+     // Only restart if this is not the initial load and version actually changed
+     if (oldVersion !== undefined && newVersion !== oldVersion && !isInitialLoad.value) {
+       logger.info(`好友列表版本变化 (${oldVersion} -> ${newVersion})，重新启动订阅`);
+       startSub().catch(console.error);
+     }
+   });
    
     // Watch for changes to msgs.inbox to handle optimistic UI updates
     // This ensures own messages added via PostEditorModal appear immediately
