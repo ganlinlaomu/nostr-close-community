@@ -4,6 +4,8 @@ import { useRouter } from "vue-router";
 import { useFriendsStore } from "./friends";
 import { useMessagesStore } from "./messages";
 import { useSettingsStore } from "./settings";
+import { useInteractionsStore } from "./interactions";
+import { useNotificationsStore } from "./notifications";
 import type { WindowNostr } from "nostr-tools/lib/types/nip07";
 import { BunkerSigner, type BunkerPointer, parseBunkerInput } from "nostr-tools/nip46";
 import { finalizeEvent } from "nostr-tools";
@@ -242,6 +244,14 @@ export const useKeyStore = defineStore("keys", {
         const settings = useSettingsStore();
         await settings.load(this.pkHex);
       } catch {}
+      try {
+        const interactions = useInteractionsStore();
+        await interactions.load();
+      } catch {}
+      try {
+        const notifications = useNotificationsStore();
+        await notifications.load(this.pkHex);
+      } catch {}
     },
 
     /**
@@ -278,6 +288,14 @@ export const useKeyStore = defineStore("keys", {
         try {
           const settings = useSettingsStore();
           await settings.load(this.pkHex);
+        } catch {}
+        try {
+          const interactions = useInteractionsStore();
+          await interactions.load();
+        } catch {}
+        try {
+          const notifications = useNotificationsStore();
+          await notifications.load(this.pkHex);
         } catch {}
       } catch (e: any) {
         this.pkHex = "";
@@ -362,6 +380,14 @@ export const useKeyStore = defineStore("keys", {
         try {
           const settings = useSettingsStore();
           await settings.load(this.pkHex);
+        } catch {}
+        try {
+          const interactions = useInteractionsStore();
+          await interactions.load();
+        } catch {}
+        try {
+          const notifications = useNotificationsStore();
+          await notifications.load(this.pkHex);
         } catch {}
       } catch (e: any) {
         this.pkHex = "";
@@ -452,6 +478,14 @@ export const useKeyStore = defineStore("keys", {
           const settings = useSettingsStore();
           await settings.load(this.pkHex);
         } catch {}
+        try {
+          const interactions = useInteractionsStore();
+          await interactions.load();
+        } catch {}
+        try {
+          const notifications = useNotificationsStore();
+          await notifications.load(this.pkHex);
+        } catch {}
       } catch (e: any) {
         this.skHex = "";
         this.pkHex = "";
@@ -505,6 +539,14 @@ export const useKeyStore = defineStore("keys", {
         try {
           const settings = useSettingsStore();
           await settings.load(this.pkHex);
+        } catch {}
+        try {
+          const interactions = useInteractionsStore();
+          await interactions.load();
+        } catch {}
+        try {
+          const notifications = useNotificationsStore();
+          await notifications.load(this.pkHex);
         } catch {}
       } catch (e: any) {
         // Don't clear state on failed unlock attempt
@@ -629,6 +671,14 @@ export const useKeyStore = defineStore("keys", {
           const settings = useSettingsStore();
           await settings.load(this.pkHex);
         } catch {}
+        try {
+          const interactions = useInteractionsStore();
+          await interactions.load();
+        } catch {}
+        try {
+          const notifications = useNotificationsStore();
+          await notifications.load(this.pkHex);
+        } catch {}
       }
       
       this.isRestored = true;
@@ -705,6 +755,14 @@ export const useKeyStore = defineStore("keys", {
       try {
         const settings = useSettingsStore();
         settings.reset(false);
+      } catch {}
+      try {
+        const interactions = useInteractionsStore();
+        interactions.reset(false);
+      } catch {}
+      try {
+        const notifications = useNotificationsStore();
+        notifications.reset(false);
       } catch {}
       // navigate to login
       try {

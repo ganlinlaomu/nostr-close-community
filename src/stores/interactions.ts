@@ -443,6 +443,28 @@ export const useInteractionsStore = defineStore("interactions", {
     },
     
     /**
+     * Reset interactions store - clear in-memory data and optionally remove from storage
+     * @param removeFromStorage - If true, remove persisted interactions from localStorage
+     */
+    reset(removeFromStorage = false) {
+      this.interactions.clear();
+      this.processedEvents.clear();
+      this.lastSyncedAt = 0;
+      
+      if (removeFromStorage) {
+        try {
+          const key = useKeyStore();
+          if (key.pkHex) {
+            const storageKey = `interactions_${key.pkHex}`;
+            localStorage.removeItem(storageKey);
+          }
+        } catch (e) {
+          logger.warn("Failed to remove interactions from storage", e);
+        }
+      }
+    },
+    
+    /**
      * Backfill interactions from relays for multi-device sync
      * 
      * This method fetches interactions using two filters for comprehensive coverage:
