@@ -102,11 +102,11 @@ export async function getCacheStats(): Promise<{
     const entries: DBImageCache[] = await (db as any).imageCache.toArray();
     const count = entries.length;
     let size = 0;
-    let oldestTimestamp = Date.now();
+    let oldestTimestamp = 0;
 
     for (const entry of entries) {
       size += entry.blob.size;
-      if (entry.timestamp < oldestTimestamp) {
+      if (oldestTimestamp === 0 || entry.timestamp < oldestTimestamp) {
         oldestTimestamp = entry.timestamp;
       }
     }

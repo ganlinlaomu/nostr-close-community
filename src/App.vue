@@ -2,7 +2,7 @@
   <div class="app-root">
     <HeaderBar />
     <router-view v-slot="{ Component }">
-      <keep-alive :include="['Home', 'Friends', 'Notifications']">
+      <keep-alive :include="['Home', 'Friends', 'Notifications', 'Settings']">
         <component :is="Component" />
       </keep-alive>
     </router-view>

@@ -175,6 +175,7 @@ import { db } from "@/db/dexie";
 import { getCacheStats, clearAllCache } from "@/utils/imageCache";
 
 export default defineComponent({
+  name: "Settings",
   setup() {
     const ks = useKeyStore();
     const settings = useSettingsStore();
