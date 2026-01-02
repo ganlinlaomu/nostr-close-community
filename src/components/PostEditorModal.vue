@@ -549,6 +549,8 @@ export default defineComponent({
       updateUploadItem(item.id, { status: "uploading", progress: 0, errorShort: undefined, errorDetails: undefined });
 
       try {
+        // Note: Videos are uploaded directly without compression/resizing (unlike images in startUpload)
+        // Video files should not be processed with image compression logic
         const descriptor = await uploadImageToBlossom(item.file, {
           includeAuthIfRequired: true,
           signEvent: signEventWrapper,
