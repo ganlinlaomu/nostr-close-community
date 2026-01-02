@@ -177,6 +177,7 @@ import { resizeImageFile } from "@/utils/imageResize";
 import { compressImageToTargetSize } from "@/utils/imageCompression";
 import { encodeEncryptedImageRef, type EncryptedImageMetadata } from "@/utils/encryptedImageRef";
 import { encodeEncryptedVideoRef, type EncryptedVideoMetadata } from "@/utils/encryptedVideoRef";
+import { encryptVideoFile, exportKeyToBase64 } from "@/utils/videoCrypto";
 import { bytesToBase64 } from "@/nostr/crypto";
 import { parseVideoUrl as parseVideoUrlUtil } from "@/utils/videoUtils";
 
@@ -515,24 +516,16 @@ export default defineComponent({
       updateUploadItem(item.id, { status: "uploading", progress: 0, errorShort: undefined, errorDetails: undefined });
 
       try {
-        // Generate encryption key and IV for video
+        // Generate encryption key
         const encryptionKey = await crypto.subtle.generateKey(
           { name: "AES-GCM", length: 256 },
           true,
           ["encrypt", "decrypt"]
         );
-        const iv = crypto.getRandomValues(new Uint8Array(12));
         const originalMime = item.file.type || "video/mp4";
         
-        // Read file bytes
-        const fileBytes = new Uint8Array(await item.file.arrayBuffer());
-        
-        // Encrypt the bytes
-        const encryptedBytes = await crypto.subtle.encrypt(
-          { name: "AES-GCM", iv },
-          encryptionKey,
-          fileBytes
-        );
+        // Encrypt video file
+        const { encryptedBytes, iv } = await encryptVideoFile(item.file, encryptionKey);
         
         // Create a new File from encrypted bytes with octet-stream type
         const encryptedFile = new File(
@@ -549,9 +542,7 @@ export default defineComponent({
         });
         
         // Export encryption key to base64
-        const keyBytes = await crypto.subtle.exportKey("raw", encryptionKey);
-        const keyBase64 = bytesToBase64(new Uint8Array(keyBytes));
-        const ivBase64 = bytesToBase64(iv);
+        const keyBase64 = await exportKeyToBase64(encryptionKey);
         
         // Create encrypted video reference
         const encryptedRef = encodeEncryptedVideoRef({
@@ -559,7 +550,7 @@ export default defineComponent({
           url: descriptor.url,
           mime: originalMime,
           alg: "AES-GCM",
-          iv: ivBase64,
+          iv: iv,
           key: keyBase64,
           size: item.file.size
         });
@@ -576,7 +567,7 @@ export default defineComponent({
           status: "done", 
           progress: 100,
           encryptionKey,
-          encryptionIv: ivBase64,
+          encryptionIv: iv,
           originalMime
         });
         

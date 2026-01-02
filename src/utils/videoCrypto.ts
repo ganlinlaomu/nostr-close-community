@@ -66,15 +66,19 @@ export async function encryptVideoFile(
   // Read file bytes
   const fileBytes = new Uint8Array(await file.arrayBuffer());
   
-  // Encrypt
-  const result = await encryptVideoBytes(key, fileBytes);
+  // Generate IV
+  const ivBytes = crypto.getRandomValues(new Uint8Array(12));
   
-  // Convert ciphertext back to bytes for upload
-  const encryptedBytes = base64ToBytes(result.ct);
+  // Encrypt
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: ivBytes },
+    key,
+    fileBytes
+  );
   
   return {
-    encryptedBytes,
-    iv: result.iv
+    encryptedBytes: new Uint8Array(encrypted),
+    iv: bytesToBase64(ivBytes)
   };
 }
 

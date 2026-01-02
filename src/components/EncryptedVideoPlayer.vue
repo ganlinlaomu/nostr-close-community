@@ -97,11 +97,7 @@ export default defineComponent({
     onBeforeUnmount(() => {
       // Clean up blob URL to prevent memory leaks
       if (decryptedUrl.value) {
-        try {
-          URL.revokeObjectURL(decryptedUrl.value);
-        } catch (e) {
-          console.error('Failed to revoke blob URL:', e);
-        }
+        URL.revokeObjectURL(decryptedUrl.value);
       }
     });
 
