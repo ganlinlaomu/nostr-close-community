@@ -250,21 +250,44 @@ export default defineComponent({
         // Sort pending messages first
         const sortedPending = [...pendingMessages.value].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
         // Use efficient merge since both arrays are already sorted
+        // Also deduplicate by message id
         const merged: any[] = [];
+        const seenIds = new Set<string>();
         let i = 0, j = 0;
         while (i < sortedPending.length || j < displayedMessages.value.length) {
           if (i >= sortedPending.length) {
-            merged.push(...displayedMessages.value.slice(j));
+            // Add remaining displayed messages (deduplicating)
+            for (let k = j; k < displayedMessages.value.length; k++) {
+              if (!seenIds.has(displayedMessages.value[k].id)) {
+                merged.push(displayedMessages.value[k]);
+                seenIds.add(displayedMessages.value[k].id);
+              }
+            }
             break;
           }
           if (j >= displayedMessages.value.length) {
-            merged.push(...sortedPending.slice(i));
+            // Add remaining pending messages (deduplicating)
+            for (let k = i; k < sortedPending.length; k++) {
+              if (!seenIds.has(sortedPending[k].id)) {
+                merged.push(sortedPending[k]);
+                seenIds.add(sortedPending[k].id);
+              }
+            }
             break;
           }
+          // Merge based on timestamp, but deduplicate by id
           if ((sortedPending[i].created_at || 0) >= (displayedMessages.value[j].created_at || 0)) {
-            merged.push(sortedPending[i++]);
+            if (!seenIds.has(sortedPending[i].id)) {
+              merged.push(sortedPending[i]);
+              seenIds.add(sortedPending[i].id);
+            }
+            i++;
           } else {
-            merged.push(displayedMessages.value[j++]);
+            if (!seenIds.has(displayedMessages.value[j].id)) {
+              merged.push(displayedMessages.value[j]);
+              seenIds.add(displayedMessages.value[j].id);
+            }
+            j++;
           }
         }
         displayedMessages.value = merged;
@@ -299,22 +322,44 @@ export default defineComponent({
           logger.info(`收到 ${ownMessages.length} 条自己的新消息，立即显示`);
           // Sort own messages first
           const sortedOwn = ownMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-          // Merge with displayedMessages using efficient sorted merge
+          // Merge with displayedMessages using efficient sorted merge with deduplication
           const merged: InboxItem[] = [];
+          const seenIds = new Set<string>();
           let i = 0, j = 0;
           while (i < sortedOwn.length || j < displayedMessages.value.length) {
             if (i >= sortedOwn.length) {
-              merged.push(...displayedMessages.value.slice(j));
+              // Add remaining displayed messages (deduplicating)
+              for (let k = j; k < displayedMessages.value.length; k++) {
+                if (!seenIds.has(displayedMessages.value[k].id)) {
+                  merged.push(displayedMessages.value[k]);
+                  seenIds.add(displayedMessages.value[k].id);
+                }
+              }
               break;
             }
             if (j >= displayedMessages.value.length) {
-              merged.push(...sortedOwn.slice(i));
+              // Add remaining own messages (deduplicating)
+              for (let k = i; k < sortedOwn.length; k++) {
+                if (!seenIds.has(sortedOwn[k].id)) {
+                  merged.push(sortedOwn[k]);
+                  seenIds.add(sortedOwn[k].id);
+                }
+              }
               break;
             }
+            // Merge based on timestamp, but deduplicate by id
             if ((sortedOwn[i].created_at || 0) >= (displayedMessages.value[j].created_at || 0)) {
-              merged.push(sortedOwn[i++]);
+              if (!seenIds.has(sortedOwn[i].id)) {
+                merged.push(sortedOwn[i]);
+                seenIds.add(sortedOwn[i].id);
+              }
+              i++;
             } else {
-              merged.push(displayedMessages.value[j++]);
+              if (!seenIds.has(displayedMessages.value[j].id)) {
+                merged.push(displayedMessages.value[j]);
+                seenIds.add(displayedMessages.value[j].id);
+              }
+              j++;
             }
           }
           displayedMessages.value = merged;
