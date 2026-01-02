@@ -76,12 +76,24 @@
           <!-- Video preview -->
           <div v-if="videoPreview" class="video-preview-item">
             <div class="video-thumb-container">
-              <div class="video-placeholder">
+              <!-- Show thumbnail if available -->
+              <img 
+                v-if="videoPreview.thumbnail" 
+                :src="videoPreview.thumbnail" 
+                class="video-thumbnail-img" 
+                :alt="`${videoPreview.provider} 视频缩略图`"
+              />
+              <!-- Fallback to placeholder -->
+              <div v-else class="video-placeholder">
                 <div class="play-icon">▶</div>
                 <div class="video-info">
                   <div class="video-provider">{{ videoPreview.provider }}</div>
                   <div class="small">{{ videoPreview.url }}</div>
                 </div>
+              </div>
+              <!-- Play icon overlay (always on top) -->
+              <div class="video-play-overlay">
+                <div class="play-icon-large">▶</div>
               </div>
               <button type="button" class="remove-btn" @click="removeVideo" title="删除视频">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -165,6 +177,7 @@ import { resizeImageFile } from "@/utils/imageResize";
 import { compressImageToTargetSize } from "@/utils/imageCompression";
 import { encodeEncryptedImageRef, type EncryptedImageMetadata } from "@/utils/encryptedImageRef";
 import { bytesToBase64 } from "@/nostr/crypto";
+import { parseVideoUrl as parseVideoUrlUtil } from "@/utils/videoUtils";
 
 // Video metadata format constants
 const VIDEO_METADATA_PREFIX = '[video:';
@@ -299,60 +312,12 @@ export default defineComponent({
       url: string;
       provider: string;
       embedUrl?: string;
+      thumbnail?: string;
     } | null>(null);
 
-    function parseVideoUrl(url: string): { url: string; provider: string; embedUrl?: string } | null {
-      if (!url || !url.trim()) return null;
-      
-      const trimmedUrl = url.trim();
-      
-      // YouTube patterns
-      const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
-      const youtubeMatch = trimmedUrl.match(youtubeRegex);
-      if (youtubeMatch) {
-        const videoId = youtubeMatch[1];
-        return {
-          url: trimmedUrl,
-          provider: 'YouTube',
-          embedUrl: `https://www.youtube.com/embed/${videoId}`
-        };
-      }
-      
-      // Vimeo patterns
-      const vimeoRegex = /(?:vimeo\.com\/)(\d+)/i;
-      const vimeoMatch = trimmedUrl.match(vimeoRegex);
-      if (vimeoMatch) {
-        const videoId = vimeoMatch[1];
-        return {
-          url: trimmedUrl,
-          provider: 'Vimeo',
-          embedUrl: `https://player.vimeo.com/video/${videoId}`
-        };
-      }
-      
-      // Direct video URL (mp4, webm, ogg)
-      const videoExtRegex = /\.(mp4|webm|ogg)(\?.*)?$/i;
-      if (videoExtRegex.test(trimmedUrl)) {
-        return {
-          url: trimmedUrl,
-          provider: 'Direct',
-          embedUrl: trimmedUrl
-        };
-      }
-      
-      // Check if it's a valid URL, otherwise don't treat as video
-      try {
-        new URL(trimmedUrl);
-        // Valid URL but not a recognized video platform - treat as external
-        return {
-          url: trimmedUrl,
-          provider: 'External',
-          embedUrl: trimmedUrl
-        };
-      } catch {
-        // Not a valid URL, return null
-        return null;
-      }
+    function parseVideoUrl(url: string): { url: string; provider: string; embedUrl?: string; thumbnail?: string } | null {
+      // Use the shared utility function
+      return parseVideoUrlUtil(url);
     }
 
     function removeVideo() {
@@ -1034,6 +999,37 @@ export default defineComponent({
 .video-thumb-container:hover {
   border-color: #3b82f6;
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+.video-thumbnail-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  min-height: 120px;
+}
+
+.video-play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.play-icon-large {
+  font-size: 48px;
+  color: white;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 50%;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .video-placeholder {

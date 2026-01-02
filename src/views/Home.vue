@@ -174,6 +174,7 @@ import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "
 import { useRoute } from "vue-router";
 import { usePullToRefresh } from "@/components/usePullToRefresh";
 import { getLastSeenCreatedAt, setLastSeenCreatedAt, updateLastSeenToNewest } from "@/utils/lastSeen";
+import { extractVideoData as extractVideoDataUtil, getVideoUrlRemovalPatterns } from "@/utils/videoUtils";
 
 
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
@@ -188,6 +189,9 @@ const mdEncryptedImageRE = /!\[[^\]]*?\]\(\s*(blossom\+aesgcm:[^\s)]+)\s*\)/gi;
 const VIDEO_METADATA_PREFIX = '[video:';
 const VIDEO_METADATA_SUFFIX = ']';
 const videoDataRE = /\[video:(\{[^\]]+\})\]/g;
+
+// Get video URL removal patterns for text cleanup
+const videoUrlPatterns = getVideoUrlRemovalPatterns();
 
 // Constants for time calculations
 const SECONDS_PER_DAY = 24 * 60 * 60;
@@ -441,6 +445,10 @@ export default defineComponent({
       s = s.replace(plainImgUrlRE, "");
       // remove video data
       s = s.replace(videoDataRE, "");
+      // remove plain video URLs using patterns from utility
+      s = s.replace(videoUrlPatterns.youtubePattern, "");
+      s = s.replace(videoUrlPatterns.vimeoPattern, "");
+      s = s.replace(videoUrlPatterns.directVideoPattern, "");
       // collapse multiple blank lines and trim
       s = s.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
       return s;
@@ -452,29 +460,8 @@ export default defineComponent({
     }
 
     function extractVideoData(content: string): any {
-      if (!content) return null;
-      
-      // Use match() instead of exec() to avoid stateful regex behavior
-      const matches = content.match(videoDataRE);
-      
-      if (matches && matches.length > 0) {
-        try {
-          // Extract JSON from first match
-          const match = matches[0];
-          const jsonStart = match.indexOf('{');
-          const jsonEnd = match.lastIndexOf('}');
-          if (jsonStart >= 0 && jsonEnd > jsonStart) {
-            const jsonStr = match.substring(jsonStart, jsonEnd + 1);
-            const videoData = JSON.parse(jsonStr);
-            if (videoData.type === 'video' && videoData.url) {
-              return videoData;
-            }
-          }
-        } catch (e) {
-          console.error("Failed to parse video data:", e);
-        }
-      }
-      return null;
+      // Use the shared utility function
+      return extractVideoDataUtil(content);
     }
 
     // Like functionality
