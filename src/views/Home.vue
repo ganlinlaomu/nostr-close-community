@@ -189,6 +189,11 @@ const VIDEO_METADATA_PREFIX = '[video:';
 const VIDEO_METADATA_SUFFIX = ']';
 const videoDataRE = /\[video:(\{[^\]]+\})\]/g;
 
+// Plain video URL patterns for detection
+const youtubeUrlRE = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/gi;
+const vimeoUrlRE = /(?:https?:\/\/)?(?:www\.)?vimeo\.com\/(\d+)/gi;
+const directVideoUrlRE = /https?:\/\/[^\s]+\.(?:mp4|webm|ogg)(?:\?[^\s]*)?/gi;
+
 // Constants for time calculations
 const SECONDS_PER_DAY = 24 * 60 * 60;
 const THREE_DAYS_IN_SECONDS = 3 * SECONDS_PER_DAY;
@@ -441,6 +446,13 @@ export default defineComponent({
       s = s.replace(plainImgUrlRE, "");
       // remove video data
       s = s.replace(videoDataRE, "");
+      // remove plain video URLs (reset regex lastIndex first)
+      youtubeUrlRE.lastIndex = 0;
+      vimeoUrlRE.lastIndex = 0;
+      directVideoUrlRE.lastIndex = 0;
+      s = s.replace(youtubeUrlRE, "");
+      s = s.replace(vimeoUrlRE, "");
+      s = s.replace(directVideoUrlRE, "");
       // collapse multiple blank lines and trim
       s = s.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
       return s;
@@ -454,7 +466,7 @@ export default defineComponent({
     function extractVideoData(content: string): any {
       if (!content) return null;
       
-      // Use match() instead of exec() to avoid stateful regex behavior
+      // First, check for structured video metadata format: [video:{json}]
       const matches = content.match(videoDataRE);
       
       if (matches && matches.length > 0) {
@@ -474,6 +486,49 @@ export default defineComponent({
           console.error("Failed to parse video data:", e);
         }
       }
+      
+      // Second, check for plain video URLs (YouTube, Vimeo, direct video)
+      // Reset regex lastIndex to ensure correct matching
+      youtubeUrlRE.lastIndex = 0;
+      vimeoUrlRE.lastIndex = 0;
+      directVideoUrlRE.lastIndex = 0;
+      
+      // Check for YouTube URLs
+      const youtubeMatch = youtubeUrlRE.exec(content);
+      if (youtubeMatch) {
+        const videoId = youtubeMatch[1];
+        return {
+          type: 'video',
+          url: youtubeMatch[0],
+          provider: 'YouTube',
+          embedUrl: `https://www.youtube.com/embed/${videoId}`,
+          thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+        };
+      }
+      
+      // Check for Vimeo URLs
+      const vimeoMatch = vimeoUrlRE.exec(content);
+      if (vimeoMatch) {
+        const videoId = vimeoMatch[1];
+        return {
+          type: 'video',
+          url: vimeoMatch[0],
+          provider: 'Vimeo',
+          embedUrl: `https://player.vimeo.com/video/${videoId}`
+        };
+      }
+      
+      // Check for direct video URLs (mp4, webm, ogg)
+      const directMatch = directVideoUrlRE.exec(content);
+      if (directMatch) {
+        return {
+          type: 'video',
+          url: directMatch[0],
+          provider: 'Direct',
+          embedUrl: directMatch[0]
+        };
+      }
+      
       return null;
     }
 

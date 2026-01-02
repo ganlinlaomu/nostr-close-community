@@ -2,12 +2,25 @@
   <div class="video-player-container">
     <!-- Lazy loading: show poster/thumbnail until user clicks -->
     <div v-if="!playerLoaded" class="video-poster" @click="loadPlayer" @keyup.enter="loadPlayer" tabindex="0" role="button" :aria-label="`播放视频 - ${videoData.provider}`">
-      <div class="poster-content">
+      <!-- Show actual thumbnail if available -->
+      <img 
+        v-if="thumbnailUrl" 
+        :src="thumbnailUrl" 
+        class="video-thumbnail" 
+        :alt="`${videoData.provider} 视频缩略图`"
+        @error="onThumbnailError"
+      />
+      <!-- Fallback to generic poster if no thumbnail -->
+      <div v-else class="poster-content">
         <div class="play-button">▶</div>
         <div class="video-meta">
           <div class="provider-badge">{{ videoData.provider }}</div>
           <div class="video-url-display">{{ truncateUrl(videoData.url) }}</div>
         </div>
+      </div>
+      <!-- Play button overlay (always shown on top of thumbnail) -->
+      <div class="play-button-overlay">
+        <div class="play-button-large">▶</div>
       </div>
     </div>
 
@@ -55,13 +68,14 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, PropType } from 'vue';
+import { defineComponent, ref, PropType, computed } from 'vue';
 
 export interface VideoData {
   type: 'video';
   url: string;
   provider: string;
   embedUrl?: string;
+  thumbnail?: string;
 }
 
 export default defineComponent({
@@ -74,9 +88,37 @@ export default defineComponent({
   },
   setup(props) {
     const playerLoaded = ref(false);
+    const thumbnailError = ref(false);
+
+    const thumbnailUrl = computed(() => {
+      // If thumbnail failed to load, return null to show fallback
+      if (thumbnailError.value) return null;
+      
+      // Use explicit thumbnail if provided
+      if (props.videoData.thumbnail) {
+        return props.videoData.thumbnail;
+      }
+      
+      // Generate thumbnail for YouTube videos
+      if (props.videoData.provider === 'YouTube' && props.videoData.embedUrl) {
+        const videoIdMatch = props.videoData.embedUrl.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
+        if (videoIdMatch) {
+          return `https://img.youtube.com/vi/${videoIdMatch[1]}/hqdefault.jpg`;
+        }
+      }
+      
+      // For Vimeo, we can't easily get thumbnails without API
+      // For direct videos, use video element's poster (but we need the URL)
+      // For now, return null for these cases
+      return null;
+    });
 
     function loadPlayer() {
       playerLoaded.value = true;
+    }
+
+    function onThumbnailError() {
+      thumbnailError.value = true;
     }
 
     function truncateUrl(url: string, maxLength = 50): string {
@@ -87,7 +129,9 @@ export default defineComponent({
     return {
       playerLoaded,
       loadPlayer,
-      truncateUrl
+      truncateUrl,
+      thumbnailUrl,
+      onThumbnailError
     };
   }
 });
@@ -109,6 +153,7 @@ export default defineComponent({
   background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
   cursor: pointer;
   transition: all 0.3s ease;
+  overflow: hidden;
 }
 
 .video-poster:hover {
@@ -118,6 +163,16 @@ export default defineComponent({
 .video-poster:focus {
   outline: 2px solid #3b82f6;
   outline-offset: 2px;
+}
+
+.video-thumbnail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .poster-content {
@@ -148,6 +203,35 @@ export default defineComponent({
 
 .video-poster:hover .play-button {
   background: rgba(59, 130, 246, 1);
+  transform: scale(1.1);
+}
+
+.play-button-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.play-button-large {
+  font-size: 64px;
+  color: white;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 50%;
+  width: 100px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  padding-left: 6px; /* Visual centering for play icon */
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.video-poster:hover .play-button-large {
+  background: rgba(59, 130, 246, 0.9);
   transform: scale(1.1);
 }
 
