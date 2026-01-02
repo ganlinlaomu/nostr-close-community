@@ -39,8 +39,11 @@
           <!-- 图片预览（9宫格展示多图） -->
           <PostImagePreview :content="m.content" :showAll="true" :max="9" style="margin-top:8px;" />
 
-          <!-- 如果仍需显示文本（去除了图片 URL/Markdown），使用 textWithoutImages -->
-          <div v-if="textWithoutImages(m.content)" class="message-text">{{ textWithoutImages(m.content) }}</div>
+          <!-- 视频预览 -->
+          <VideoPlayer v-if="extractVideoData(m.content)" :videoData="extractVideoData(m.content)" style="margin-top:8px;" />
+
+          <!-- 如果仍需显示文本（去除了图片 URL/Markdown），使用 textWithoutVideos -->
+          <div v-if="textWithoutVideos(m.content)" class="message-text">{{ textWithoutVideos(m.content) }}</div>
           
           <!-- 操作按钮：点赞和评论 -->
           <div class="message-actions">
@@ -166,6 +169,7 @@ import { useInteractionsStore } from "@/stores/interactions";
 import { logger } from "@/utils/logger";
 import { formatRelativeTime } from "@/utils/format";
 import PostImagePreview from "@/components/PostImagePreview.vue";
+import VideoPlayer from "@/components/VideoPlayer.vue";
 import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
 import { useRoute } from "vue-router";
 import { usePullToRefresh } from "@/components/usePullToRefresh";
@@ -180,13 +184,16 @@ const plainImgUrlRE = /(https?:\/\/[^\s)]+?\.(?:png|jpe?g|gif|webp|avif|svg)(?:\
 // while PostImagePreview handles the actual decryption and rendering
 const mdEncryptedImageRE = /!\[[^\]]*?\]\(\s*(blossom\+aesgcm:[^\s)]+)\s*\)/gi;
 
+// Video pattern: [video:{json}]
+const videoDataRE = /\[video:(\{[^\]]+\})\]/gi;
+
 // Constants for time calculations
 const SECONDS_PER_DAY = 24 * 60 * 60;
 const THREE_DAYS_IN_SECONDS = 3 * SECONDS_PER_DAY;
 
 export default defineComponent({
   name: "Home",
-  components: { PostImagePreview },
+  components: { PostImagePreview, VideoPlayer },
   setup() {
     const friends = useFriendsStore();
     const keys = useKeyStore();
@@ -430,9 +437,34 @@ export default defineComponent({
       s = s.replace(mdEncryptedImageRE, "");
       // remove plain image urls
       s = s.replace(plainImgUrlRE, "");
+      // remove video data
+      s = s.replace(videoDataRE, "");
       // collapse multiple blank lines and trim
       s = s.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
       return s;
+    }
+
+    function textWithoutVideos(content: string): string {
+      return textWithoutImages(content);
+    }
+
+    function extractVideoData(content: string): any {
+      if (!content) return null;
+      
+      const match = videoDataRE.exec(content);
+      videoDataRE.lastIndex = 0; // Reset regex state
+      
+      if (match && match[1]) {
+        try {
+          const videoData = JSON.parse(match[1]);
+          if (videoData.type === 'video' && videoData.url) {
+            return videoData;
+          }
+        } catch (e) {
+          console.error("Failed to parse video data:", e);
+        }
+      }
+      return null;
     }
 
     // Like functionality
@@ -1132,6 +1164,8 @@ export default defineComponent({
       shortRelay, 
       displayName, 
       textWithoutImages,
+      textWithoutVideos,
+      extractVideoData,
       // Like and comment functions
       toggleLike,
       isLiked,
