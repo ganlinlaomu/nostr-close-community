@@ -2,10 +2,11 @@ import { createRouter, createWebHashHistory, RouteRecordRaw } from "vue-router";
 import { nextTick } from "vue";
 import Login from "@/views/Login.vue";
 import Home from "@/views/Home.vue";
-import PostEditor from "@/views/PostEditor.vue";
-import Friends from "@/views/Friends.vue";
-import Settings from "@/views/Settings.vue";
-import Notifications from "@/views/Notifications.vue";
+// Lazy load less frequently accessed views
+const PostEditor = () => import("@/views/PostEditor.vue");
+const Friends = () => import("@/views/Friends.vue");
+const Settings = () => import("@/views/Settings.vue");
+const Notifications = () => import("@/views/Notifications.vue");
 import { useKeyStore } from "@/stores/keys";
 
 /**

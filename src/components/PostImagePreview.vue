@@ -47,6 +47,7 @@ import { extractImageUrls } from "@/utils/extractImageUrls";
 import { decodeEncryptedImageRef, isEncryptedImageRef } from "@/utils/encryptedImageRef";
 import { base64ToBytes } from "@/nostr/crypto";
 import ImageViewer from "@/components/ImageViewer.vue";
+import { getImageFromCache, storeImageInCache } from "@/utils/imageCache";
 
 interface ImageItem {
   url: string;
@@ -150,7 +151,18 @@ export default defineComponent({
       }
 
       try {
-        // Fetch encrypted blob
+        // Try to get from cache first
+        const cached = await getImageFromCache(item.url);
+        if (cached) {
+          // Cache hit! Use cached blob
+          const objectUrl = URL.createObjectURL(cached.blob);
+          objectUrls.add(objectUrl);
+          images.value[idx].url = objectUrl;
+          images.value[idx].shouldLoad = true;
+          return;
+        }
+
+        // Cache miss, fetch and decrypt
         const response = await fetch(metadata.url);
         if (!response.ok) {
           console.error("Failed to fetch encrypted image:", metadata.url, response.status);
@@ -177,8 +189,15 @@ export default defineComponent({
           encryptedBytes
         );
         
-        // Create object URL from decrypted bytes
+        // Create blob and cache it
         const blob = new Blob([decrypted], { type: metadata.mime });
+        
+        // Store in cache asynchronously (don't wait)
+        storeImageInCache(item.url, blob, metadata.mime).catch(e => {
+          console.warn("Failed to cache image:", e);
+        });
+        
+        // Create object URL from decrypted blob
         const objectUrl = URL.createObjectURL(blob);
         objectUrls.add(objectUrl);
         
