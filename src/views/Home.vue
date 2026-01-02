@@ -197,6 +197,11 @@ const videoUrlPatterns = getVideoUrlRemovalPatterns();
 const SECONDS_PER_DAY = 24 * 60 * 60;
 const THREE_DAYS_IN_SECONDS = 3 * SECONDS_PER_DAY;
 
+// Constants for scroll and layout calculations
+const BOTTOM_NAV_HEIGHT = 80; // Must match --bottom-nav-height in styles.css
+const SCROLL_SAFE_OFFSET = 20; // Extra padding to ensure elements are fully visible
+const SCROLL_CONTAINER_SELECTOR = 'body > #app'; // Main scrollable container
+
 export default defineComponent({
   name: "Home",
   components: { PostImagePreview, VideoPlayer },
@@ -632,10 +637,45 @@ export default defineComponent({
   }
 
   // ④ 滚动 + 高亮
-  el.scrollIntoView({
-    behavior: "smooth",
-    block: "center"
-  });
+  // Use custom scroll calculation to prevent bottom bar from disappearing
+  // when scrolling to elements near the bottom
+  await nextTick();
+  
+  // Get the scrollable container
+  const scrollContainer = document.querySelector(SCROLL_CONTAINER_SELECTOR) as HTMLElement | null;
+  if (scrollContainer) {
+    const rect = el.getBoundingClientRect();
+    const containerRect = scrollContainer.getBoundingClientRect();
+    
+    // Calculate where the element currently is in the viewport
+    const elementTop = rect.top - containerRect.top;
+    const elementBottom = rect.bottom - containerRect.top;
+    
+    // Calculate safe viewing area (viewport minus bottom bar)
+    const viewportHeight = containerRect.height;
+    const safeViewportBottom = viewportHeight - BOTTOM_NAV_HEIGHT - SCROLL_SAFE_OFFSET;
+    
+    // Determine if element needs scrolling
+    if (elementTop < SCROLL_SAFE_OFFSET) {
+      // Element is above viewport, scroll to bring it to top with safe offset
+      const targetTop = scrollContainer.scrollTop + elementTop - SCROLL_SAFE_OFFSET;
+      scrollContainer.scrollTo({ top: targetTop, behavior: 'smooth' });
+    } else if (elementBottom > safeViewportBottom) {
+      // Element extends into bottom bar area
+      // Try to scroll to show it at the top of safe area
+      const desiredScrollDelta = elementTop - SCROLL_SAFE_OFFSET;
+      const targetTop = scrollContainer.scrollTop + desiredScrollDelta;
+      scrollContainer.scrollTo({ top: targetTop, behavior: 'smooth' });
+    }
+    // If element is already fully visible in safe area, no scroll needed
+  } else {
+    // Fallback to scrollIntoView if container not found
+    // Use instant behavior to match custom scroll implementation
+    el.scrollIntoView({
+      behavior: "auto",
+      block: "start"
+    });
+  }
 
   el.classList.add("highlight");
   setTimeout(() => el.classList.remove("highlight"), 1500);

@@ -404,7 +404,11 @@ export default defineComponent({
 <style scoped>
 .friends-container {
   position: relative;
+  /* Add top padding to prevent header from being pushed out of screen */
+  padding-top: 12px;
   padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+  /* Ensure proper spacing and prevent content overlap */
+  min-height: 100vh;
 }
 
 .sync-status {
