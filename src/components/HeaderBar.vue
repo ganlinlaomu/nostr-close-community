@@ -125,6 +125,13 @@ export default defineComponent({
   box-shadow: 0 -1px 8px rgba(0, 0, 0, 0.06);
   padding-top: 12px;
   padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  /* Force hardware acceleration and prevent disappearing */
+  transform: translateZ(0);
+  will-change: transform;
+  -webkit-transform: translateZ(0);
+  /* Ensure visibility */
+  visibility: visible;
+  opacity: 1;
 }
 .nav-item {
   display: flex;

@@ -75,6 +75,7 @@ function go(n: any) {
 <style scoped>
 .notifications-page {
   padding: 12px;
+  padding-bottom: calc(12px + var(--bottom-nav-height) + env(safe-area-inset-bottom));
 }
 
 .page-header {
