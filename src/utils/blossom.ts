@@ -377,28 +377,33 @@ export async function uploadImageToBlossomWithFallback(
     const server = randomizedServers[i];
     const serverUrl = normalizeBlossomUploadUrl(server.url);
     
+    // Temporarily override localStorage for this upload attempt
+    const originalUrl = localStorage.getItem("blossom_upload_url");
+    const originalToken = localStorage.getItem("blossom_token");
+    
     try {
-      // Temporarily override localStorage for this upload attempt
-      const originalUrl = localStorage.getItem("blossom_upload_url");
-      const originalToken = localStorage.getItem("blossom_token");
-      
       localStorage.setItem("blossom_upload_url", serverUrl);
       localStorage.setItem("blossom_token", server.token || "");
       
-      try {
-        // Attempt upload
-        const result = await uploadImageToBlossom(file, options);
-        
-        console.log(`Upload succeeded to ${serverUrl} (attempt ${i + 1}/${randomizedServers.length})`);
-        return { ...result, serverUsed: serverUrl };
-      } finally {
-        // Restore original values regardless of success or failure
-        if (originalUrl !== null) localStorage.setItem("blossom_upload_url", originalUrl);
-        else localStorage.removeItem("blossom_upload_url");
-        if (originalToken !== null) localStorage.setItem("blossom_token", originalToken);
-        else localStorage.removeItem("blossom_token");
-      }
+      // Attempt upload (authentication handled by signEvent callback)
+      const result = await uploadImageToBlossom(file, options);
+      
+      console.log(`Upload succeeded to ${serverUrl} (attempt ${i + 1}/${randomizedServers.length})`);
+      
+      // Restore original values before returning
+      if (originalUrl !== null) localStorage.setItem("blossom_upload_url", originalUrl);
+      else localStorage.removeItem("blossom_upload_url");
+      if (originalToken !== null) localStorage.setItem("blossom_token", originalToken);
+      else localStorage.removeItem("blossom_token");
+      
+      return { ...result, serverUsed: serverUrl };
     } catch (err: any) {
+      // Restore original values after failure
+      if (originalUrl !== null) localStorage.setItem("blossom_upload_url", originalUrl);
+      else localStorage.removeItem("blossom_upload_url");
+      if (originalToken !== null) localStorage.setItem("blossom_token", originalToken);
+      else localStorage.removeItem("blossom_token");
+      
       // Log error and try next server
       const errorMsg = err && err.message ? err.message : String(err);
       errors.push({ server: serverUrl, error: errorMsg });
