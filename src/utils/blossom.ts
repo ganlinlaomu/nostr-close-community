@@ -389,16 +389,10 @@ export async function uploadImageToBlossomWithFallback(
         // Attempt upload
         const result = await uploadImageToBlossom(file, options);
         
-        // Success! Restore original values and return
-        if (originalUrl !== null) localStorage.setItem("blossom_upload_url", originalUrl);
-        else localStorage.removeItem("blossom_upload_url");
-        if (originalToken !== null) localStorage.setItem("blossom_token", originalToken);
-        else localStorage.removeItem("blossom_token");
-        
         console.log(`Upload succeeded to ${serverUrl} (attempt ${i + 1}/${randomizedServers.length})`);
         return { ...result, serverUsed: serverUrl };
       } finally {
-        // Restore original values even if upload fails
+        // Restore original values regardless of success or failure
         if (originalUrl !== null) localStorage.setItem("blossom_upload_url", originalUrl);
         else localStorage.removeItem("blossom_upload_url");
         if (originalToken !== null) localStorage.setItem("blossom_token", originalToken);
