@@ -26,6 +26,8 @@ let swRegistration: ServiceWorkerRegistration | null = null;
 // Check for pending update messages before component mount
 const PENDING_UPDATE_KEY = '_pending_sw_update';
 const UPDATING_IN_PROGRESS_KEY = '_update_in_progress';
+const UPDATE_TIMESTAMP_KEY = '_update_timestamp';
+const UPDATE_GRACE_PERIOD_MS = 10000; // 10 seconds
 
 const handleUpdate = async () => {
   updating.value = true;
@@ -35,7 +37,7 @@ const handleUpdate = async () => {
     sessionStorage.setItem(UPDATING_IN_PROGRESS_KEY, 'true');
     
     // Also set a timestamp to ignore SW messages for a while after reload
-    sessionStorage.setItem('_update_timestamp', Date.now().toString());
+    sessionStorage.setItem(UPDATE_TIMESTAMP_KEY, Date.now().toString());
     
     // Handle version update (clear old caches, etc.)
     await handleVersionUpdate();
@@ -56,7 +58,7 @@ const handleUpdate = async () => {
     message.value = '更新失败，请手动刷新页面';
     // Clear the flag on failure so user can try again
     sessionStorage.removeItem(UPDATING_IN_PROGRESS_KEY);
-    sessionStorage.removeItem('_update_timestamp');
+    sessionStorage.removeItem(UPDATE_TIMESTAMP_KEY);
   }
 };
 
@@ -106,22 +108,22 @@ onMounted(() => {
     console.log('[UpdateNotification] Clearing update-in-progress flag after reload');
     sessionStorage.removeItem(UPDATING_IN_PROGRESS_KEY);
     sessionStorage.removeItem(PENDING_UPDATE_KEY);
-    sessionStorage.removeItem('_update_timestamp');
+    sessionStorage.removeItem(UPDATE_TIMESTAMP_KEY);
     return; // Don't show notification
   }
   
   // Check if we just completed a user-triggered update (within last 10 seconds)
-  const updateTimestamp = sessionStorage.getItem('_update_timestamp');
+  const updateTimestamp = sessionStorage.getItem(UPDATE_TIMESTAMP_KEY);
   if (updateTimestamp) {
     const timeSinceUpdate = Date.now() - parseInt(updateTimestamp);
-    if (timeSinceUpdate < 10000) { // 10 seconds grace period
+    if (timeSinceUpdate < UPDATE_GRACE_PERIOD_MS) {
       console.log('[UpdateNotification] Recently updated, ignoring pending updates');
       sessionStorage.removeItem(PENDING_UPDATE_KEY);
-      sessionStorage.removeItem('_update_timestamp');
+      sessionStorage.removeItem(UPDATE_TIMESTAMP_KEY);
       return; // Don't show notification
     }
     // Clean up old timestamp
-    sessionStorage.removeItem('_update_timestamp');
+    sessionStorage.removeItem(UPDATE_TIMESTAMP_KEY);
   }
   
   // Check if there was a pending update before mount

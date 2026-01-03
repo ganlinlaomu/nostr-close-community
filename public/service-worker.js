@@ -16,6 +16,9 @@ const ASSETS = [
 const HTML_CACHE_NAME = `html-${CACHE_NAME}`;
 const ASSETS_CACHE_NAME = `assets-${CACHE_NAME}`;
 
+// Cache name prefixes for update detection
+const CACHE_PREFIXES = ['closed-community-pwa-', 'html-', 'assets-'];
+
 self.addEventListener('install', event => {
   console.log('[SW] Installing version:', VERSION, BUILD_TIME);
   event.waitUntil(
@@ -40,7 +43,7 @@ self.addEventListener('activate', event => {
         const oldCaches = keys.filter(key => 
           key !== ASSETS_CACHE_NAME && 
           key !== HTML_CACHE_NAME &&
-          (key.startsWith('closed-community-pwa-') || key.startsWith('html-') || key.startsWith('assets-'))
+          CACHE_PREFIXES.some(prefix => key.startsWith(prefix))
         );
         const isUpdate = oldCaches.length > 0;
         
