@@ -2,6 +2,10 @@ import Dexie from "dexie";
 
 export const db = new Dexie("closed_community_db");
 
+// Current app version - should match package.json
+export const APP_VERSION = "0.1.0";
+export const DB_VERSION = 2;
+
 db.version(1).stores({
   messages: "id, created_at, pubkey",
   friends: "pubkey, name, group",
