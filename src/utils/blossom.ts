@@ -171,6 +171,8 @@ function normalizeAuthEventForSigning(evt: any, defaultExpirySeconds = 3600) {
  * uploadImageToBlossom
  * - file: File to upload
  * - options:
+ *    uploadUrl?: string (override the configured server URL)
+ *    uploadToken?: string (override the configured token)
  *    signEvent?: (evt) => signedEventObject
  *    onProgress?: (percent:number) => void
  *    timeoutMs?: number
@@ -178,13 +180,18 @@ function normalizeAuthEventForSigning(evt: any, defaultExpirySeconds = 3600) {
 export async function uploadImageToBlossom(
   file: File,
   options?: {
+    uploadUrl?: string;
+    uploadToken?: string;
     signEvent?: (evt:any) => Promise<any> | any;
     onProgress?: (p:number)=>void;
     timeoutMs?: number;
   }
 ): Promise<{ url: string; sha256?: string; size?: number; type?: string; uploaded?: number }> {
   const cfg = await getBlossomConfig();
-  if (!cfg.url) throw makeDetailedError("未配置 blossom_upload_url");
+  const uploadUrl = options?.uploadUrl ?? cfg.url;
+  const uploadToken = options?.uploadToken ?? cfg.token ?? "";
+  
+  if (!uploadUrl) throw makeDetailedError("未配置 blossom_upload_url");
 
   const timeoutMs = options?.timeoutMs ?? cfg.timeoutMs;
   const size = file.size;
@@ -197,10 +204,10 @@ export async function uploadImageToBlossom(
     "X-Content-Length": String(size),
     "X-Content-Type": type
   };
-  if (cfg.token) baseHeaders["Authorization"] = cfg.token;
+  if (uploadToken) baseHeaders["Authorization"] = uploadToken;
 
   // 1) HEAD probe without auth
-  let head = await headProbe(cfg.url, baseHeaders);
+  let head = await headProbe(uploadUrl, baseHeaders);
 
   // 2) If server requires auth (401/403) and signEvent provided, create authorization event, sign it,
   //    then put Authorization: Nostr <base64(json)> header and retry HEAD.
@@ -242,11 +249,11 @@ export async function uploadImageToBlossom(
     // If config.token is set as Authorization bearer, keep it in a separate header name scenario is unlikely.
     // We send the signed event in configured header name (usually "Authorization")
     headersWithAuth[cfg.authHeaderName] = authorizationHeaderValue;
-    // If there was also a token in cfg.token and cfg.authHeaderName !== "Authorization", keep Authorization token too
-    if (cfg.token && cfg.authHeaderName !== "Authorization") {
-      headersWithAuth["Authorization"] = cfg.token;
+    // If there was also a token in uploadToken and cfg.authHeaderName !== "Authorization", keep Authorization token too
+    if (uploadToken && cfg.authHeaderName !== "Authorization") {
+      headersWithAuth["Authorization"] = uploadToken;
     }
-    head = await headProbe(cfg.url, headersWithAuth);
+    head = await headProbe(uploadUrl, headersWithAuth);
   }
 
   if (!head.ok) {
@@ -265,11 +272,11 @@ export async function uploadImageToBlossom(
     };
 
     try {
-      xhr.open("PUT", cfg.url, true);
+      xhr.open("PUT", uploadUrl, true);
       try { xhr.setRequestHeader("Content-Type", type); } catch {}
-      // If cfg.token is present, keep Authorization header as token unless we used Authorization for signed event.
-      if (cfg.token && (!authorizationHeaderValue || cfg.authHeaderName !== "Authorization")) {
-        try { xhr.setRequestHeader("Authorization", cfg.token); } catch {}
+      // If uploadToken is present, keep Authorization header as token unless we used Authorization for signed event.
+      if (uploadToken && (!authorizationHeaderValue || cfg.authHeaderName !== "Authorization")) {
+        try { xhr.setRequestHeader("Authorization", uploadToken); } catch {}
       }
       if (authorizationHeaderValue) {
         try { xhr.setRequestHeader(cfg.authHeaderName, authorizationHeaderValue); } catch {}
@@ -364,31 +371,15 @@ export async function uploadImageToBlossomWithFallback(
     const serverUrl = normalizeBlossomUploadUrl(server.url);
     
     try {
-      // Temporarily override localStorage for this upload attempt
-      const originalUrl = localStorage.getItem("blossom_upload_url");
-      const originalToken = localStorage.getItem("blossom_token");
+      // Attempt upload with explicit server URL and token
+      const result = await uploadImageToBlossom(file, {
+        ...options,
+        uploadUrl: serverUrl,
+        uploadToken: server.token || ""
+      });
       
-      localStorage.setItem("blossom_upload_url", serverUrl);
-      localStorage.setItem("blossom_token", server.token || "");
-      
-      try {
-        // Attempt upload
-        const result = await uploadImageToBlossom(file, options);
-        
-        // Success! Restore original values and return
-        if (originalUrl !== null) localStorage.setItem("blossom_upload_url", originalUrl);
-        else localStorage.removeItem("blossom_upload_url");
-        if (originalToken !== null) localStorage.setItem("blossom_token", originalToken);
-        else localStorage.removeItem("blossom_token");
-        
-        return { ...result, serverUsed: serverUrl };
-      } finally {
-        // Restore original values even if upload fails
-        if (originalUrl !== null) localStorage.setItem("blossom_upload_url", originalUrl);
-        else localStorage.removeItem("blossom_upload_url");
-        if (originalToken !== null) localStorage.setItem("blossom_token", originalToken);
-        else localStorage.removeItem("blossom_token");
-      }
+      // Success! Return result with server info
+      return { ...result, serverUsed: serverUrl };
     } catch (err: any) {
       // Log error and try next server
       const errorMsg = err && err.message ? err.message : String(err);
