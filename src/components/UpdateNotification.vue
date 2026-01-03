@@ -115,7 +115,7 @@ onMounted(() => {
   // Check if we just completed a user-triggered update (within last 10 seconds)
   const updateTimestamp = sessionStorage.getItem(UPDATE_TIMESTAMP_KEY);
   if (updateTimestamp) {
-    const timeSinceUpdate = Date.now() - parseInt(updateTimestamp);
+    const timeSinceUpdate = Date.now() - Number(updateTimestamp);
     if (timeSinceUpdate < UPDATE_GRACE_PERIOD_MS) {
       console.log('[UpdateNotification] Recently updated, ignoring pending updates');
       sessionStorage.removeItem(PENDING_UPDATE_KEY);
