@@ -188,8 +188,8 @@ export async function uploadImageToBlossom(
   }
 ): Promise<{ url: string; sha256?: string; size?: number; type?: string; uploaded?: number }> {
   const cfg = await getBlossomConfig();
-  const uploadUrl = options?.uploadUrl || cfg.url;
-  const uploadToken = options?.uploadToken !== undefined ? options.uploadToken : (cfg.token || "");
+  const uploadUrl = options?.uploadUrl ?? cfg.url;
+  const uploadToken = options?.uploadToken ?? cfg.token ?? "";
   
   if (!uploadUrl) throw makeDetailedError("未配置 blossom_upload_url");
 
