@@ -20,7 +20,9 @@ if (versionChanged) {
     window.location.reload();
   }).catch((e) => {
     console.error("[main] Failed to handle version update", e);
-    // Continue anyway - user can manually refresh
+    // Force reload anyway - better to try than to leave broken state
+    alert("检测到应用更新，正在刷新页面...");
+    window.location.reload();
   });
   
   // Don't continue with app initialization

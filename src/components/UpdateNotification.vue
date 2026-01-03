@@ -23,12 +23,18 @@ const message = ref('应用已更新到新版本，点击刷新以获得最佳�
 
 let swRegistration: ServiceWorkerRegistration | null = null;
 
+// Check for pending update messages before component mount
+const PENDING_UPDATE_KEY = '_pending_sw_update';
+
 const handleUpdate = async () => {
   updating.value = true;
   
   try {
     // Handle version update (clear old caches, etc.)
     await handleVersionUpdate();
+    
+    // Clear pending update flag
+    sessionStorage.removeItem(PENDING_UPDATE_KEY);
     
     // Wait a moment for cleanup to complete
     await new Promise(resolve => setTimeout(resolve, 500));
@@ -57,6 +63,8 @@ const handleSWMessage = (event: MessageEvent) => {
   if (event.data && event.data.type === 'SW_UPDATED') {
     console.log('[UpdateNotification] SW updated', event.data);
     showUpdate.value = true;
+    // Store the update state in case page reloads before user sees it
+    sessionStorage.setItem(PENDING_UPDATE_KEY, 'true');
   }
 };
 
@@ -64,9 +72,16 @@ const handleControllerChange = () => {
   console.log('[UpdateNotification] Controller changed - new SW active');
   // Don't auto-reload, let user choose
   showUpdate.value = true;
+  sessionStorage.setItem(PENDING_UPDATE_KEY, 'true');
 };
 
 onMounted(() => {
+  // Check if there was a pending update before mount
+  if (sessionStorage.getItem(PENDING_UPDATE_KEY) === 'true') {
+    console.log('[UpdateNotification] Found pending update from before mount');
+    showUpdate.value = true;
+  }
+  
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', handleSWMessage);
     navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);

@@ -91,8 +91,49 @@ export async function clearAllAppData(): Promise<void> {
       console.log("[VersionManager] Unregistered service workers");
     }
     
-    // Note: IndexedDB is handled by Dexie's version management
-    // and will be upgraded automatically
+    // Clear IndexedDB databases
+    if ('indexedDB' in window) {
+      try {
+        // Get all database names (requires IndexedDB v3)
+        const databases = await (window.indexedDB as any).databases?.() || [];
+        await Promise.all(
+          databases.map((db: { name: string }) => {
+            return new Promise((resolve, reject) => {
+              const request = window.indexedDB.deleteDatabase(db.name);
+              request.onsuccess = () => {
+                console.log(`[VersionManager] Deleted database: ${db.name}`);
+                resolve(undefined);
+              };
+              request.onerror = () => reject(request.error);
+              request.onblocked = () => {
+                console.warn(`[VersionManager] Database deletion blocked: ${db.name}`);
+                resolve(undefined); // Continue anyway
+              };
+            });
+          })
+        );
+        
+        // Also try to delete the known database name
+        await new Promise<void>((resolve, reject) => {
+          const request = window.indexedDB.deleteDatabase("closed_community_db");
+          request.onsuccess = () => {
+            console.log("[VersionManager] Deleted closed_community_db");
+            resolve();
+          };
+          request.onerror = () => {
+            console.warn("[VersionManager] Failed to delete closed_community_db");
+            resolve(); // Continue anyway
+          };
+          request.onblocked = () => {
+            console.warn("[VersionManager] Database deletion blocked");
+            resolve(); // Continue anyway
+          };
+        });
+      } catch (e) {
+        console.warn("[VersionManager] IndexedDB cleanup had issues", e);
+        // Continue anyway - best effort
+      }
+    }
     
     console.log("[VersionManager] All app data cleared successfully");
   } catch (e) {

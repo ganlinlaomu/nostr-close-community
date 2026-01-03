@@ -31,13 +31,13 @@ let swContent = fs.readFileSync(SW_PATH, 'utf8');
 
 // Update VERSION
 swContent = swContent.replace(
-  /const VERSION = ['"][\d.]+['"]/,
+  /const VERSION = ['"][^'"]+['"]/,
   `const VERSION = '${version}'`
 );
 
 // Update BUILD_TIME
 swContent = swContent.replace(
-  /const BUILD_TIME = ['"][\d-]+['"]/,
+  /const BUILD_TIME = ['"][^'"]+['"]/,
   `const BUILD_TIME = '${buildTime}'`
 );
 
