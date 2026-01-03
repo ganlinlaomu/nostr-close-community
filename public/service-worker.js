@@ -16,6 +16,9 @@ const ASSETS = [
 const HTML_CACHE_NAME = `html-${CACHE_NAME}`;
 const ASSETS_CACHE_NAME = `assets-${CACHE_NAME}`;
 
+// Cache name prefixes for update detection
+const CACHE_PREFIXES = ['closed-community-pwa-', 'html-', 'assets-'];
+
 self.addEventListener('install', event => {
   console.log('[SW] Installing version:', VERSION, BUILD_TIME);
   event.waitUntil(
@@ -34,30 +37,58 @@ self.addEventListener('activate', event => {
   console.log('[SW] Activating version:', VERSION, BUILD_TIME);
   event.waitUntil(
     Promise.all([
+      // Check if there are existing clients (indicates update, not fresh install)
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }),
       // Delete all old caches
       caches.keys().then(keys => {
-        return Promise.all(
-          keys.map(key => {
-            if (key !== ASSETS_CACHE_NAME && key !== HTML_CACHE_NAME) {
-              console.log('[SW] Deleting old cache:', key);
-              return caches.delete(key);
-            }
-          })
+        const oldCaches = keys.filter(key => 
+          key !== ASSETS_CACHE_NAME && 
+          key !== HTML_CACHE_NAME &&
+          CACHE_PREFIXES.some(prefix => key.startsWith(prefix))
         );
+        
+        console.log('[SW] Old caches found:', oldCaches.length > 0 ? oldCaches : 'none');
+        
+        // Delete old caches - filter to only delete operations
+        const deletePromises = keys
+          .filter(key => key !== ASSETS_CACHE_NAME && key !== HTML_CACHE_NAME)
+          .map(key => {
+            console.log('[SW] Deleting old cache:', key);
+            return caches.delete(key);
+          });
+        
+        return Promise.all(deletePromises).then(() => oldCaches.length > 0);
       }),
       // Take control of all clients immediately
       self.clients.claim()
-    ]).then(() => {
-      // Notify all clients about the update
-      return self.clients.matchAll().then(clients => {
-        clients.forEach(client => {
-          client.postMessage({
-            type: 'SW_UPDATED',
-            version: VERSION,
-            buildTime: BUILD_TIME
+    ]).then(results => {
+      const existingClients = results[0];
+      const hadOldCaches = results[1];
+      
+      // This is an update if:
+      // 1. There are existing clients (page was already loaded with old SW), OR
+      // 2. There were old caches from a previous version
+      const isUpdate = existingClients.length > 0 || hadOldCaches;
+      
+      console.log('[SW] Existing clients:', existingClients.length);
+      console.log('[SW] Had old caches:', hadOldCaches);
+      console.log('[SW] Is update:', isUpdate);
+      
+      // Only notify clients if this is an actual update, not a fresh install
+      if (isUpdate) {
+        console.log('[SW] Notifying clients about update');
+        return self.clients.matchAll().then(clients => {
+          clients.forEach(client => {
+            client.postMessage({
+              type: 'SW_UPDATED',
+              version: VERSION,
+              buildTime: BUILD_TIME
+            });
           });
         });
-      });
+      } else {
+        console.log('[SW] Fresh install, not sending update notification');
+      }
     })
   );
 });
