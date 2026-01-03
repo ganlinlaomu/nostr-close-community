@@ -1215,6 +1215,10 @@ export default defineComponent({
       if (hasNotificationParams(oldQuery) && !hasNotificationParams(newQuery)) {
         notificationJumpDone.value = false;
       }
+      // If new notification jump params arrive, trigger the jump
+      if (hasNotificationParams(newQuery) && !notificationJumpDone.value) {
+        handleNotificationJump();
+      }
     });
 
     onBeforeUnmount(() => {
