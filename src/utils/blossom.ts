@@ -334,8 +334,20 @@ export async function uploadImageToBlossom(
 }
 
 /**
+ * Shuffle an array using Fisher-Yates algorithm
+ */
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+/**
  * uploadImageToBlossomWithFallback
- * Tries to upload to multiple Blossom servers in order until one succeeds.
+ * Tries to upload to multiple Blossom servers in random order until one succeeds.
  * - file: File to upload
  * - options: Same as uploadImageToBlossom plus optional servers list
  * Returns: Upload result from the first successful server
@@ -356,11 +368,13 @@ export async function uploadImageToBlossomWithFallback(
     throw makeDetailedError("未配置 Blossom 图床服务器");
   }
 
+  // Randomize server order to distribute load
+  const randomizedServers = shuffleArray(serverList);
   const errors: Array<{ server: string; error: any }> = [];
   
-  // Try each server in order
-  for (let i = 0; i < serverList.length; i++) {
-    const server = serverList[i];
+  // Try each server in random order
+  for (let i = 0; i < randomizedServers.length; i++) {
+    const server = randomizedServers[i];
     const serverUrl = normalizeBlossomUploadUrl(server.url);
     
     try {
@@ -381,6 +395,7 @@ export async function uploadImageToBlossomWithFallback(
         if (originalToken !== null) localStorage.setItem("blossom_token", originalToken);
         else localStorage.removeItem("blossom_token");
         
+        console.log(`Upload succeeded to ${serverUrl} (attempt ${i + 1}/${randomizedServers.length})`);
         return { ...result, serverUsed: serverUrl };
       } finally {
         // Restore original values even if upload fails
@@ -393,13 +408,13 @@ export async function uploadImageToBlossomWithFallback(
       // Log error and try next server
       const errorMsg = err && err.message ? err.message : String(err);
       errors.push({ server: serverUrl, error: errorMsg });
-      console.warn(`Upload to ${serverUrl} failed (attempt ${i + 1}/${serverList.length}):`, errorMsg);
+      console.warn(`Upload to ${serverUrl} failed (attempt ${i + 1}/${randomizedServers.length}):`, errorMsg);
       
       // If this was the last server, throw combined error
-      if (i === serverList.length - 1) {
+      if (i === randomizedServers.length - 1) {
         const errorSummary = errors.map(e => `${e.server}: ${e.error}`).join("; ");
         throw makeDetailedError(
-          `所有 ${serverList.length} 个 Blossom 服务器均上传失败`,
+          `所有 ${randomizedServers.length} 个 Blossom 服务器均上传失败`,
           { errors, summary: errorSummary }
         );
       }

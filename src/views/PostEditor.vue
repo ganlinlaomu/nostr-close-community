@@ -160,7 +160,7 @@ import { useFriendsStore } from "@/stores/friends";
 import { usePostsStore } from "@/stores/posts";
 import { useMessagesStore } from "@/stores/messages";
 import { useUIStore } from "@/stores/ui";
-import { uploadImageToBlossom, getBlossomConfig } from "@/utils/blossom";
+import { uploadImageToBlossomWithFallback, getBlossomConfig } from "@/utils/blossom";
 import { resizeImageFile } from "@/utils/imageResize";
 
 // Video metadata format constants
@@ -358,8 +358,7 @@ export default defineComponent({
       try {
         // Note: Videos are uploaded directly without resizing (unlike images in startUpload)
         // Video files should not be processed with image resizing logic
-        const descriptor = await uploadImageToBlossom(item.file, {
-          includeAuthIfRequired: true,
+        const descriptor = await uploadImageToBlossomWithFallback(item.file, {
           signEvent: signEventWrapper,
           onProgress: (p:number) => { updateUploadItem(item.id, { progress: p }); }
         });
@@ -510,8 +509,7 @@ export default defineComponent({
           maxSize: 1920,
           quality: 0.82
        });
-        const descriptor = await uploadImageToBlossom(resizedFile, {
-          includeAuthIfRequired: true,
+        const descriptor = await uploadImageToBlossomWithFallback(resizedFile, {
           signEvent: signEventWrapper,
           onProgress: (p:number) => { updateUploadItem(item.id, { progress: p }); }
         });
