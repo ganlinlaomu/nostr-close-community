@@ -49,19 +49,22 @@ self.addEventListener('activate', event => {
         
         console.log('[SW] Old caches found:', oldCaches.length > 0 ? oldCaches : 'none');
         
-        // Delete old caches
-        return Promise.all(
-          keys.map(key => {
-            if (key !== ASSETS_CACHE_NAME && key !== HTML_CACHE_NAME) {
-              console.log('[SW] Deleting old cache:', key);
-              return caches.delete(key);
-            }
-          })
-        ).then(() => oldCaches.length > 0); // Return whether we found old caches
+        // Delete old caches - filter to only delete operations
+        const deletePromises = keys
+          .filter(key => key !== ASSETS_CACHE_NAME && key !== HTML_CACHE_NAME)
+          .map(key => {
+            console.log('[SW] Deleting old cache:', key);
+            return caches.delete(key);
+          });
+        
+        return Promise.all(deletePromises).then(() => oldCaches.length > 0);
       }),
       // Take control of all clients immediately
       self.clients.claim()
-    ]).then(([existingClients, hadOldCaches]) => {
+    ]).then(results => {
+      const existingClients = results[0];
+      const hadOldCaches = results[1];
+      
       // This is an update if:
       // 1. There are existing clients (page was already loaded with old SW), OR
       // 2. There were old caches from a previous version
