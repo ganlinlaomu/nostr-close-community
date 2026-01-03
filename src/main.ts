@@ -6,40 +6,69 @@ import router from "./router";
 
 import { useKeyStore } from "@/stores/keys";
 import { clearExpiredCache } from "@/utils/imageCache";
+import { initVersionTracking, handleVersionUpdate } from "@/utils/versionManager";
 
-const app = createApp(App);
-const pinia = createPinia();
+// 🔍 Check for version changes BEFORE mounting the app
+const versionChanged = initVersionTracking();
 
-app.use(pinia);
-app.use(router);
-
-// 🚀 优先渲染：先 mount，再恢复会话（避免首屏白屏）
-app.mount("#app");
-
-// 异步恢复登录态，不阻塞首屏渲染
-(async () => {
-  const keys = useKeyStore();
-  try {
-    await keys.restoreSession();
-  } catch (e) {
-    console.error("[main] restoreSession failed", e);
-  }
+if (versionChanged) {
+  // Version changed - handle update and reload
+  console.log("[main] Version changed detected, handling update...");
   
-  // Clear expired image cache in background
-  try {
-    await clearExpiredCache();
-  } catch (e) {
-    console.warn("[main] clearExpiredCache failed", e);
-  }
-})();
-
-// register service worker for production
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("/service-worker.js")
-      .catch((err) => {
-        console.warn("Service Worker 注册失败", err);
-      });
+  handleVersionUpdate().then(() => {
+    console.log("[main] Update complete, reloading...");
+    window.location.reload();
+  }).catch((e) => {
+    console.error("[main] Failed to handle version update", e);
+    // Continue anyway - user can manually refresh
   });
+  
+  // Don't continue with app initialization
+  // The page will reload after cleanup
+} else {
+  // Normal app initialization
+  const app = createApp(App);
+  const pinia = createPinia();
+
+  app.use(pinia);
+  app.use(router);
+
+  // 🚀 优先渲染：先 mount，再恢复会话（避免首屏白屏）
+  app.mount("#app");
+
+  // 异步恢复登录态，不阻塞首屏渲染
+  (async () => {
+    const keys = useKeyStore();
+    try {
+      await keys.restoreSession();
+    } catch (e) {
+      console.error("[main] restoreSession failed", e);
+    }
+    
+    // Clear expired image cache in background
+    try {
+      await clearExpiredCache();
+    } catch (e) {
+      console.warn("[main] clearExpiredCache failed", e);
+    }
+  })();
+
+  // register service worker for production
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker
+        .register("/service-worker.js")
+        .then((registration) => {
+          console.log("[main] Service Worker registered successfully");
+          
+          // Check for updates periodically
+          setInterval(() => {
+            registration.update();
+          }, 60000); // Check every 60 seconds
+        })
+        .catch((err) => {
+          console.warn("Service Worker 注册失败", err);
+        });
+    });
+  }
 }

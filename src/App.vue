@@ -1,5 +1,6 @@
 <template>
   <div class="app-root">
+    <UpdateNotification />
     <HeaderBar />
     <router-view v-slot="{ Component }">
       <keep-alive :include="['Home', 'Friends', 'Notifications', 'Settings']">
@@ -16,8 +17,9 @@ import { defineComponent } from "vue";
 import HeaderBar from "@/components/HeaderBar.vue";
 import ToastContainer from "@/components/ToastContainer.vue";
 import PostEditorModal from "@/components/PostEditorModal.vue";
+import UpdateNotification from "@/components/UpdateNotification.vue";
 
 export default defineComponent({
-  components: { HeaderBar, ToastContainer, PostEditorModal }
+  components: { HeaderBar, ToastContainer, PostEditorModal, UpdateNotification }
 });
 </script>
