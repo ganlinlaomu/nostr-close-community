@@ -34,8 +34,20 @@ self.addEventListener('activate', event => {
   console.log('[SW] Activating version:', VERSION, BUILD_TIME);
   event.waitUntil(
     Promise.all([
-      // Delete all old caches
+      // Delete all old caches and check if this is an update
       caches.keys().then(keys => {
+        // Check if there are any old caches (indicates this is an update, not fresh install)
+        const oldCaches = keys.filter(key => 
+          key !== ASSETS_CACHE_NAME && 
+          key !== HTML_CACHE_NAME &&
+          (key.startsWith('closed-community-pwa-') || key.startsWith('html-') || key.startsWith('assets-'))
+        );
+        const isUpdate = oldCaches.length > 0;
+        
+        console.log('[SW] Old caches found:', oldCaches.length > 0 ? oldCaches : 'none');
+        console.log('[SW] Is update:', isUpdate);
+        
+        // Delete old caches
         return Promise.all(
           keys.map(key => {
             if (key !== ASSETS_CACHE_NAME && key !== HTML_CACHE_NAME) {
@@ -43,21 +55,26 @@ self.addEventListener('activate', event => {
               return caches.delete(key);
             }
           })
-        );
+        ).then(() => isUpdate); // Pass isUpdate flag to next step
       }),
       // Take control of all clients immediately
       self.clients.claim()
-    ]).then(() => {
-      // Notify all clients about the update
-      return self.clients.matchAll().then(clients => {
-        clients.forEach(client => {
-          client.postMessage({
-            type: 'SW_UPDATED',
-            version: VERSION,
-            buildTime: BUILD_TIME
+    ]).then(([isUpdate]) => {
+      // Only notify clients if this is an actual update, not a fresh install
+      if (isUpdate) {
+        console.log('[SW] Notifying clients about update');
+        return self.clients.matchAll().then(clients => {
+          clients.forEach(client => {
+            client.postMessage({
+              type: 'SW_UPDATED',
+              version: VERSION,
+              buildTime: BUILD_TIME
+            });
           });
         });
-      });
+      } else {
+        console.log('[SW] Fresh install, not sending update notification');
+      }
     })
   );
 });
