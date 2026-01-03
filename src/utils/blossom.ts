@@ -346,6 +346,16 @@ function shuffleArray<T>(array: T[]): T[] {
 }
 
 /**
+ * Restore localStorage values to their original state
+ */
+function restoreLocalStorage(originalUrl: string | null, originalToken: string | null) {
+  if (originalUrl !== null) localStorage.setItem("blossom_upload_url", originalUrl);
+  else localStorage.removeItem("blossom_upload_url");
+  if (originalToken !== null) localStorage.setItem("blossom_token", originalToken);
+  else localStorage.removeItem("blossom_token");
+}
+
+/**
  * uploadImageToBlossomWithFallback
  * Tries to upload to multiple Blossom servers in random order until one succeeds.
  * - file: File to upload
@@ -391,18 +401,12 @@ export async function uploadImageToBlossomWithFallback(
       console.log(`Upload succeeded to ${serverUrl} (attempt ${i + 1}/${randomizedServers.length})`);
       
       // Restore original values before returning
-      if (originalUrl !== null) localStorage.setItem("blossom_upload_url", originalUrl);
-      else localStorage.removeItem("blossom_upload_url");
-      if (originalToken !== null) localStorage.setItem("blossom_token", originalToken);
-      else localStorage.removeItem("blossom_token");
+      restoreLocalStorage(originalUrl, originalToken);
       
       return { ...result, serverUsed: serverUrl };
     } catch (err: any) {
       // Restore original values after failure
-      if (originalUrl !== null) localStorage.setItem("blossom_upload_url", originalUrl);
-      else localStorage.removeItem("blossom_upload_url");
-      if (originalToken !== null) localStorage.setItem("blossom_token", originalToken);
-      else localStorage.removeItem("blossom_token");
+      restoreLocalStorage(originalUrl, originalToken);
       
       // Log error and try next server
       const errorMsg = err && err.message ? err.message : String(err);
