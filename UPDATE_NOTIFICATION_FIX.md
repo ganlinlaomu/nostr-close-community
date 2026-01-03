@@ -15,18 +15,23 @@
 **问题根源**: Service Worker 在每次激活时都会向所有客户端发送 `SW_UPDATED` 消息，即使是首次安装也会触发。
 
 **解决方案**: 
-- 在激活时检查是否存在旧缓存
-- 只有存在旧缓存时（表示是更新而非首次安装），才发送 `SW_UPDATED` 消息
-- 通过检查 cache keys 来判断是否为更新
+- 在激活时检查两个条件：1) 是否存在旧缓存，2) 是否有已存在的客户端页面
+- 只有同时满足"无旧缓存 AND 无现有客户端"时才认为是首次安装
+- 其他情况都视为更新，需要发送 `SW_UPDATED` 消息
 
 ```javascript
+// 检查现有客户端（表示页面已加载，这是更新而非首次安装）
+self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+
 // 检查是否存在旧缓存
 const oldCaches = keys.filter(key => 
   key !== ASSETS_CACHE_NAME && 
   key !== HTML_CACHE_NAME &&
   CACHE_PREFIXES.some(prefix => key.startsWith(prefix))
 );
-const isUpdate = oldCaches.length > 0;
+
+// 这是更新如果：存在客户端 OR 存在旧缓存
+const isUpdate = existingClients.length > 0 || hadOldCaches;
 
 // 只在真正更新时通知客户端
 if (isUpdate) {

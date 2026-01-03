@@ -37,18 +37,17 @@ self.addEventListener('activate', event => {
   console.log('[SW] Activating version:', VERSION, BUILD_TIME);
   event.waitUntil(
     Promise.all([
-      // Delete all old caches and check if this is an update
+      // Check if there are existing clients (indicates update, not fresh install)
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }),
+      // Delete all old caches
       caches.keys().then(keys => {
-        // Check if there are any old caches (indicates this is an update, not fresh install)
         const oldCaches = keys.filter(key => 
           key !== ASSETS_CACHE_NAME && 
           key !== HTML_CACHE_NAME &&
           CACHE_PREFIXES.some(prefix => key.startsWith(prefix))
         );
-        const isUpdate = oldCaches.length > 0;
         
         console.log('[SW] Old caches found:', oldCaches.length > 0 ? oldCaches : 'none');
-        console.log('[SW] Is update:', isUpdate);
         
         // Delete old caches
         return Promise.all(
@@ -58,11 +57,20 @@ self.addEventListener('activate', event => {
               return caches.delete(key);
             }
           })
-        ).then(() => isUpdate); // Pass isUpdate flag to next step
+        ).then(() => oldCaches.length > 0); // Return whether we found old caches
       }),
       // Take control of all clients immediately
       self.clients.claim()
-    ]).then(([isUpdate]) => {
+    ]).then(([existingClients, hadOldCaches]) => {
+      // This is an update if:
+      // 1. There are existing clients (page was already loaded with old SW), OR
+      // 2. There were old caches from a previous version
+      const isUpdate = existingClients.length > 0 || hadOldCaches;
+      
+      console.log('[SW] Existing clients:', existingClients.length);
+      console.log('[SW] Had old caches:', hadOldCaches);
+      console.log('[SW] Is update:', isUpdate);
+      
       // Only notify clients if this is an actual update, not a fresh install
       if (isUpdate) {
         console.log('[SW] Notifying clients about update');
