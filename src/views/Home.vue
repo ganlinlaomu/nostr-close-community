@@ -573,14 +573,6 @@ export default defineComponent({
       }
     }
 
-    function getHashQuery() {
-  const hash = window.location.hash; // "#/?mid=xxx&iid=yyy"
-  const idx = hash.indexOf("?");
-  if (idx === -1) return {};
-  const qs = new URLSearchParams(hash.slice(idx + 1));
-  return Object.fromEntries(qs.entries());
-}
-
     // Helper to check if query has notification params
     function hasNotificationParams(query: any): boolean {
       return !!(query.mid || query.iid);
@@ -588,9 +580,8 @@ export default defineComponent({
 
 
   async function handleNotificationJump() {
-  const q = getHashQuery();
-  const mid = q.mid as string | undefined;
-  const iid = q.iid as string | undefined;
+  const mid = route.query.mid as string | undefined;
+  const iid = route.query.iid as string | undefined;
  
 
 
@@ -1223,6 +1214,10 @@ export default defineComponent({
       // If we had notification jump params but they're now gone, reset the state
       if (hasNotificationParams(oldQuery) && !hasNotificationParams(newQuery)) {
         notificationJumpDone.value = false;
+      }
+      // If new notification jump params arrive, trigger the jump
+      if (hasNotificationParams(newQuery) && !notificationJumpDone.value) {
+        handleNotificationJump();
       }
     });
 
