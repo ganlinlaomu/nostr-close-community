@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/update-sw-version.js && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
