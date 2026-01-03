@@ -5,6 +5,7 @@ import "./styles.css";
 import router from "./router";
 
 import { useKeyStore } from "@/stores/keys";
+import { clearExpiredCache } from "@/utils/imageCache";
 
 const app = createApp(App);
 const pinia = createPinia();
@@ -22,6 +23,13 @@ app.mount("#app");
     await keys.restoreSession();
   } catch (e) {
     console.error("[main] restoreSession failed", e);
+  }
+  
+  // Clear expired image cache in background
+  try {
+    await clearExpiredCache();
+  } catch (e) {
+    console.warn("[main] clearExpiredCache failed", e);
   }
 })();
 

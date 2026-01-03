@@ -172,7 +172,7 @@ import { useFriendsStore } from "@/stores/friends";
 import { usePostsStore } from "@/stores/posts";
 import { useMessagesStore } from "@/stores/messages";
 import { useUIStore } from "@/stores/ui";
-import { uploadImageToBlossom, getBlossomConfig } from "@/utils/blossom";
+import { uploadImageToBlossomWithFallback, getBlossomConfig } from "@/utils/blossom";
 import { resizeImageFile } from "@/utils/imageResize";
 import { compressImageToTargetSize } from "@/utils/imageCompression";
 import { encodeEncryptedImageRef, type EncryptedImageMetadata } from "@/utils/encryptedImageRef";
@@ -486,9 +486,8 @@ export default defineComponent({
           { type: "application/octet-stream" }
         );
         
-        // Upload encrypted file
-        const descriptor = await uploadImageToBlossom(encryptedFile, {
-          includeAuthIfRequired: true,
+        // Upload encrypted file with fallback to multiple servers
+        const descriptor = await uploadImageToBlossomWithFallback(encryptedFile, {
           signEvent: signEventWrapper,
           onProgress: (p:number) => { updateUploadItem(item.id, { progress: p }); }
         });
@@ -534,9 +533,8 @@ export default defineComponent({
           { type: "application/octet-stream" }
         );
         
-        // Upload encrypted file
-        const descriptor = await uploadImageToBlossom(encryptedFile, {
-          includeAuthIfRequired: true,
+        // Upload encrypted file with fallback to multiple servers
+        const descriptor = await uploadImageToBlossomWithFallback(encryptedFile, {
           signEvent: signEventWrapper,
           onProgress: (p:number) => { updateUploadItem(item.id, { progress: p }); }
         });

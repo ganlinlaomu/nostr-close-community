@@ -130,6 +130,28 @@
         </div>
       </div>
 
+      <!-- Cache Management Section -->
+      <div class="section">
+        <h4>缓存管理</h4>
+        <div class="cache-info">
+          <div class="small">
+            <div>图片缓存: {{ cacheStats.count }} 个文件</div>
+            <div>缓存大小: {{ formatSize(cacheStats.size) }}</div>
+            <div v-if="cacheStats.oldestTimestamp > 0">
+              最早缓存: {{ new Date(cacheStats.oldestTimestamp).toLocaleDateString() }}
+            </div>
+          </div>
+          <div class="cache-actions">
+            <button class="btn btn-secondary" @click="refreshCacheStats" :disabled="loadingCache">
+              {{ loadingCache ? '加载中...' : '刷新统计' }}
+            </button>
+            <button class="btn btn-warning" @click="clearCache" :disabled="clearingCache">
+              {{ clearingCache ? '清理中...' : '清空缓存' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Account Section -->
       <div class="section">
         <h4>账户</h4>
@@ -150,8 +172,10 @@ import { useKeyStore } from "@/stores/keys";
 import { useSettingsStore, type BlossomServer } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
 import { db } from "@/db/dexie";
+import { getCacheStats, clearAllCache } from "@/utils/imageCache";
 
 export default defineComponent({
+  name: "Settings",
   setup() {
     const ks = useKeyStore();
     const settings = useSettingsStore();
@@ -175,6 +199,49 @@ export default defineComponent({
     const editingBlossom = ref<number | null>(null);
     const editedBlossomUrl = ref("");
     const editedBlossomToken = ref("");
+
+    // Cache management
+    const cacheStats = reactive({ count: 0, size: 0, oldestTimestamp: 0 });
+    const loadingCache = ref(false);
+    const clearingCache = ref(false);
+
+    async function refreshCacheStats() {
+      loadingCache.value = true;
+      try {
+        const stats = await getCacheStats();
+        Object.assign(cacheStats, stats);
+      } catch (e) {
+        console.error("Failed to get cache stats", e);
+        ui.addToast("获取缓存统计失败", 2000, "error");
+      } finally {
+        loadingCache.value = false;
+      }
+    }
+
+    async function clearCache() {
+      if (!confirm("确定要清空所有图片缓存吗？")) {
+        return;
+      }
+      clearingCache.value = true;
+      try {
+        await clearAllCache();
+        await refreshCacheStats();
+        ui.addToast("缓存已清空", 2000, "success");
+      } catch (e) {
+        console.error("Failed to clear cache", e);
+        ui.addToast("清空缓存失败", 2000, "error");
+      } finally {
+        clearingCache.value = false;
+      }
+    }
+
+    function formatSize(bytes: number): string {
+      if (bytes === 0) return "0 B";
+      const k = 1024;
+      const sizes = ["B", "KB", "MB", "GB"];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return (bytes / Math.pow(k, i)).toFixed(2) + " " + sizes[i];
+    }
 
     // Watch for sync completion to show/hide success message
     watch(() => settings.lastSyncTimestamp, (newVal, oldVal) => {
@@ -418,6 +485,7 @@ export default defineComponent({
       loadRelays();
       loadBlossoms();
       refreshStatuses();
+      refreshCacheStats();
       
       // Auto-refresh statuses every 5 seconds
       const intervalId = setInterval(refreshStatuses, 5000);
@@ -467,7 +535,13 @@ export default defineComponent({
       doLogout,
       settings,
       showSyncSuccess,
-      isFadingOut
+      isFadingOut,
+      cacheStats,
+      loadingCache,
+      clearingCache,
+      refreshCacheStats,
+      clearCache,
+      formatSize
     };
   }
 });
@@ -750,6 +824,63 @@ export default defineComponent({
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.cache-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cache-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #475569;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-warning {
+  background: transparent;
+  color: #f59e0b;
+  border: 1px solid #f59e0b;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: #f59e0b;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+}
+
+.btn-warning:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-danger {

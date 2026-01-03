@@ -1,7 +1,11 @@
 <template>
   <div class="app-root">
     <HeaderBar />
-    <router-view />
+    <router-view v-slot="{ Component }">
+      <keep-alive :include="['Home', 'Friends', 'Notifications', 'Settings']">
+        <component :is="Component" />
+      </keep-alive>
+    </router-view>
     <ToastContainer />
     <PostEditorModal />
   </div>

@@ -123,6 +123,7 @@ import { useKeyStore } from "@/stores/keys";
 import { keyToHex } from "@/utils/format";
 
 export default defineComponent({
+  name: "Friends",
   setup() {
     const friends = useFriendsStore();
     const ui = useUIStore();
