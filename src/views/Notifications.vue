@@ -211,3 +211,143 @@ function go(n: any) {
   router.push({ path: "/", query: { mid: n.messageId, iid: n.commentId } });
 }
 </script>
+.notifications-page {
+  padding: 12px;
+  padding-bottom: calc(20px + var(--bottom-nav-height) + env(safe-area-inset-bottom));
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.mark-read {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.empty {
+  text-align: center;
+  color: #94a3b8;
+  margin-top: 40px;
+}
+
+/* =========================
+   时间分组标题（iOS 风格）
+   ========================= */
+.group-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  margin: 14px 4px 6px;
+}
+
+/* =========================
+   列表基础样式（不变）
+   ========================= */
+.notification-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* =========================
+   左滑容器
+   ========================= */
+.swipe-wrapper {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* =========================
+   左滑按钮层（隐藏在后面）
+   ========================= */
+.swipe-actions {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  display: flex;
+}
+
+.action {
+  width: 60px;
+  border: none;
+  color: #fff;
+  font-size: 12px;
+}
+
+.action.read {
+  background: #3b82f6; /* iOS 蓝 */
+}
+
+.action.delete {
+  background: #ef4444; /* iOS 红 */
+}
+
+/* =========================
+   通知主体（和你原来完全一致）
+   ========================= */
+.notification-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  cursor: pointer;
+  position: relative;
+  background: #fff;
+  transition: transform 0.2s ease;
+  will-change: transform;
+}
+
+.notification-item.unread {
+  background: #f8fafc;
+}
+
+.icon {
+  font-size: 18px;
+}
+
+.content {
+  flex: 1;
+}
+
+.from {
+  font-weight: 600;
+}
+
+.time {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  background: #ef4444;
+  border-radius: 50%;
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* =========================
+   入场动画（iOS 原生感）
+   ========================= */
+.notify-enter-active {
+  transition: all 0.25s ease;
+}
+
+.notify-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.notify-enter-to {
+  opacity: 1;
+  transform: translateY(0);
+}
+
