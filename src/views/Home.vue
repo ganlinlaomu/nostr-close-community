@@ -36,9 +36,9 @@
             <span class="muted"> · {{ toLocalTime(m.created_at) }}</span>
           </div>
           <!-- 如果仍需显示文本（去除了图片 URL/Markdown），使用 textWithoutVideos -->
-          <div v-if="textWithoutVideos(m.content)" class="message-text">{{ textWithoutVideos(m.content) }}</div>
+          <div v-if="textWithoutVideos(m.content)" class="message-text message-text-top">{{ textWithoutVideos(m.content) }}</div>
           <!-- 图片预览（9宫格展示多图） -->
-          <PostImagePreview :content="m.content" :showAll="true" :max="9" style="margin-top:8px;" />
+          <PostImagePreview v-if="m.content" :content="m.content" :showAll="true" :max="9" class="post-images" />
 
           <!-- 视频预览 -->
           <VideoPlayer v-if="extractVideoData(m.content)" :videoData="extractVideoData(m.content)" style="margin-top:8px;" />
@@ -1668,5 +1668,10 @@ export default defineComponent({
   opacity: 0.6;
   cursor: not-allowed;
 }
-
+.message-text-top {
+  margin-bottom: 8px;
+}
+.post-images {
+  margin-top: 0;
+}
 </style>
