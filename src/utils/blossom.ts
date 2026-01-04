@@ -16,8 +16,8 @@
 //   await uploadImageToBlossom(file, { signEvent: async evt => signedEvt, onProgress(p){}, timeoutMs: 60000 })
 
 export const DEFAULT_BLOSSOM_SERVERS = [
-  { url: "https://blossom.primal.net", token: "" },
-  { url: "https://blossom.0xchat.com", token: "" }
+  { url: "blsm.bostr.shop", token: "" },
+  { url: "blossom.lostr.space", token: "" }
 ];
 
 function normalizeBlossomUploadUrl(input: string): string {
