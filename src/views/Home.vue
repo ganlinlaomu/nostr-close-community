@@ -899,6 +899,9 @@ if (newestInteractionTs > 0) {
   );
 } else {
   logger.info("本次互动回填未拉到新事件，不推进 breakpoint");
+} catch (e) {
+  logger.error("回填互动事件失败", e);
+}
 }
 
 
