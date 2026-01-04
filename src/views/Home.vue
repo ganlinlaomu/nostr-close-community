@@ -872,44 +872,47 @@ export default defineComponent({
     }
     
     async function backfillInteractions(relays: string[]) {
-      try {
-        const now = Math.floor(Date.now() / 1000);
-        const breakpointKey = `interactions_${keys.pkHex}`;
-        const savedBreakpoint = loadBackfillBreakpoint(breakpointKey);
-        let since: number;
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const breakpointKey = `interactions_${keys.pkHex}`;
+    const saved = loadBackfillBreakpoint(breakpointKey);
 
-        if (savedBreakpoint && savedBreakpoint > 0) {
-          since = savedBreakpoint + 1;
-          logger.info (
-            `backfill use breakpoint: since=${new Date(since * 1000).toLocaleString()}`
-          );
-        } else {
-          since = now - THREE_DAYS_IN_SECONDS;
-          logger.info(
-            `pull from three days: since=${new Date(since * 1000).toLocaleString()}`
-          );
+    const since = saved && saved > 0
+      ? saved + 1
+      : now - THREE_DAYS_IN_SECONDS;
+
+    let newestTs = 0;
+
+    await interactions.backfillInteractions({
+      relays,
+      since,
+      until: now,
+      maxBatches: 10,
+      onEvent: (evt) => {
+        if (evt.created_at && evt.created_at > newestTs) {
+          newestTs = evt.created_at;
         }
-      saveBackfillBreakpoint(`interactions_${keys.pkHex}`, now);  
-        
-        
-        // Fetch using inbox (#p) and outbox (authors) filters
-        // No longer using #e to avoid privacy issues
-        await interactions.backfillInteractions({
-          relays,
-          since,
-          until: now,
-          maxBatches: 10,
-          onProgress: (fetched, processed) => {
-            logger.debug(`回填互动进度: 获取 ${fetched} 条, 处理 ${processed} 条`);
-          }
-        });
-        saveBackfillBreakpoint(`interactions_${keys.pkHex}`, now); 
-        logger.info("互动事件回填完成");
-        
-      } catch (e) {
-        logger.error("回填互动事件失败", e);
+      },
+      onProgress: (fetched, processed) => {
+        logger.debug(`互动回填: fetched=${fetched}, processed=${processed}`);
       }
+    });
+
+    // ⭐ 只有真的拿到互动，才推进断点
+    if (newestTs > 0) {
+      saveBackfillBreakpoint(breakpointKey, newestTs);
+      logger.info(
+        `互动断点更新至 ${new Date(newestTs * 1000).toLocaleString()}`
+      );
+    } else {
+      logger.info("互动回填无新事件，不推进断点");
     }
+
+  } catch (e) {
+    logger.error("回填互动失败", e);
+  }
+}
+
 
     async function startSub() {
       try {
