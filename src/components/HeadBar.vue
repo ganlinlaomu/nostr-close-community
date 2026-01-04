@@ -106,75 +106,115 @@ export default defineComponent({
 .brand { font-weight: 700; text-decoration: none; color: inherit; }
 .login-link { text-decoration: none; color: #1976d2; }
 
+/* =========================
+   Bottom Navigation (iOS / PWA Optimized)
+   ========================= */
+
 .bottom-nav {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
+
+  /* 尺寸 */
   height: 80px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-around;
-  background: #ffffff;
-  border-top: 1px solid rgba(0,0,0,0.08);
-  z-index: var(--z-bottom-nav, 9999);
-  isolation: isolate;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  pointer-events: auto;
-  box-shadow: 0 -1px 8px rgba(0, 0, 0, 0.06);
   padding-top: 12px;
   padding-bottom: calc(12px + env(safe-area-inset-bottom));
-  /* Force hardware acceleration and prevent disappearing */
-  transform: translateZ(0);
+
+  /* 布局 */
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-start;
+
+  /* 视觉（替代 backdrop-filter，性能友好） */
+  background: rgba(255, 255, 255, 0.94);
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 -1px 8px rgba(0, 0, 0, 0.06);
+
+  /* 层级 */
+  z-index: var(--z-bottom-nav, 9999);
+  isolation: isolate;
+
+  /* 防止 iOS 路由切换抖动 */
   will-change: transform;
+  transform: translateZ(0);
   -webkit-transform: translateZ(0);
-  /* Ensure visibility - critical for mobile
-   * Note: !important is necessary to override any dynamic styles during scroll/navigation
-   */
-  visibility: visible !important;
-  opacity: 1 !important;
-  display: flex !important;
-  /* Prevent any layout shifts */
-  contain: layout style paint;
+
+  /* 确保可交互 */
+  pointer-events: auto;
 }
+
+/* =========================
+   Nav Item
+   ========================= */
+
 .nav-item {
+  min-width: 64px;
+  padding: 8px 16px;
+
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
   gap: 4px;
+
   text-decoration: none;
   color: #64748b;
-  padding: 8px 16px;
   cursor: pointer;
-  transition: all 0.25s ease;
   border-radius: 12px;
   position: relative;
-  min-width: 64px;
+
+  /* ❗ 不用 transition: all */
+  transition:
+    color 0.22s ease,
+    background-color 0.22s ease,
+    transform 0.22s ease;
 }
+
+/* hover / active（桌面 & Android） */
 .nav-item:hover {
   background: rgba(59, 130, 246, 0.08);
   color: #3b82f6;
   transform: translateY(-2px);
 }
+
+/* 路由激活 */
 .nav-item.router-link-active {
   color: #1976d2;
 }
-.nav-item.router-link-active .icon {
-  stroke-width: 2.5;
-}
-.icon { 
+
+/* =========================
+   Icon
+   ========================= */
+
+.icon {
   width: 24px;
   height: 24px;
   stroke: currentColor;
-  transition: all 0.25s ease;
+
+  /* 只允许 transform 参与动画，避免 SVG repaint */
+  transition: transform 0.22s ease;
 }
+
+/* 激活态轻微强调（不改 stroke-width，避免重绘） */
+.nav-item.router-link-active .icon {
+  transform: scale(1.08);
+}
+
+/* =========================
+   Label
+   ========================= */
+
 .nav-label {
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.02em;
 }
+
+/* =========================
+   Notification Badge
+   ========================= */
+
 .icon-wrapper {
   position: relative;
   display: inline-flex;
@@ -184,18 +224,42 @@ export default defineComponent({
   position: absolute;
   top: -4px;
   right: -6px;
+
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
+
   background: #ef4444;
   color: white;
+
   font-size: 10px;
   font-weight: 600;
+  line-height: 1;
+
   border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
-  line-height: 1;
+
+  /* 防止 badge 变化影响主层合成 */
+  will-change: contents;
+}
+
+/* =========================
+   iOS 特殊优化
+   ========================= */
+
+/* 禁用 iOS 点击高亮 */
+.bottom-nav,
+.nav-item {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS Safari 滚动稳定性 */
+@supports (-webkit-touch-callout: none) {
+  .bottom-nav {
+    transform: translateZ(0);
+  }
 }
 
 </style>
