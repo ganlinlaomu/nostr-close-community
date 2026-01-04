@@ -65,7 +65,7 @@
 
       <!-- 昨天 -->
       <template v-if="groups.yesterday.length">
-        <div class="group-title">昨天<div>
+        <div class="group-title">昨天</div>
         <TransitionGroup name="notify" tag="ul" class="notification-list">
           <li
             v-for="n in groups.yesterday"
