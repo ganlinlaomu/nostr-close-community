@@ -849,62 +849,64 @@ export default defineComponent({
     }
     
     async function backfillInteractions(relays: string[]) {
-      try {
-        const now = Math.floor(Date.now() / 1000);
-        const breakpointKey = `interactions_${keys.pkHex}`;
-        const savedBreakpoint = loadBackfillBreakpoint(breakpointKey);
-        let since: number;
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const breakpointKey = `interactions_${keys.pkHex}`;
+    const savedBreakpoint = loadBackfillBreakpoint(breakpointKey);
 
-        if (savedBreakpoint && savedBreakpoint > 0) {
-          since = savedBreakpoint + 1;
-          logger.info (
-            `backfill use breakpoint: since=${new Date(since * 1000).toLocaleString()}`
-          );
-        } else {
-          since = now - THREE_DAYS_IN_SECONDS;
-          logger.info(
-            `pull from three days: since=${new Date(since * 1000).toLocaleString()}`
-          );
-        }
-  
-        
-        
-       let newestInteractionTs = 0; // ⭐ 新增
-
-       // Fetch using inbox (#p) and outbox (authors) filters
-      // No longer using #e to avoid privacy issues
-await interactions.backfillInteractions({
-  relays,
-  since,
-  until: now,
-  maxBatches: 10,
-  onEvent: (evt) => {               // ⭐ 新增
-    if (evt?.created_at && evt.created_at > newestInteractionTs) {
-      newestInteractionTs = evt.created_at;
+    let since: number;
+    if (savedBreakpoint && savedBreakpoint > 0) {
+      since = savedBreakpoint + 1;
+      logger.info(
+        `backfill use breakpoint: since=${new Date(since * 1000).toLocaleString()}`
+      );
+    } else {
+      since = now - THREE_DAYS_IN_SECONDS;
+      logger.info(
+        `pull from three days: since=${new Date(since * 1000).toLocaleString()}`
+      );
     }
-  },
-  onProgress: (fetched, processed) => {
-    logger.debug(`回填互动进度: 获取 ${fetched} 条, 处理 ${processed} 条`);
+
+    // ⭐ 用真实事件时间推进 breakpoint
+    let newestInteractionTs = 0;
+
+    // Fetch using inbox (#p) and outbox (authors) filters
+    // No longer using #e to avoid privacy issues
+    await interactions.backfillInteractions({
+      relays,
+      since,
+      until: now,
+      maxBatches: 10,
+      onEvent: (evt) => {
+        if (evt?.created_at && evt.created_at > newestInteractionTs) {
+          newestInteractionTs = evt.created_at;
+        }
+      },
+      onProgress: (fetched, processed) => {
+        logger.debug(
+          `回填互动进度: 获取 ${fetched} 条, 处理 ${processed} 条`
+        );
+      }
+    });
+
+    // ⭐ 只有真的拉到互动事件，才推进 breakpoint
+    if (newestInteractionTs > 0) {
+      saveBackfillBreakpoint(breakpointKey, newestInteractionTs);
+      logger.info(
+        `互动 breakpoint 推进到 ${new Date(
+          newestInteractionTs * 1000
+        ).toLocaleString()}`
+      );
+    } else {
+      logger.info("本次互动回填未拉到新事件，不推进 breakpoint");
+    }
+
+  } catch (e) {
+    logger.error("回填互动事件失败", e);
   }
-});
-
-// ⭐ 只有真的拉到互动，才推进 breakpoint
-if (newestInteractionTs > 0) {
-  saveBackfillBreakpoint(
-    `interactions_${keys.pkHex}`,
-    newestInteractionTs
-  );
-  logger.info(
-    `互动 breakpoint 推进到 ${new Date(newestInteractionTs * 1000).toLocaleString()}`
-  );
-} else {
-  logger.info("本次互动回填未拉到新事件，不推进 breakpoint");
-} catch (e) {
-  logger.error("回填互动事件失败", e);
-}
 }
 
-
+    
     async function startSub() {
       try {
         logger.info("开始订阅流程");
