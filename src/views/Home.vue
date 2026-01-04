@@ -869,24 +869,38 @@ export default defineComponent({
   
         
         
-        // Fetch using inbox (#p) and outbox (authors) filters
-        // No longer using #e to avoid privacy issues
-        await interactions.backfillInteractions({
-          relays,
-          since,
-          until: now,
-          maxBatches: 10,
-          onProgress: (fetched, processed) => {
-            logger.debug(`回填互动进度: 获取 ${fetched} 条, 处理 ${processed} 条`);
-          }
-        });
-        saveBackfillBreakpoint(`interactions_${keys.pkHex}`, now); 
-        logger.info("互动事件回填完成");
-        
-      } catch (e) {
-        logger.error("回填互动事件失败", e);
-      }
+       let newestInteractionTs = 0; // ⭐ 新增
+
+       // Fetch using inbox (#p) and outbox (authors) filters
+      // No longer using #e to avoid privacy issues
+await interactions.backfillInteractions({
+  relays,
+  since,
+  until: now,
+  maxBatches: 10,
+  onEvent: (evt) => {               // ⭐ 新增
+    if (evt?.created_at && evt.created_at > newestInteractionTs) {
+      newestInteractionTs = evt.created_at;
     }
+  },
+  onProgress: (fetched, processed) => {
+    logger.debug(`回填互动进度: 获取 ${fetched} 条, 处理 ${processed} 条`);
+  }
+});
+
+// ⭐ 只有真的拉到互动，才推进 breakpoint
+if (newestInteractionTs > 0) {
+  saveBackfillBreakpoint(
+    `interactions_${keys.pkHex}`,
+    newestInteractionTs
+  );
+  logger.info(
+    `互动 breakpoint 推进到 ${new Date(newestInteractionTs * 1000).toLocaleString()}`
+  );
+} else {
+  logger.info("本次互动回填未拉到新事件，不推进 breakpoint");
+}
+
 
     async function startSub() {
       try {
