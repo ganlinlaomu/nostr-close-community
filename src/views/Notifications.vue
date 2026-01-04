@@ -11,7 +11,8 @@
       </button>
     </header>
 
-    <div v-if="notifications.list.length === 0" class="empty">
+    <!-- ⭐ 空态：基于 visibleList -->
+    <div v-if="notifications.visibleList.length === 0" class="empty">
       暂无通知
     </div>
 
@@ -30,8 +31,13 @@
           >
             <!-- 操作按钮 -->
             <div class="swipe-actions">
-              <button class="action read" @click.stop="markRead(n)">已读</button>
-              <button class="action delete" @click.stop="remove(n)">删除</button>
+              <button class="action read" @click.stop="markRead(n)">
+                已读
+              </button>
+              <!-- ⭐ 删除 → 忽略 -->
+              <button class="action delete" @click.stop="dismiss(n)">
+                忽略
+              </button>
             </div>
 
             <!-- 主内容 -->
@@ -120,11 +126,6 @@
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent } from "vue";
-export default defineComponent({ name: "Notifications" });
-</script>
-
 <script setup lang="ts">
 import { computed, reactive } from "vue";
 import { useNotificationsStore } from "@/stores/notifications";
@@ -135,7 +136,7 @@ const notifications = useNotificationsStore();
 const friends = useFriendsStore();
 const router = useRouter();
 
-/* ---------- 时间分组 ---------- */
+/* ---------- 时间分组（⭐ 基于 visibleList） ---------- */
 function startOfDay(ts: number) {
   const d = new Date(ts);
   d.setHours(0, 0, 0, 0);
@@ -148,7 +149,7 @@ const groups = computed(() => {
 
   const res = { today: [], yesterday: [], earlier: [] } as any;
 
-  [...notifications.list]
+  [...notifications.visibleList]
     .sort((a, b) => b.created_at - a.created_at)
     .forEach(n => {
       const t = n.created_at * 1000;
@@ -162,39 +163,31 @@ const groups = computed(() => {
 
 /* ---------- iOS 相对时间 ---------- */
 function formatRelativeTime(ts: number) {
-  const now = Date.now();
-  const t = ts * 1000;
-  const diff = Math.floor((now - t) / 1000);
-
+  const diff = Math.floor((Date.now() - ts * 1000) / 1000);
   if (diff < 60) return "刚刚";
   if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
   if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
 
-  const d = new Date(t);
+  const d = new Date(ts * 1000);
   return d.toLocaleDateString() + " " + d.toLocaleTimeString().slice(0, 5);
 }
 
-/* ---------- 左滑逻辑 ---------- */
+/* ---------- 左滑逻辑（不变） ---------- */
 const swipe = reactive<Record<string, number>>({});
 const startX = reactive<Record<string, number>>({});
 
 function onTouchStart(e: TouchEvent, id: string) {
   startX[id] = e.touches[0].clientX;
 }
-
 function onTouchMove(e: TouchEvent, id: string) {
   const dx = e.touches[0].clientX - startX[id];
   swipe[id] = Math.min(0, Math.max(dx, -120));
 }
-
 function onTouchEnd(id: string) {
   swipe[id] = swipe[id] < -60 ? -120 : 0;
 }
-
 function swipeStyle(id: string) {
-  return {
-    transform: `translateX(${swipe[id] || 0}px)`
-  };
+  return { transform: `translateX(${swipe[id] || 0}px)` };
 }
 
 /* ---------- 操作 ---------- */
@@ -203,8 +196,9 @@ function markRead(n: any) {
   swipe[n.id] = 0;
 }
 
-function remove(n: any) {
-  notifications.remove(n.id);
+function dismiss(n: any) {
+  notifications.dismiss(n.id);
+  swipe[n.id] = 0;
 }
 
 function displayName(pk: string) {
@@ -217,114 +211,3 @@ function go(n: any) {
   router.push({ path: "/", query: { mid: n.messageId, iid: n.commentId } });
 }
 </script>
-
-<style scoped>
-.notifications-page {
-  padding: 12px;
-  padding-bottom: calc(20px + var(--bottom-nav-height) + env(safe-area-inset-bottom));
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.group-title {
-  margin: 16px 4px 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #94a3b8;
-}
-
-.notification-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-/* ---------- 左滑结构 ---------- */
-.swipe-wrapper {
-  position: relative;
-  overflow: hidden;
-}
-
-.swipe-actions {
-  position: absolute;
-  right: 0;
-  top: 0;
-  height: 100%;
-  display: flex;
-}
-
-.action {
-  width: 60px;
-  color: #fff;
-  font-size: 12px;
-}
-
-.action.read {
-  background: #64748b;
-}
-
-.action.delete {
-  background: #ef4444;
-}
-
-/* ---------- 通知项 ---------- */
-.notification-item {
-  display: flex;
-  gap: 10px;
-  padding: 10px;
-  background: #fff;
-  border-bottom: 1px solid #e5e7eb;
-  transition: transform 0.25s ease;
-}
-
-.notification-item.unread {
-  background: linear-gradient(90deg, #f8fafc, #ffffff);
-}
-
-.icon {
-  font-size: 18px;
-}
-
-.content {
-  flex: 1;
-}
-
-.from {
-  font-weight: 600;
-}
-
-.time {
-  font-size: 12px;
-  color: #64748b;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  background: #ef4444;
-  border-radius: 50%;
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-}
-
-/* ---------- 入场动画 ---------- */
-.notify-enter-from {
-  opacity: 0;
-  transform: translateY(10px) scale(0.98);
-}
-.notify-enter-active {
-  transition: all 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
-}
-
-.empty {
-  text-align: center;
-  color: #94a3b8;
-  margin-top: 40px;
-}
-</style>
