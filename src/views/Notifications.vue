@@ -65,54 +65,99 @@
 
       <!-- 昨天 -->
       <template v-if="groups.yesterday.length">
-        <div class="group-title">昨天</div>
-        <ul class="notification-list">
+        <div class="group-title">今天</div>
+        <TransitionGroup name="notify" tag="ul" class="notification-list">
           <li
             v-for="n in groups.yesterday"
             :key="n.id"
-            class="notification-item"
-            :class="{ unread: !n.read }"
-            @click="go(n)"
+            class="swipe-wrapper"
+            @touchstart="onTouchStart($event, n.id)"
+            @touchmove="onTouchMove($event, n.id)"
+            @touchend="onTouchEnd(n.id)"
           >
-            <div class="icon">{{ n.type === "like" ? "❤️" : "💬" }}</div>
-            <div class="content">
-              <div class="text">
-                <span class="from">{{ displayName(n.from) }}</span>
-                {{ n.type === "like" ? "点赞了你" : "评论了你" }}
-              </div>
-              <div class="time">{{ formatRelativeTime(n.created_at) }}</div>
+            <div class="swipe-actions">
+              <button class="action read" @click.stop="markRead(n)">
+                已读
+              </button>
+              <button class="action delete" @click.stop="dismiss(n)">
+                忽略
+              </button>
             </div>
-            <span v-if="!n.read" class="dot"></span>
+
+            <div
+              class="notification-item"
+              :class="{ unread: !n.read }"
+              :style="swipeStyle(n.id)"
+              @click="go(n)"
+            >
+              <div class="icon"
+                {{ n.type === "like" ? "❤️" : "💬" }}
+              </div>
+
+              <div class="content">
+                <div class="text">
+                  <span class="from">{{ displayName(n.from) }}</span>
+                  {{ n.type === "like" ? "点赞了你" : "评论了你" }}
+                </div>
+                <div class="time">
+                  {{ formatRelativeTime(n.created_at) }}
+                </div>
+              </div>
+
+              <span v-if="!n.read" class="dot"></span>
+            </div>
           </li>
-        </ul>
+        </TransitionGroup>
       </template>
 
+
       <!-- 更早 -->
-      <template v-if="groups.earlier.length">
-        <div class="group-title">更早</div>
-        <ul class="notification-list">
+     <template v-if="groups.earlier.length">
+        <div class="group-title">今天</div>
+        <TransitionGroup name="notify" tag="ul" class="notification-list">
           <li
             v-for="n in groups.earlier"
             :key="n.id"
-            class="notification-item"
-            :class="{ unread: !n.read }"
-            @click="go(n)"
+            class="swipe-wrapper"
+            @touchstart="onTouchStart($event, n.id)"
+            @touchmove="onTouchMove($event, n.id)"
+            @touchend="onTouchEnd(n.id)"
           >
-            <div class="icon">{{ n.type === "like" ? "❤️" : "💬" }}</div>
-            <div class="content">
-              <div class="text">
-                <span class="from">{{ displayName(n.from) }}</span>
-                {{ n.type === "like" ? "点赞了你" : "评论了你" }}
-              </div>
-              <div class="time">{{ formatRelativeTime(n.created_at) }}</div>
+            <div class="swipe-actions">
+              <button class="action read" @click.stop="markRead(n)">
+                已读
+              </button>
+              <button class="action delete" @click.stop="dismiss(n)">
+                忽略
+              </button>
             </div>
-            <span v-if="!n.read" class="dot"></span>
+
+            <div
+              class="notification-item"
+              :class="{ unread: !n.read }"
+              :style="swipeStyle(n.id)"
+              @click="go(n)"
+            >
+              <div class="icon">
+                {{ n.type === "like" ? "❤️" : "💬" }}
+              </div>
+
+              <div class="content">
+                <div class="text">
+                  <span class="from">{{ displayName(n.from) }}</span>
+                  {{ n.type === "like" ? "点赞了你" : "评论了你" }}
+                </div>
+                <div class="time">
+                  {{ formatRelativeTime(n.created_at) }}
+                </div>
+              </div>
+
+              <span v-if="!n.read" class="dot"></span>
+            </div>
           </li>
-        </ul>
+        </TransitionGroup>
       </template>
-    </div>
-  </div>
-</template>
+
 
 <script setup lang="ts">
 import { computed, reactive } from "vue";
