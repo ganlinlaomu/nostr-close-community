@@ -65,7 +65,7 @@
 
       <!-- 昨天 -->
       <template v-if="groups.yesterday.length">
-        <div class="group-title">今天</div>
+        <div class="group-title">昨天z<div>
         <TransitionGroup name="notify" tag="ul" class="notification-list">
           <li
             v-for="n in groups.yesterday"
@@ -90,7 +90,7 @@
               :style="swipeStyle(n.id)"
               @click="go(n)"
             >
-              <div class="icon"
+              <div class="icon">
                 {{ n.type === "like" ? "❤️" : "💬" }}
               </div>
 
@@ -113,7 +113,7 @@
 
       <!-- 更早 -->
      <template v-if="groups.earlier.length">
-        <div class="group-title">今天</div>
+        <div class="group-title">更早</div>
         <TransitionGroup name="notify" tag="ul" class="notification-list">
           <li
             v-for="n in groups.earlier"
@@ -157,6 +157,9 @@
           </li>
         </TransitionGroup>
       </template>
+       </div>
+  </div>
+</template>
 
 
 <script setup lang="ts">
