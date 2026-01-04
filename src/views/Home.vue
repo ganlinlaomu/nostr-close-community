@@ -35,15 +35,13 @@
             {{ displayName(m.pubkey) }}
             <span class="muted"> · {{ toLocalTime(m.created_at) }}</span>
           </div>
-
+          <!-- 如果仍需显示文本（去除了图片 URL/Markdown），使用 textWithoutVideos -->
+          <div v-if="textWithoutVideos(m.content)" class="message-text">{{ textWithoutVideos(m.content) }}</div>
           <!-- 图片预览（9宫格展示多图） -->
           <PostImagePreview :content="m.content" :showAll="true" :max="9" style="margin-top:8px;" />
 
           <!-- 视频预览 -->
           <VideoPlayer v-if="extractVideoData(m.content)" :videoData="extractVideoData(m.content)" style="margin-top:8px;" />
-
-          <!-- 如果仍需显示文本（去除了图片 URL/Markdown），使用 textWithoutVideos -->
-          <div v-if="textWithoutVideos(m.content)" class="message-text">{{ textWithoutVideos(m.content) }}</div>
           
           <!-- 操作按钮：点赞和评论 -->
           <div class="message-actions">
