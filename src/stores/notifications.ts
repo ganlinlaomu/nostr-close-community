@@ -1,23 +1,45 @@
 import { defineStore } from "pinia";
-import { pool } from "@/nostr/relays";
-import { getRelaysFromStorage } from "@/nostr/relays";
-import { useKeyStore } from "@/stores/keys";
-import { genSymHex, symEncryptPackage, symDecryptPackage } from "@/nostr/crypto";
-import { useNotificationsStore } from "@/stores/notifications";
+import { useKeyStore } from "./keys";
+import { useInteractionsStore } from "./interactions";
 import { getDatabase } from "@/db/dexie"; // 1. 引入工厂
-import { logger } from "@/utils/logger";
-import { backfillEvents } from "@/utils/backfill";
 
-// ... (decodeInteractionEvent, Like, Comment, Interaction 定义保持不变)
+export interface NotificationItem {
+  id: string;
+  type: "like" | "comment";
+  from: string;
+  messageId: string;
+  commentId?: string;
+  replyId?: string;
+  created_at: number;
+  read: boolean;
+  postContent?: string;
+  commentContent?: string;
+}
 
-export const useInteractionsStore = defineStore("interactions", {
+interface NotificationMeta {
+  lastSeenAt: number;
+  seenEventIds: string[];
+}
+
+const FIRST_LOGIN_DAYS = 3;
+const DAY_SECONDS = 86400;
+
+export const useNotificationsStore = defineStore("notifications", {
   state: () => ({
-    // 依然保留内存中的 Map 方便 UI 快速读取，但数据源改为 Dexie
-    interactions: new Map<string, Interaction[]>(),
-    processedEvents: new Set<string>(),
-    lastSyncedAt: 0,
+    list: [] as NotificationItem[],
     loadedFor: "" as string,
+    dismissed: new Set<string>(),
+    meta: null as NotificationMeta | null,
   }),
+
+  getters: {
+    visibleList: (state) => state.list.filter(n => !state.dismissed.has(n.id)),
+    unreadCount(): number { return this.visibleList.filter(n => !n.read).length; },
+    since(): number { 
+      const now = Math.floor(Date.now() / 1000);
+      return this.meta?.lastSeenAt || (now - FIRST_LOGIN_DAYS * DAY_SECONDS);
+    },
+  },
 
   actions: {
     // 2. 获取当前账号对应的物理库
@@ -26,9 +48,6 @@ export const useInteractionsStore = defineStore("interactions", {
       return getDatabase(this.loadedFor || ks.pkHex);
     },
 
-    /**
-     * 加载逻辑：从物理隔离的数据库读取
-     */
     async load(pk?: string) {
       const ks = useKeyStore();
       const targetPk = pk ?? ks.pkHex;
@@ -39,130 +58,127 @@ export const useInteractionsStore = defineStore("interactions", {
 
       const db = this.getDB();
 
+      // 1. 从物理库加载列表（按时间倒序）
       try {
-        // 1. 加载所有互动数据
-        const allInteractions = await db.interactions.toArray();
-        const newMap = new Map<string, Interaction[]>();
-        
-        allInteractions.forEach((item: any) => {
-          const list = newMap.get(item.messageId) || [];
-          list.push(item);
-          newMap.set(item.messageId, list);
-        });
-        this.interactions = newMap;
+        this.list = await db.notifications.orderBy("created_at").reverse().toArray() as any;
+      } catch { this.list = []; }
 
-        // 2. 加载元数据 (lastSyncedAt 和 processedEvents)
-        const metaData = await db.meta.get("interactions_meta");
+      // 2. 从物理库 meta 表加载元数据和屏蔽列表
+      try {
+        const dismissedData = await db.meta.get("notifications_dismissed");
+        this.dismissed = new Set(dismissedData?.value || []);
+
+        const metaData = await db.meta.get("notifications_meta");
         if (metaData) {
-          this.lastSyncedAt = metaData.value.lastSyncedAt || 0;
-          this.processedEvents = new Set(metaData.value.processedEvents || []);
+          this.meta = metaData.value;
         } else {
-          this.lastSyncedAt = 0;
-          this.processedEvents = new Set();
+          const now = Math.floor(Date.now() / 1000);
+          this.meta = { lastSeenAt: now - FIRST_LOGIN_DAYS * DAY_SECONDS, seenEventIds: [] };
+          await this.saveMeta();
         }
-      } catch (e) {
-        logger.error("Failed to load interactions from Dexie", e);
+      } catch {
+        this.dismissed = new Set();
       }
+
+      this.refreshContent();
     },
 
-    /**
-     * 核心写入：存入物理库
-     */
-    async _saveInteractionToDb(interaction: Interaction) {
-      const db = this.getDB();
-      await db.interactions.put(interaction as any);
-      
-      // 更新元数据
-      await db.meta.put({
-        key: "interactions_meta",
-        value: {
-          lastSyncedAt: this.lastSyncedAt,
-          processedEvents: [...this.processedEvents]
+    refreshContent() {
+      const interactions = useInteractionsStore();
+      this.list.forEach(n => {
+        if (n.commentId && !n.commentContent) {
+          const comment = interactions.getComments(n.messageId).find(c => c.id === n.commentId);
+          if (comment) {
+            n.commentContent = comment.text;
+            if (comment.parentCommentId) n.replyId = comment.parentCommentId;
+          }
         }
       });
     },
 
-    async sendLike(messageId: string, messageAuthor: string) {
-      const key = useKeyStore();
-      if (!key.isLoggedIn) throw new Error("未登录");
-      
-      const interaction: Like = {
-        id: crypto.randomUUID(),
-        messageId,
-        author: key.pkHex,
-        timestamp: Math.floor(Date.now() / 1000),
-        type: 'like'
-      };
-      
-      await this._sendInteraction(interaction, messageAuthor);
-      await this._addInteraction(messageId, interaction); // 内部会调用 DB 保存
+    // 3. 将 save 分拆，直接写入 Dexie 效率更高
+    async saveNotification(n: NotificationItem) {
+      const db = this.getDB();
+      await db.notifications.put(n as any);
     },
 
-    async sendComment(messageId: string, messageAuthor: string, text: string, parentCommentId?: string) {
-      const key = useKeyStore();
-      if (!key.isLoggedIn) throw new Error("未登录");
-      
-      const interaction: Comment = {
-        id: crypto.randomUUID(),
-        messageId,
-        author: key.pkHex,
-        text: text.trim(),
-        timestamp: Math.floor(Date.now() / 1000),
-        type: 'comment',
-        parentCommentId
-      };
-      
-      await this._sendInteraction(interaction, messageAuthor);
-      await this._addInteraction(messageId, interaction);
+    async saveMeta() {
+      const db = this.getDB();
+      await db.meta.put({ key: "notifications_meta", value: this.meta });
     },
 
-    async _addInteraction(messageId: string, interaction: Interaction) {
-      const items = this.interactions.get(messageId) || [];
+    async saveDismissed() {
+      const db = this.getDB();
+      await db.meta.put({ key: "notifications_dismissed", value: [...this.dismissed] });
+    },
+
+    async addNotification(n: NotificationItem) {
+      if (this.list.some(x => x.id === n.id)) return;
+      if (this.dismissed.has(n.id)) return;
       
-      // 去重逻辑 (保持不变)
-      if (interaction.type === 'like') {
-        if (items.some(i => i.type === 'like' && i.author === interaction.author)) return;
-      } else if (interaction.type === 'comment') {
-        if (items.some(i => i.type === 'comment' && i.id === interaction.id)) return;
+      const threeDaysAgo = Math.floor(Date.now() / 1000) - (FIRST_LOGIN_DAYS * DAY_SECONDS);
+      if (n.created_at < threeDaysAgo) return;
+
+      // 填充内容
+      if (n.commentId) {
+        const interactions = useInteractionsStore();
+        const comment = interactions.getComments(n.messageId).find(c => c.id === n.commentId);
+        if (comment) {
+          n.commentContent = comment.text;
+          if (comment.parentCommentId) n.replyId = comment.parentCommentId;
+        }
       }
-      
-      items.push(interaction);
-      this.interactions.set(messageId, items);
 
-      // 物理保存到当前账号的数据库
-      await this._saveInteractionToDb(interaction);
+      this.list.unshift(n);
+      this.list.sort((a, b) => b.created_at - a.created_at);
+      
+      if (this.list.length > 500) this.list = this.list.slice(0, 500); // 数据库容量大，可以多留点
+
+      // 物理保存
+      await this.saveNotification(n);
     },
 
-    // 修改：将 processedEvents 同步保存
-    async processInteractionEvent(evt: any, myPubkey: string) {
-      if (this.processedEvents.has(evt.id)) return;
-
-      const key = useKeyStore();
-      const interaction = await decodeInteractionEvent(evt, myPubkey, key);
-      if (!interaction) return;
-
-      this.processedEvents.add(evt.id);
-      this._emitNotificationFromInteraction(evt, interaction, myPubkey);
-      await this._addInteraction(interaction.messageId, interaction);
-
-      if (evt.created_at && evt.created_at > this.lastSyncedAt) {
-        this.lastSyncedAt = evt.created_at;
+    async markAsRead(id: string) { 
+      const n = this.list.find(x => x.id === id); 
+      if (!n) return;
+      n.read = true;
+      if (this.meta) {
+        this.meta.lastSeenAt = Math.max(this.meta.lastSeenAt, n.created_at);
+        await this.saveMeta();
       }
+      await this.saveNotification(n);
+    },
+
+    async markAllRead() {
+      const now = Math.floor(Date.now() / 1000);
+      this.list.forEach(n => { n.read = true; });
+      if (this.meta) {
+        this.meta.lastSeenAt = now;
+        await this.saveMeta();
+      }
+      // 批量更新数据库里的已读状态
+      const db = this.getDB();
+      await db.notifications.toCollection().modify({ read: true });
+    },
+
+    async dismiss(id: string) { 
+      this.dismissed.add(id); 
+      await this.saveDismissed();
     },
 
     reset(removeFromStorage = false) {
       const db = this.getDB();
       const pk = this.loadedFor;
-
-      this.interactions.clear();
-      this.processedEvents.clear();
-      this.lastSyncedAt = 0;
+      this.list = [];
+      this.dismissed = new Set();
+      this.meta = null;
       this.loadedFor = "";
 
       if (removeFromStorage && pk) {
-        db.interactions.clear();
-        db.meta.delete("interactions_meta");
+        db.notifications.clear();
+        db.meta.delete("notifications_meta");
+        db.meta.delete("notifications_dismissed");
       }
-    }
-  }
+    },
+  },
 });
