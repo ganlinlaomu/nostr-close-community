@@ -5,7 +5,7 @@ import { useKeyStore } from "@/stores/keys";
 import { genSymHex, symEncryptPackage, symDecryptPackage } from "@/nostr/crypto";
 import { useNotificationsStore } from "@/stores/notifications";
 import { logger } from "@/utils/logger";
-import { getDatabase } from "@/db/dexie";
+import { getCurrentDatabase } from "@/db/dexie";
 
 /* ------------------------------------------------------------------ */
 /* Types */
