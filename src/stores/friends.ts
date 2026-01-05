@@ -1,16 +1,49 @@
 import { defineStore } from "pinia";
 import { useKeyStore } from "./keys";
-import { getDatabase } from "@/db/dexie"; 
+import { getDatabase } from "@/db/dexie";
 import { getRelaysFromStorage, subscribe, publish } from "@/nostr/relays";
 import { logger } from "@/utils/logger";
+
+/* =========================
+ * Types（基本保持）
+ * ========================= */
 
 export type Friend = {
   pubkey: string;
   name: string;
   groups?: string[];
-  group?: string; 
   note?: string;
 };
+
+/* =========================
+ * Helpers
+ * ========================= */
+
+function normalizeFriend(f: Friend): Friend {
+  return {
+    ...f,
+    groups: f.groups ?? []
+  };
+}
+
+function mergeList(local: Friend[], incoming: Friend[]): Friend[] {
+  const map = new Map<string, Friend>();
+
+  for (const f of local) map.set(f.pubkey, normalizeFriend(f));
+  for (const f of incoming) {
+    const existing = map.get(f.pubkey);
+    map.set(
+      f.pubkey,
+      existing ? { ...existing, ...f } : normalizeFriend(f)
+    );
+  }
+
+  return Array.from(map.values());
+}
+
+/* =========================
+ * Store
+ * ========================= */
 
 export const useFriendsStore = defineStore("friends", {
   state: () => ({
@@ -18,132 +51,197 @@ export const useFriendsStore = defineStore("friends", {
     loadedFor: "",
     syncing: false,
     lastSyncTimestamp: 0,
-    version: 0
+    syncError: ""
   }),
 
   getters: {
-    // 增加一个排序后的列表 getter，方便 UI 调用
-    sortedList: (state) => {
-      return [...state.list].sort((a, b) => a.name.localeCompare(b.name));
+    sortedList(): Friend[] {
+      return [...this.list].sort((a, b) =>
+        (a.name || "").localeCompare(b.name || "", "zh-CN")
+      );
     }
   },
 
   actions: {
-    /**
-     * 获取数据库实例（增加空判断）
-     */
-    getDB() {
-      const ks = useKeyStore();
-      const pk = this.loadedFor || ks.pkHex;
-      if (!pk) return null; // ⭐ 关键：无公钥返回 null
-      return getDatabase(pk);
-    },
+    /* =========================
+     * 核心：按 pk 加载（Dexie）
+     * ========================= */
 
-    /**
-     * 加载数据
-     */
     async load(pk?: string) {
       const ks = useKeyStore();
       const targetPk = pk ?? ks.pkHex;
-      
-      // 1. 防御：无公钥不执行
-      if (!targetPk) {
-        logger.debug("[Friends] Load skipped: no pkHex");
-        return;
+      if (!targetPk) return;
+
+      // 账号切换 → 强制重载
+      if (this.loadedFor !== targetPk) {
+        this.$reset();
+        this.loadedFor = targetPk;
       }
 
-      // 避免重复加载
-      if (this.loadedFor === targetPk && this.list.length > 0) return;
-      this.loadedFor = targetPk;
-
-      const db = this.getDB();
-      // 2. 防御：db 为 null 不执行，防止 toArray() 报错
-      if (!db) return;
+      const db = getDatabase(targetPk);
 
       try {
-        // 从物理库加载
-        const localFriends = await db.friends.toArray();
-        
-        const tsKey = `friends_ts_${targetPk.slice(0, 10)}`;
-        this.lastSyncTimestamp = Number(localStorage.getItem(tsKey) || 0);
+        const rows = await db.friends.toArray();
+        this.list = rows.map(normalizeFriend);
 
-        this.list = localFriends;
-        logger.info(`[Friends] Loaded ${localFriends.length} friends for ${targetPk.slice(0, 8)}`);
-
-        // 3. 同步云端
-        if (ks.isLoggedIn && ks.supportsNip04) {
-          await this.fetchFromRelays();
-        }
+        const meta = await db.meta.get("friends_last_sync");
+        this.lastSyncTimestamp = meta?.value ?? 0;
       } catch (e) {
-        logger.error("[Friends] Load failed", e);
+        logger.error("Failed to load friends from db", e);
+      }
+
+      if (ks.isLoggedIn && ks.supportsNip04) {
+        this.fetchFromRelays().catch(() => {});
       }
     },
 
-    /**
-     * 保存数据到物理库
-     */
-    async save() {
+    async saveToDB() {
       if (!this.loadedFor) return;
-      const db = this.getDB();
-      if (!db) return; // ⭐ 关键：防御
-      
-      try {
-        await db.transaction('rw', db.friends, async () => {
-          await db.friends.clear();
-          await db.friends.bulkAdd(this.list);
-        });
+      const db = getDatabase(this.loadedFor);
 
-        const tsKey = `friends_ts_${this.loadedFor.slice(0, 10)}`;
-        localStorage.setItem(tsKey, this.lastSyncTimestamp.toString());
-      } catch (e) {
-        logger.error("[Friends] Save failed", e);
-      }
+      await db.transaction("rw", db.friends, db.meta, async () => {
+        await db.friends.clear();
+        await db.friends.bulkPut(this.list);
+        await db.meta.put({
+          key: "friends_last_sync",
+          value: this.lastSyncTimestamp
+        });
+      });
     },
 
     /* =========================
-     * 业务操作
+     * 本地修改
      * ========================= */
+
     async add(friend: Friend) {
-      if (!friend.pubkey) return false;
+      if (!friend.pubkey || !friend.name?.trim()) return false;
       if (this.list.some(f => f.pubkey === friend.pubkey)) return false;
 
-      this.list.push(friend);
+      this.list.push(normalizeFriend(friend));
       this.lastSyncTimestamp = Math.floor(Date.now() / 1000);
-      await this.save();
-      this.publishToRelays().catch(() => {});
+      await this.saveToDB();
+
+      const ks = useKeyStore();
+      if (ks.supportsNip04) this.publishToRelays().catch(() => {});
       return true;
     },
 
     async remove(pubkey: string) {
       this.list = this.list.filter(f => f.pubkey !== pubkey);
       this.lastSyncTimestamp = Math.floor(Date.now() / 1000);
-      await this.save();
-      this.publishToRelays().catch(() => {});
+      await this.saveToDB();
+
+      const ks = useKeyStore();
+      if (ks.supportsNip04) this.publishToRelays().catch(() => {});
       return true;
     },
 
-    reset() {
-      this.list = [];
-      this.loadedFor = "";
-      this.lastSyncTimestamp = 0;
+    async update(pubkey: string, patch: Partial<Friend>) {
+      const f = this.list.find(x => x.pubkey === pubkey);
+      if (!f) return false;
+
+      Object.assign(f, patch);
+      this.lastSyncTimestamp = Math.floor(Date.now() / 1000);
+      await this.saveToDB();
+
+      const ks = useKeyStore();
+      if (ks.supportsNip04) this.publishToRelays().catch(() => {});
+      return true;
     },
 
     /* =========================
-     * 同步逻辑 (简版)
+     * Relay 同步（逻辑几乎不变）
      * ========================= */
+
+    async publishToRelays(): Promise<boolean> {
+      const ks = useKeyStore();
+      if (!ks.isLoggedIn || !ks.supportsNip04) return false;
+
+      this.syncing = true;
+      try {
+        const encrypted = await ks.nip04Encrypt(
+          ks.pkHex,
+          JSON.stringify(this.list)
+        );
+
+        const event = await ks.signEvent({
+          kind: 30000,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: [["d", "close-friends"]],
+          content: encrypted
+        });
+
+        const relays = getRelaysFromStorage();
+        const results = await publish(relays, event);
+
+        if (results.some(r => r.ok)) {
+          this.lastSyncTimestamp = event.created_at;
+          await this.saveToDB();
+          return true;
+        }
+        return false;
+      } finally {
+        this.syncing = false;
+      }
+    },
+
     async fetchFromRelays(): Promise<boolean> {
       const ks = useKeyStore();
       if (!ks.isLoggedIn || !ks.supportsNip04) return false;
 
       this.syncing = true;
-      // 这里应该包含具体的 subscribe 逻辑...
-      // 成功拉取并解密后调用 await this.save()
-      this.syncing = false;
-      return true;
-    },
 
-    async publishToRelays() {
-        // ... 具体发布逻辑
+      try {
+        const relays = getRelaysFromStorage();
+        const sub = subscribe(relays, [{
+          kinds: [30000],
+          authors: [ks.pkHex],
+          "#d": ["close-friends"],
+          limit: 1
+        }]);
+
+        return new Promise(resolve => {
+          let latest: any = null;
+
+          sub.on("event", evt => {
+            if (!latest || evt.created_at > latest.created_at) {
+              latest = evt;
+            }
+          });
+
+          sub.on("eose", async () => {
+            sub.unsub();
+            if (!latest) {
+              this.syncing = false;
+              resolve(false);
+              return;
+            }
+
+            try {
+              const decrypted = await ks.nip04Decrypt(
+                ks.pkHex,
+                latest.content
+              );
+              const incoming = JSON.parse(decrypted);
+              if (Array.isArray(incoming)) {
+                this.list = mergeList(this.list, incoming);
+                this.lastSyncTimestamp = latest.created_at;
+                await this.saveToDB();
+                resolve(true);
+              } else {
+                resolve(false);
+              }
+            } catch {
+              resolve(false);
+            } finally {
+              this.syncing = false;
+            }
+          });
+        });
+      } catch {
+        this.syncing = false;
+        return false;
+      }
     }
   }
 });
