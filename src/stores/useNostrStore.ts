@@ -52,16 +52,11 @@ export default defineStore('nostr', () => {
     });
   };
 
-  const getEventById = (id: string) => {
-    return messages.value.find(m => m.id === id);
-  };
-
 
   return {
     messages,
     connect,
     subscribeByAuthors,
     publishMultiRecipient,
-    getEventById
   };
 });
