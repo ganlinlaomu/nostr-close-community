@@ -7,12 +7,6 @@ import { useNotificationsStore } from "@/stores/notifications";
 import { logger } from "@/utils/logger";
 import { backfillEvents } from "@/utils/backfill";
 
-
-
-
-
-
-
 /**
  * Interactions store - handles encrypted likes and comments
  * Uses kind 8965 for encrypted interactions (likes/comments)
@@ -337,21 +331,19 @@ export const useInteractionsStore = defineStore("interactions", {
 
   const notifications = useNotificationsStore();
 
-
-
-  // ⭐ 关键：从 timeline / cache 拿原帖
-
-
   notifications.addNotification({
     id: evt.id,
-    type: interaction.type,              // 'like' | 'comment'
-    from: interaction.author,             // 谁点的
-    messageId: interaction.messageId,     // 哪条帖子
+    type: interaction.type,            // 'like' | 'comment'
+    from: interaction.author,           // 谁点的
+    messageId: interaction.messageId,   // 哪条消息
+    commentId:
+      interaction.type === "comment"
+        ? interaction.id
+        : undefined,
     created_at: interaction.timestamp,
     read: false,
   });
 },
-
 
     
     /**
