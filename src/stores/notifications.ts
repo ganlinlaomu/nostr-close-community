@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { useKeyStore } from "./keys";
 import { useInteractionsStore } from "./interactions";
-import { getDatabase } from "@/db/dexie";
+import { getCurrentDatabase } from "@/db/dexie";
 
 export interface NotificationItem {
   id: string;
