@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { NostrService } from "@/utils/nostr";
-import { getDatabase, type DBMessage } from "@/db/dexie";
+import { getCurrentDatabase, type DBMessage } from "@/db/dexie";
 import { useKeyStore } from "@/stores/keys";
 import { logger } from "@/utils/logger";
 
