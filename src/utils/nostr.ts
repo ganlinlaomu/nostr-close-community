@@ -1,8 +1,16 @@
-import { SimplePool, getEventHash, signEvent, getPublicKey, generatePrivateKey, nip04 } from 'nostr-tools';
+
+import { 
+  SimplePool, 
+  getPublicKey, 
+  generateSecretKey, 
+  finalizeEvent, // v2 推荐使用的签名方法
+  verifyEvent,
+  nip04 
+} from 'nostr-tools';
 
 /**
  * NIP-44 style broadcast group implementation (for kind=8964 messages)
- *
+ * import { SimplePool, getEventHash, signEvent, getPublicKey, generatePrivateKey, nip04 } from 'nostr-tools';
  * Key points:
  * - group messages are broadcast (kind=8964) with tag ['g', groupId]
  * - group symmetric key is distributed ONCE to new members using NIP-04 (kind=4 DM)
