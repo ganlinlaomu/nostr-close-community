@@ -6,7 +6,12 @@ import { genSymHex, symEncryptPackage, symDecryptPackage } from "@/nostr/crypto"
 import { useNotificationsStore } from "@/stores/notifications";
 import { logger } from "@/utils/logger";
 import { backfillEvents } from "@/utils/backfill";
-import { useTimelineStore } from "@/stores/posts";
+import useNostrStore from "@/stores/useNostrStore";
+
+const nostrStore = useNostrStore();
+const post = nostrStore.getEventById(interaction.messageId);
+
+
 
 
 /**
