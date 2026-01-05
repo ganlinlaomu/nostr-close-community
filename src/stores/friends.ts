@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { useKeyStore } from "./keys";
-import { getDatabase } from "@/db/dexie";
+import { getCurrentDatabase } from "@/db/dexie";
 import { getRelaysFromStorage, subscribe, publish } from "@/nostr/relays";
 import { logger } from "@/utils/logger";
 
