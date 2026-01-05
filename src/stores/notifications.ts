@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { useKeyStore } from "./keys";
 import { useInteractionsStore } from "./interactions";
-import { getDatabase } from "@/db/dexie"; // 1. 引入工厂
+import { getDatabase } from "@/db/dexie";
 
 export interface NotificationItem {
   id: string;
@@ -33,37 +33,51 @@ export const useNotificationsStore = defineStore("notifications", {
   }),
 
   getters: {
-    visibleList: (state) => state.list.filter(n => !state.dismissed.has(n.id)),
-    unreadCount(): number { return this.visibleList.filter(n => !n.read).length; },
-    since(): number { 
+    visibleList: (s) => s.list.filter(n => !s.dismissed.has(n.id)),
+    unreadCount(): number {
+      return this.visibleList.filter(n => !n.read).length;
+    },
+    since(): number {
       const now = Math.floor(Date.now() / 1000);
       return this.meta?.lastSeenAt || (now - FIRST_LOGIN_DAYS * DAY_SECONDS);
     },
   },
 
   actions: {
-    // 2. 获取当前账号对应的物理库
-    getDB() {
-      const ks = useKeyStore();
-      return getDatabase(this.loadedFor || ks.pkHex);
+    /* =========================
+     * DB helpers（不再 fallback）
+     * ========================= */
+    getDB(pk: string) {
+      return getDatabase(pk);
     },
 
+    /* =========================
+     * Load（账号隔离安全）
+     * ========================= */
     async load(pk?: string) {
       const ks = useKeyStore();
       const targetPk = pk ?? ks.pkHex;
       if (!targetPk) return;
 
       if (this.loadedFor === targetPk) return;
+
+      // 🔐 切账号：先清内存
+      this.list = [];
+      this.dismissed = new Set();
+      this.meta = null;
       this.loadedFor = targetPk;
 
-      const db = this.getDB();
+      const db = this.getDB(targetPk);
 
-      // 1. 从物理库加载列表（按时间倒序）
       try {
-        this.list = await db.notifications.orderBy("created_at").reverse().toArray() as any;
-      } catch { this.list = []; }
+        this.list = await db.notifications
+          .orderBy("created_at")
+          .reverse()
+          .toArray() as NotificationItem[];
+      } catch {
+        this.list = [];
+      }
 
-      // 2. 从物理库 meta 表加载元数据和屏蔽列表
       try {
         const dismissedData = await db.meta.get("notifications_dismissed");
         this.dismissed = new Set(dismissedData?.value || []);
@@ -73,101 +87,102 @@ export const useNotificationsStore = defineStore("notifications", {
           this.meta = metaData.value;
         } else {
           const now = Math.floor(Date.now() / 1000);
-          this.meta = { lastSeenAt: now - FIRST_LOGIN_DAYS * DAY_SECONDS, seenEventIds: [] };
-          await this.saveMeta();
+          this.meta = {
+            lastSeenAt: now - FIRST_LOGIN_DAYS * DAY_SECONDS,
+            seenEventIds: [],
+          };
+          await db.meta.put({ key: "notifications_meta", value: this.meta });
         }
       } catch {
         this.dismissed = new Set();
       }
 
-      this.refreshContent();
+      this.refreshContent(targetPk);
     },
 
-    refreshContent() {
+    refreshContent(pk: string) {
+      if (pk !== this.loadedFor) return;
+
       const interactions = useInteractionsStore();
+      if (interactions.loadedFor !== pk) return;
+
       this.list.forEach(n => {
         if (n.commentId && !n.commentContent) {
-          const comment = interactions.getComments(n.messageId).find(c => c.id === n.commentId);
-          if (comment) {
-            n.commentContent = comment.text;
-            if (comment.parentCommentId) n.replyId = comment.parentCommentId;
+          const c = interactions
+            .getComments(n.messageId)
+            .find(x => x.id === n.commentId);
+          if (c) {
+            n.commentContent = c.text;
+            if (c.parentCommentId) n.replyId = c.parentCommentId;
           }
         }
       });
     },
 
-    // 3. 将 save 分拆，直接写入 Dexie 效率更高
-    async saveNotification(n: NotificationItem) {
-      const db = this.getDB();
-      await db.notifications.put(n as any);
-    },
-
-    async saveMeta() {
-      const db = this.getDB();
-      await db.meta.put({ key: "notifications_meta", value: this.meta });
-    },
-
-    async saveDismissed() {
-      const db = this.getDB();
-      await db.meta.put({ key: "notifications_dismissed", value: [...this.dismissed] });
-    },
-
     async addNotification(n: NotificationItem) {
+      if (!this.loadedFor) return;
       if (this.list.some(x => x.id === n.id)) return;
       if (this.dismissed.has(n.id)) return;
-      
-      const threeDaysAgo = Math.floor(Date.now() / 1000) - (FIRST_LOGIN_DAYS * DAY_SECONDS);
-      if (n.created_at < threeDaysAgo) return;
 
-      // 填充内容
-      if (n.commentId) {
-        const interactions = useInteractionsStore();
-        const comment = interactions.getComments(n.messageId).find(c => c.id === n.commentId);
-        if (comment) {
-          n.commentContent = comment.text;
-          if (comment.parentCommentId) n.replyId = comment.parentCommentId;
-        }
-      }
+      const cutoff =
+        Math.floor(Date.now() / 1000) - FIRST_LOGIN_DAYS * DAY_SECONDS;
+      if (n.created_at < cutoff) return;
 
       this.list.unshift(n);
       this.list.sort((a, b) => b.created_at - a.created_at);
-      
-      if (this.list.length > 500) this.list = this.list.slice(0, 500); // 数据库容量大，可以多留点
+      if (this.list.length > 500) this.list.length = 500;
 
-      // 物理保存
-      await this.saveNotification(n);
+      await this.getDB(this.loadedFor).notifications.put(n as any);
     },
 
-    async markAsRead(id: string) { 
-      const n = this.list.find(x => x.id === id); 
+    async markAsRead(id: string) {
+      if (!this.loadedFor) return;
+      const n = this.list.find(x => x.id === id);
       if (!n) return;
+
       n.read = true;
       if (this.meta) {
-        this.meta.lastSeenAt = Math.max(this.meta.lastSeenAt, n.created_at);
-        await this.saveMeta();
+        this.meta.lastSeenAt = Math.max(
+          this.meta.lastSeenAt,
+          n.created_at
+        );
+        await this.getDB(this.loadedFor).meta.put({
+          key: "notifications_meta",
+          value: this.meta,
+        });
       }
-      await this.saveNotification(n);
+      await this.getDB(this.loadedFor).notifications.put(n as any);
     },
 
     async markAllRead() {
+      if (!this.loadedFor) return;
       const now = Math.floor(Date.now() / 1000);
-      this.list.forEach(n => { n.read = true; });
+      this.list.forEach(n => (n.read = true));
+
       if (this.meta) {
         this.meta.lastSeenAt = now;
-        await this.saveMeta();
+        await this.getDB(this.loadedFor).meta.put({
+          key: "notifications_meta",
+          value: this.meta,
+        });
       }
-      // 批量更新数据库里的已读状态
-      const db = this.getDB();
-      await db.notifications.toCollection().modify({ read: true });
+
+      await this.getDB(this.loadedFor)
+        .notifications
+        .toCollection()
+        .modify({ read: true });
     },
 
-    async dismiss(id: string) { 
-      this.dismissed.add(id); 
-      await this.saveDismissed();
+    async dismiss(id: string) {
+      if (!this.loadedFor) return;
+      this.dismissed.add(id);
+      await this.getDB(this.loadedFor).meta.put({
+        key: "notifications_dismissed",
+        value: [...this.dismissed],
+      });
     },
 
-    reset(removeFromStorage = false) {
-      const db = this.getDB();
+    async reset(removeFromStorage = false) {
       const pk = this.loadedFor;
       this.list = [];
       this.dismissed = new Set();
@@ -175,9 +190,10 @@ export const useNotificationsStore = defineStore("notifications", {
       this.loadedFor = "";
 
       if (removeFromStorage && pk) {
-        db.notifications.clear();
-        db.meta.delete("notifications_meta");
-        db.meta.delete("notifications_dismissed");
+        const db = this.getDB(pk);
+        await db.notifications.clear();
+        await db.meta.delete("notifications_meta");
+        await db.meta.delete("notifications_dismissed");
       }
     },
   },
