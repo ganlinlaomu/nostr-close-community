@@ -8,8 +8,7 @@ import { logger } from "@/utils/logger";
 import { backfillEvents } from "@/utils/backfill";
 import useNostrStore from "@/stores/useNostrStore";
 
-const nostrStore = useNostrStore();
-const post = nostrStore.getEventById(interaction.messageId);
+
 
 
 
@@ -337,10 +336,11 @@ export const useInteractionsStore = defineStore("interactions", {
   if (interaction.author === myPubkey) return;
 
   const notifications = useNotificationsStore();
-  const timeline = useTimelineStore();
+  const nostrStore = useNostrStore();
+
 
   // ⭐ 关键：从 timeline / cache 拿原帖
-  const post = timeline.getEventById(interaction.messageId);
+  const post = nostrStore.getEventById(interaction.messageId);
 
   notifications.addNotification({
     id: evt.id,
