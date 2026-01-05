@@ -6,6 +6,8 @@ import { genSymHex, symEncryptPackage, symDecryptPackage } from "@/nostr/crypto"
 import { useNotificationsStore } from "@/stores/notifications";
 import { logger } from "@/utils/logger";
 import { backfillEvents } from "@/utils/backfill";
+import { useTimelineStore } from "@/stores/posts";
+
 
 /**
  * Interactions store - handles encrypted likes and comments
@@ -330,20 +332,39 @@ export const useInteractionsStore = defineStore("interactions", {
   if (interaction.author === myPubkey) return;
 
   const notifications = useNotificationsStore();
+  const timeline = useTimelineStore();
+
+  // ⭐ 关键：从 timeline / cache 拿原帖
+  const post = timeline.getEventById(interaction.messageId);
 
   notifications.addNotification({
     id: evt.id,
-    type: interaction.type,            // 'like' | 'comment'
-    from: interaction.author,           // 谁点的
-    messageId: interaction.messageId,   // 哪条消息
+    type: interaction.type,              // 'like' | 'comment'
+    from: interaction.author,             // 谁点的
+    messageId: interaction.messageId,     // 哪条帖子
+
+    // ⭐⭐ 新增：帖子快照
+    postAuthor: post?.pubkey,
+    postPreview: post?.content
+      ? post.content.slice(0, 120)
+      : "[原帖不可用]",
+
+    // ⭐⭐ 新增：评论内容
     commentId:
       interaction.type === "comment"
         ? interaction.id
         : undefined,
+
+    commentPreview:
+      interaction.type === "comment"
+        ? interaction.text.slice(0, 120)
+        : undefined,
+
     created_at: interaction.timestamp,
     read: false,
   });
 },
+
 
     
     /**
