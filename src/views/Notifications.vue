@@ -29,12 +29,8 @@
             @touchend="onTouchEnd(n.id)"
           >
             <div class="swipe-actions">
-              <button class="action read" @click.stop="markRead(n)">
-                已读
-              </button>
-              <button class="action delete" @click.stop="dismiss(n)">
-                忽略
-              </button>
+              <button class="action read" @click.stop="markRead(n)">已读</button>
+              <button class="action delete" @click.stop="dismiss(n)">忽略</button>
             </div>
 
             <div
@@ -46,11 +42,23 @@
               <div class="icon">
                 {{ n.type === "like" ? "❤️" : "💬" }}
               </div>
-                <div class="content">
+
+              <div class="content">
                 <div class="text">
                   <span class="from">{{ displayName(n.from) }}</span>
-                  {{ n.type === "like" ? "点赞了你" : "评论了你" }}
+                  {{
+                    n.type === "like"
+                      ? "点赞了你"
+                      : n.type === "reply"
+                      ? "回复了你的评论"
+                      : "评论了你"
+                  }}
                 </div>
+                <!-- 帖子内容 + 评论/回复预览 -->
+                <div class="comment-content" v-if="n.type !== 'like'">
+                  {{ getCommentPreview(n) }}
+                </div>
+
                 <div class="time">
                   {{ formatRelativeTime(n.created_at) }}
                 </div>
@@ -75,12 +83,8 @@
             @touchend="onTouchEnd(n.id)"
           >
             <div class="swipe-actions">
-              <button class="action read" @click.stop="markRead(n)">
-                已读
-              </button>
-              <button class="action delete" @click.stop="dismiss(n)">
-                忽略
-              </button>
+              <button class="action read" @click.stop="markRead(n)">已读</button>
+              <button class="action delete" @click.stop="dismiss(n)">忽略</button>
             </div>
 
             <div
@@ -96,8 +100,18 @@
               <div class="content">
                 <div class="text">
                   <span class="from">{{ displayName(n.from) }}</span>
-                  {{ n.type === "like" ? "点赞了你" : "评论了你" }}
+                  {{
+                    n.type === "like"
+                      ? "点赞了你"
+                      : n.type === "reply"
+                      ? "回复了你的评论"
+                      : "评论了你"
+                  }}
                 </div>
+                <div class="comment-content" v-if="n.type !== 'like'">
+                  {{ getCommentPreview(n) }}
+                </div>
+
                 <div class="time">
                   {{ formatRelativeTime(n.created_at) }}
                 </div>
@@ -109,9 +123,8 @@
         </TransitionGroup>
       </template>
 
-
       <!-- 更早 -->
-     <template v-if="groups.earlier.length">
+      <template v-if="groups.earlier.length">
         <div class="group-title">更早</div>
         <TransitionGroup name="notify" tag="ul" class="notification-list">
           <li
@@ -123,12 +136,8 @@
             @touchend="onTouchEnd(n.id)"
           >
             <div class="swipe-actions">
-              <button class="action read" @click.stop="markRead(n)">
-                已读
-              </button>
-              <button class="action delete" @click.stop="dismiss(n)">
-                忽略
-              </button>
+              <button class="action read" @click.stop="markRead(n)">已读</button>
+              <button class="action delete" @click.stop="dismiss(n)">忽略</button>
             </div>
 
             <div
@@ -144,8 +153,18 @@
               <div class="content">
                 <div class="text">
                   <span class="from">{{ displayName(n.from) }}</span>
-                  {{ n.type === "like" ? "点赞了你" : "评论了你" }}
+                  {{
+                    n.type === "like"
+                      ? "点赞了你"
+                      : n.type === "reply"
+                      ? "回复了你的评论"
+                      : "评论了你"
+                  }}
                 </div>
+                <div class="comment-content" v-if="n.type !== 'like'">
+                  {{ getCommentPreview(n) }}
+                </div>
+
                 <div class="time">
                   {{ formatRelativeTime(n.created_at) }}
                 </div>
@@ -156,22 +175,23 @@
           </li>
         </TransitionGroup>
       </template>
-       </div>
+    </div>
   </div>
 </template>
-
 
 <script setup lang="ts">
 import { computed, reactive } from "vue";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useFriendsStore } from "@/stores/friends";
 import { useRouter } from "vue-router";
+import { useNostrStore } from "@/stores/nostr";
 
 const notifications = useNotificationsStore();
 const friends = useFriendsStore();
+const nostr = useNostrStore();
 const router = useRouter();
 
-/* ---------- 时间分组（按时间倒序） ---------- */
+/* ---------- 时间分组 ---------- */
 function startOfDay(ts: number) {
   const d = new Date(ts);
   d.setHours(0, 0, 0, 0);
@@ -239,55 +259,63 @@ function displayName(pk: string) {
 }
 function go(n: any) {
   notifications.markAsRead(n.id);
-  router.push({ path: "/", query: { mid: n.messageId, iid: n.commentId } });
+  router.push({ path: "/", query: { mid: n.messageId, iid: n.commentId, rid: n.replyId } });
+}
+
+/* ---------- 评论/回复内容 ---------- */
+function getCommentPreview(n: any) {
+  if (n.type === "like") return "";
+  // 回复评论优先显示 replyId
+  if (n.replyId) {
+    const reply = nostr.interactions.comments.find(c => c.id === n.replyId);
+    return reply?.content || "";
+  }
+  // 普通评论显示 commentId
+  if (n.commentId) {
+    const comment = nostr.interactions.comments.find(c => c.id === n.commentId);
+    return comment?.content || "";
+  }
+  return "";
 }
 </script>
 
 <style scoped>
-/* === 排版完全保持你原版 === */
+/* === 排版完全保持原版 === */
 .notifications-page {
   padding: 12px;
   padding-bottom: calc(20px + var(--bottom-nav-height) + env(safe-area-inset-bottom));
 }
-
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
 }
-
 .mark-read {
   font-size: 12px;
   color: #64748b;
 }
-
 .empty {
   text-align: center;
   color: #94a3b8;
   margin-top: 40px;
 }
-
 .group-title {
   font-size: 12px;
   font-weight: 600;
   color: #64748b;
   margin: 14px 4px 6px;
 }
-
 .notification-list {
   list-style: none;
   padding: 0;
   margin: 0;
 }
-
-/* === 左滑 === */
 .swipe-wrapper {
   position: relative;
   overflow: hidden;
   border-bottom: 1px solid #e5e7eb;
 }
-
 .swipe-actions {
   position: absolute;
   right: 0;
@@ -295,22 +323,18 @@ function go(n: any) {
   height: 100%;
   display: flex;
 }
-
 .action {
   width: 60px;
   color: #fff;
   font-size: 12px;
   border: none;
 }
-
 .action.read {
   background: #3b82f6;
 }
-
 .action.delete {
   background: #ef4444;
 }
-
 .notification-item {
   display: flex;
   gap: 10px;
@@ -319,28 +343,28 @@ function go(n: any) {
   position: relative;
   transition: transform 0.2s ease;
 }
-
 .notification-item.unread {
   background: #f8fafc;
 }
-
 .icon {
   font-size: 18px;
 }
-
 .content {
   flex: 1;
 }
-
 .from {
   font-weight: 600;
 }
-
+.comment-content {
+  font-size: 13px;
+  color: #334155;
+  margin-top: 2px;
+  word-break: break-word;
+}
 .time {
   font-size: 12px;
   color: #64748b;
 }
-
 .dot {
   width: 8px;
   height: 8px;
@@ -351,7 +375,6 @@ function go(n: any) {
   top: 50%;
   transform: translateY(-50%);
 }
-
 .notify-enter-active {
   transition: all 0.25s ease;
 }
