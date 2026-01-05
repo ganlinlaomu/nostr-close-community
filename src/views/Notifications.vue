@@ -55,9 +55,9 @@
                   }}
                 </div>
 
-                <!-- 评论或回复内容 -->
-                <div class="comment-content" v-if="n.type !== 'like'">
-                  {{ getCommentPreview(n) }}
+                <!-- 评论/回复或点赞对应帖子内容 -->
+                <div class="comment-content">
+                  {{ getNotificationContent(n) }}
                 </div>
 
                 <div class="time">
@@ -109,8 +109,9 @@
                       : "评论了你"
                   }}
                 </div>
-                <div class="comment-content" v-if="n.type !== 'like'">
-                  {{ getCommentPreview(n) }}
+
+                <div class="comment-content">
+                  {{ getNotificationContent(n) }}
                 </div>
 
                 <div class="time">
@@ -162,8 +163,9 @@
                       : "评论了你"
                   }}
                 </div>
-                <div class="comment-content" v-if="n.type !== 'like'">
-                  {{ getCommentPreview(n) }}
+
+                <div class="comment-content">
+                  {{ getNotificationContent(n) }}
                 </div>
 
                 <div class="time">
@@ -185,9 +187,11 @@ import { computed, reactive } from "vue";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useFriendsStore } from "@/stores/friends";
 import { useRouter } from "vue-router";
+import { useInteractionsStore } from "@/stores/interactions";
 
 const notifications = useNotificationsStore();
 const friends = useFriendsStore();
+const interactions = useInteractionsStore();
 const router = useRouter();
 
 /* ---------- 时间分组 ---------- */
@@ -261,20 +265,29 @@ function go(n: any) {
   router.push({ path: "/", query: { mid: n.messageId, iid: n.commentId, rid: n.replyId } });
 }
 
-/* ---------- 评论/回复内容 ---------- */
-function getCommentPreview(n: any) {
-  if (n.type === "like") return "";
-  // 回复评论优先显示 replyId
+/* ---------- 评论/回复/点赞内容 ---------- */
+function getNotificationContent(n: any) {
+  if (n.type === "like") {
+    // 点赞显示原帖内容
+    const comments = interactions.getComments(n.messageId);
+    return comments.length ? comments[0].text || "[内容已删除]" : "[内容已删除]";
+  }
+
+  // 评论或回复
+  let commentText = "";
   if (n.replyId) {
-    const reply = notifications.list.find(c => c.id === n.replyId);
-    return reply?.content || "";
+    const reply = interactions.getComments(n.messageId).find(c => c.id === n.replyId);
+    commentText = reply?.text || "[内容已删除]";
+  } else if (n.commentId) {
+    const comment = interactions.getComments(n.messageId).find(c => c.id === n.commentId);
+    commentText = comment?.text || "[内容已删除]";
   }
-  // 普通评论显示 commentId
-  if (n.commentId) {
-    const comment = notifications.list.find(c => c.id === n.commentId);
-    return comment?.content || "";
-  }
-  return "";
+
+  // 原帖内容
+  const comments = interactions.getComments(n.messageId);
+  const postContent = comments.length ? comments[0].text || "[内容已删除]" : "[内容已删除]";
+
+  return commentText ? `${commentText}\n---\n原帖: ${postContent}` : `原帖: ${postContent}`;
 }
 </script>
 
@@ -358,6 +371,7 @@ function getCommentPreview(n: any) {
   font-size: 13px;
   color: #334155;
   margin-top: 2px;
+  white-space: pre-line;
   word-break: break-word;
 }
 .time {
