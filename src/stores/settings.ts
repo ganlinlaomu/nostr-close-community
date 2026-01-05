@@ -1,6 +1,11 @@
 import { defineStore } from "pinia";
 import { useKeyStore } from "./keys";
-import { getRelaysFromStorage, subscribe, publish, reconnectRelay } from "@/nostr/relays";
+import {
+  getRelaysFromStorage,
+  subscribe,
+  publish,
+  reconnectRelay
+} from "@/nostr/relays";
 import { logger } from "@/utils/logger";
 
 /* ------------------------------------------------------------------ */
@@ -22,7 +27,7 @@ type StoredSettingsData = {
   lastSyncTimestamp: number;
 };
 
-function storageKeyFor(pkHex: string | null | undefined) {
+function storageKeyFor(pkHex?: string | null) {
   if (!pkHex) return null;
   return `nostr_settings_${pkHex}`;
 }
@@ -34,41 +39,61 @@ function storageKeyFor(pkHex: string | null | undefined) {
 export const useSettingsStore = defineStore("settings", {
   state: () => ({
     settings: {
-      relays: [] as string[],
-      blossomServers: [] as BlossomServer[]
+      relays: [],
+      blossomServers: []
     } as AppSettings,
 
     loadedFor: "" as string,
 
     syncing: false,
     syncError: "",
-    lastSyncTimestamp: 0
+    lastSyncTimestamp: 0,
+
+    _isFetching: false
   }),
 
   getters: {
-    relayList(): string[] {
-      return this.settings.relays;
-    },
-    blossomList(): BlossomServer[] {
-      return this.settings.blossomServers;
-    }
+    relayList: (s) => s.settings.relays,
+    blossomList: (s) => s.settings.blossomServers
   },
 
   actions: {
     /* ================================================================
-     * load — 本地恢复 + 首次 bootstrap 同步入口
+     * reset — 切账号 / 登出必用
+     * ================================================================ */
+    reset() {
+      this.settings = { relays: [], blossomServers: [] };
+      this.loadedFor = "";
+      this.syncing = false;
+      this.syncError = "";
+      this.lastSyncTimestamp = 0;
+      this._isFetching = false;
+    },
+
+    /* ================================================================
+     * load — 按 pk 隔离
      * ================================================================ */
     async load(pk?: string) {
       const ks = useKeyStore();
       const targetPk = pk ?? ks.pkHex;
-      if (!targetPk || this.loadedFor === targetPk) return;
 
+      if (!targetPk) {
+        this.reset();
+        return;
+      }
+
+      // 🔥 切账号
+      if (this.loadedFor && this.loadedFor !== targetPk) {
+        this.reset();
+      }
+
+      if (this.loadedFor === targetPk) return;
       this.loadedFor = targetPk;
 
       const key = storageKeyFor(targetPk);
       let hasLocal = false;
 
-      /* ---------- 本地恢复 ---------- */
+      /* ---------- local ---------- */
       try {
         const raw = key ? localStorage.getItem(key) : null;
         if (raw) {
@@ -81,70 +106,54 @@ export const useSettingsStore = defineStore("settings", {
           }
         }
       } catch (e) {
-        logger.error("Failed to load local settings", e);
+        logger.error("settings local load failed", e);
       }
 
-      /* ---------- bootstrap → fetch ---------- */
+      /* ---------- relay bootstrap ---------- */
       if (!hasLocal) {
         await this.bootstrapFetch();
       }
     },
 
     /* ================================================================
-     * bootstrapFetch — 关键新增
-     * 1️⃣ 使用当前 relay（内置）
-     * 2️⃣ 尝试从 relay 拉取 settings
-     * 3️⃣ 拉到即覆盖 / 应用
-     * 4️⃣ 拉不到才认为是新账号
+     * bootstrapFetch
      * ================================================================ */
     async bootstrapFetch() {
-  const ks = useKeyStore();
-  if (!ks.isLoggedIn || !ks.supportsNip04 || !ks.pkHex) return;
+      const ks = useKeyStore();
+      if (!ks.isLoggedIn || ks.pkHex !== this.loadedFor) return;
 
-  const prevSyncing = this.syncing;
-  this.syncing = false;
-
-  try {
-    await this.fetchFromRelays();
-  } finally {
-    this.syncing = prevSyncing;
-  }
-},
+      const prev = this.syncing;
+      this.syncing = false;
+      try {
+        await this.fetchFromRelays();
+      } finally {
+        this.syncing = prev;
+      }
+    },
 
     /* ================================================================
-     * apply — 应用当前 settings
+     * apply
      * ================================================================ */
     applySettings() {
-      /* relay */
       try {
-        const relaysText = this.settings.relays.join("\n");
-        localStorage.setItem("custom-relays", relaysText);
-
-        for (const url of this.settings.relays) {
-          try {
-            reconnectRelay(url);
-          } catch {}
+        localStorage.setItem("custom-relays", this.settings.relays.join("\n"));
+        for (const r of this.settings.relays) {
+          try { reconnectRelay(r); } catch {}
         }
       } catch (e) {
-        logger.error("Apply relay settings failed", e);
+        logger.error("apply relay failed", e);
       }
 
-      /* blossom */
       try {
         localStorage.setItem(
           "blossom_servers",
           JSON.stringify(this.settings.blossomServers)
         );
 
-        if (this.settings.blossomServers[0]) {
-          localStorage.setItem(
-            "blossom_upload_url",
-            this.settings.blossomServers[0].url
-          );
-          localStorage.setItem(
-            "blossom_token",
-            this.settings.blossomServers[0].token || ""
-          );
+        const first = this.settings.blossomServers[0];
+        if (first) {
+          localStorage.setItem("blossom_upload_url", first.url);
+          localStorage.setItem("blossom_token", first.token || "");
         }
 
         window.dispatchEvent(
@@ -153,12 +162,12 @@ export const useSettingsStore = defineStore("settings", {
           })
         );
       } catch (e) {
-        logger.error("Apply blossom settings failed", e);
+        logger.error("apply blossom failed", e);
       }
     },
 
     /* ================================================================
-     * save — 本地持久化
+     * save
      * ================================================================ */
     save() {
       const key = storageKeyFor(this.loadedFor);
@@ -175,14 +184,12 @@ export const useSettingsStore = defineStore("settings", {
     },
 
     /* ================================================================
-     * local update（本地 + publish）
+     * update
      * ================================================================ */
     updateRelays(relays: string[]) {
       this.settings.relays = [...relays];
       this.save();
-
-      const ks = useKeyStore();
-      if (ks.supportsNip04) {
+      if (useKeyStore().supportsNip04) {
         this.publishToRelays().catch(() => {});
       }
     },
@@ -190,29 +197,26 @@ export const useSettingsStore = defineStore("settings", {
     updateBlossomServers(servers: BlossomServer[]) {
       this.settings.blossomServers = [...servers];
       this.save();
-
-      const ks = useKeyStore();
-      if (ks.supportsNip04) {
+      if (useKeyStore().supportsNip04) {
         this.publishToRelays().catch(() => {});
       }
     },
 
     /* ================================================================
-     * publish — 只推
+     * publish
      * ================================================================ */
     async publishToRelays(): Promise<boolean> {
       const ks = useKeyStore();
-      if (!ks.isLoggedIn || !ks.supportsNip04 || !ks.pkHex) {
-        this.syncError = "无法同步设置";
-        return false;
-      }
+      if (!ks.isLoggedIn || ks.pkHex !== this.loadedFor) return false;
 
       this.syncing = true;
       this.syncError = "";
 
       try {
-        const payload = JSON.stringify(this.settings);
-        const encrypted = await ks.nip04Encrypt(ks.pkHex, payload);
+        const encrypted = await ks.nip04Encrypt(
+          ks.pkHex,
+          JSON.stringify(this.settings)
+        );
 
         const event = await ks.signEvent({
           kind: 30000,
@@ -221,9 +225,7 @@ export const useSettingsStore = defineStore("settings", {
           content: encrypted
         });
 
-        const relays = getRelaysFromStorage();
-        const result = await publish(relays, event);
-
+        const result = await publish(getRelaysFromStorage(), event);
         if (!result.some(r => r.ok)) {
           this.syncError = "所有 relay 发布失败";
           return false;
@@ -241,80 +243,61 @@ export const useSettingsStore = defineStore("settings", {
     },
 
     /* ================================================================
-     * fetch — 只拉
+     * fetch
      * ================================================================ */
     async fetchFromRelays(): Promise<boolean> {
-  const ks = useKeyStore();
-  if (!ks.isLoggedIn || !ks.supportsNip04 || !ks.pkHex) {
-    return false;
-  }
+      const ks = useKeyStore();
+      if (!ks.isLoggedIn || ks.pkHex !== this.loadedFor) return false;
+      if (this._isFetching) return false;
 
-  if (this._isFetching) {
-    return false;
-  }
+      this._isFetching = true;
+      this.syncing = true;
+      this.syncError = "";
 
-  this._isFetching = true;
-  this.syncing = true;
-  this.syncError = "";
+      try {
+        const relays = getRelaysFromStorage();
+        const sub = subscribe(relays, [{
+          kinds: [30000],
+          authors: [ks.pkHex],
+          "#d": ["close-settings"],
+          limit: 1
+        }]);
 
-  let finished = false;
+        return await new Promise(resolve => {
+          let latest: any = null;
+          const timer = setTimeout(() => finish(false), 5000);
 
-  try {
-    const relays = getRelaysFromStorage();
-    const sub = subscribe(relays, [{
-      kinds: [30000],
-      authors: [ks.pkHex],
-      "#d": ["close-settings"],
-      limit: 1
-    }]);
+          const finish = (ok: boolean) => {
+            clearTimeout(timer);
+            try { sub.unsub(); } catch {}
+            resolve(ok);
+          };
 
-    return await new Promise<boolean>(resolve => {
-      let latest: any = null;
+          sub.on("event", e => {
+            if (!latest || e.created_at > latest.created_at) {
+              latest = e;
+            }
+          });
 
-      const finish = (result: boolean) => {
-        if (finished) return;
-        finished = true;
-        try { sub.unsub(); } catch {}
-        resolve(result);
-      };
-
-      const timer = setTimeout(() => finish(false), 5000);
-
-      sub.on("event", e => {
-        if (!latest || e.created_at > latest.created_at) {
-          latest = e;
-        }
-      });
-
-      sub.on("eose", async () => {
-        clearTimeout(timer);
-
-        if (!latest) {
-          finish(false);
-          return;
-        }
-
-        try {
-          const decrypted = await ks.nip04Decrypt(ks.pkHex, latest.content);
-          this.settings = JSON.parse(decrypted);
-          this.lastSyncTimestamp = latest.created_at;
-          this.save();
-          this.applySettings();
-          finish(true);
-        } catch {
-          this.syncError = "解密失败";
-          finish(false);
-        }
-      });
-    });
-  } catch {
-    this.syncError = "拉取失败";
-    return false;
-  } finally {
-    this.syncing = false;
-    this._isFetching = false;
-  }
-}
-
+          sub.on("eose", async () => {
+            if (!latest) return finish(false);
+            try {
+              const dec = await ks.nip04Decrypt(ks.pkHex, latest.content);
+              this.settings = JSON.parse(dec);
+              this.lastSyncTimestamp = latest.created_at;
+              this.save();
+              this.applySettings();
+              finish(true);
+            } catch {
+              this.syncError = "解密失败";
+              finish(false);
+            }
+          });
+        });
+      } finally {
+        this.syncing = false;
+        this._isFetching = false;
+      }
+    }
   }
 });
