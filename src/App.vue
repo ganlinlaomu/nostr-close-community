@@ -1,0 +1,33 @@
+<template>
+  <div class="app-root">
+    <UpdateNotification />
+    <HeaderBar />
+    
+    <router-view v-slot="{ Component }" :key="ks.pkHex">
+      <keep-alive :include="['Home', 'Friends', 'Notifications', 'Settings']">
+        <component :is="Component" />
+      </keep-alive>
+    </router-view>
+    
+    <ToastContainer />
+    <PostEditorModal />
+  </div>
+</template>
+
+<script lang="ts">
+import { defineComponent } from "vue";
+import HeaderBar from "@/components/HeaderBar.vue";
+import ToastContainer from "@/components/ToastContainer.vue";
+import PostEditorModal from "@/components/PostEditorModal.vue";
+import UpdateNotification from "@/components/UpdateNotification.vue";
+// 引入 KeyStore
+import { useKeyStore } from "@/stores/keys";
+
+export default defineComponent({
+  components: { HeaderBar, ToastContainer, PostEditorModal, UpdateNotification },
+  setup() {
+    const ks = useKeyStore();
+    return { ks };
+  }
+});
+</script>
