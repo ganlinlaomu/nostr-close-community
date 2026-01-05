@@ -106,7 +106,7 @@
 
           <!-- recipients chips -->
           <div class="meta-row" style="margin-top:12px;">
-            <strong>对谁可见</strong>
+            <strong>对谁可见jj</strong>
             <div class="small">默认全部好友；可点击分组进行多选。</div>
           </div>
 
