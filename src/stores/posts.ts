@@ -6,23 +6,22 @@ import { genSymHex, symEncryptPackage } from "@/nostr/crypto";
 import { logger } from "@/utils/logger";
 import { useMessagesStore } from "@/stores/messages";
 
-/**
- * posts store
- * - publishNip44PerMessage: store per-account outbox via messages store
- */
 export const usePostsStore = defineStore("posts", {
-  state: () => ({
-    // keep a lightweight local outbox mirror if you want, but prefer messages store
-  }),
+  state: () => ({}),
+
   actions: {
     async publishNip44PerMessage(recipients: string[], plaintext: string) {
       const key = useKeyStore();
       if (!key.isLoggedIn) throw new Error("未登录");
 
+      let targetPk = key.pkHex;
+
       if (!Array.isArray(recipients) || recipients.length === 0) {
         throw new Error("recipients 不能为空");
       }
-      if (!recipients.includes(key.pkHex)) recipients = [...recipients, key.pkHex];
+      if (!recipients.includes(targetPk)) {
+        recipients = [...recipients, targetPk];
+      }
 
       const symHex = genSymHex();
       const pkg = await symEncryptPackage(symHex, plaintext);
@@ -43,14 +42,13 @@ export const usePostsStore = defineStore("posts", {
 
       const event: any = {
         kind: 8964,
-        pubkey: key.pkHex,
+        pubkey: targetPk,
         created_at: Math.floor(Date.now() / 1000),
         tags: [],
         content: contentStr
       };
 
       const signed = await key.signEvent(event);
-
       const relays = getRelaysFromStorage();
 
       let relayResults: Array<{ relay: string; ok: boolean; reason?: any; ts?: number }> = [];
@@ -58,13 +56,27 @@ export const usePostsStore = defineStore("posts", {
       try {
         const pubs: any = await pool.publish(relays, signed);
         if (Array.isArray(pubs)) {
-          relayResults = pubs.map((p: any) => ({ relay: p.relay || p.url, ok: !!p.ok, reason: p.reason, ts: p.ts || Date.now() }));
+          relayResults = pubs.map((p: any) => ({
+            relay: p.relay || p.url,
+            ok: !!p.ok,
+            reason: p.reason,
+            ts: p.ts || Date.now()
+          }));
         } else {
-          relayResults = relays.map((r) => ({ relay: r, ok: true, ts: Date.now() }));
+          relayResults = relays.map((r) => ({
+            relay: r,
+            ok: true,
+            ts: Date.now()
+          }));
         }
       } catch (e) {
         logger.warn("publish failed", e);
-        relayResults = getRelaysFromStorage().map((r) => ({ relay: r, ok: false, reason: e, ts: Date.now() }));
+        relayResults = relays.map((r) => ({
+          relay: r,
+          ok: false,
+          reason: e,
+          ts: Date.now()
+        }));
       }
 
       const out = {
@@ -75,15 +87,25 @@ export const usePostsStore = defineStore("posts", {
         relayResults
       };
 
-      // persist into per-account outbox via messages store
+      /* =========================
+       * ✅ 安全写入 per-account outbox
+       * ========================= */
       try {
         const msgs = useMessagesStore();
-        // ensure loaded for current pk, then add
-        await msgs.load();
-        msgs.addOutbox(out);
+
+        // 🔐 显式按当前账号 load
+        if (msgs.loadedFor !== targetPk) {
+          await msgs.load(targetPk);
+        }
+
+        // 🔐 await，避免 PWA 挂起丢数据
+        await msgs.addOutbox(out);
       } catch (e) {
         logger.warn("saving outbox to messages store failed", e);
-        try { localStorage.setItem("nostr-outbox", JSON.stringify([out, ...(JSON.parse(localStorage.getItem("nostr-outbox") || "[]") || [])])); } catch {}
+        try {
+          const legacy = JSON.parse(localStorage.getItem("nostr-outbox") || "[]");
+          localStorage.setItem("nostr-outbox", JSON.stringify([out, ...legacy]));
+        } catch {}
       }
 
       logger.debug("published event", { signed, relayResults });
