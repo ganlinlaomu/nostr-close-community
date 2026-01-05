@@ -269,38 +269,60 @@ function go(n: any) {
 
 /* ---------- 评论/回复/点赞内容 ---------- */
 function getNotificationContent(n: any) {
-  // 1. 获取所有互动（评论/回复）
   const allInteractions = interactions.getComments(n.messageId);
-  
-  // 2. 找到真正的原帖（从 messagesStore 找，它存的是 kind 8964 的主贴）
+  const messagesStore = useMessagesStore();
   const rootPost = messagesStore.inbox.find(m => m.id === n.messageId);
-  // 优先取 content（解密后的），其次取 text，最后 fallback
-  const rootContent = rootPost?.content || rootPost?.text || "[原帖内容不可见]";
+  
+  const summarize = (text: string, maxLength = 40) => {
+    if (!text) return "";
+    
+    let cleanText = text;
 
-  // 3. 处理点赞
+    // 1. 过滤加密图片字符串 (例如 blossom+aesgcm 或其他自定义格式)
+    // 这种正则会匹配 ![alt](blossom+aesgcm:...) 格式
+    cleanText = cleanText.replace(/!\[.*?\]\(blossom\+aesgcm:[^\s)]+\)/gi, '[加密图片]');
+    
+    // 2. 过滤视频元数据 (针对你 Home 页里的 [video:{...}] 格式)
+    cleanText = cleanText.replace(/\[video:\{.*?\}\]/gi, '[视频]');
+
+    // 3. 过滤普通链接
+    cleanText = cleanText.replace(/https?:\/\/[^\s]+/gi, '[链接]');
+
+    // 4. 处理换行和空白
+    cleanText = cleanText.replace(/\s+/g, " ").trim();
+
+    // 5. 截断
+    if (cleanText.length > maxLength) {
+      return cleanText.slice(0, maxLength) + "...";
+    }
+    return cleanText;
+  };
+
+  const rootSummary = summarize(rootPost?.content || rootPost?.text || "");
+
+  // 处理点赞
   if (n.type === "like") {
-    // 如果点赞的是评论/回复
     const targetId = n.replyId || n.commentId;
     if (targetId) {
       const target = allInteractions.find(c => c.id === targetId);
-      return target?.text || "[评论已删除]";
+      return summarize(target?.text || "已删除消息");
     }
-    // 如果点赞的是主贴
-    return rootContent;
+    return rootSummary || "[媒体动态]";
   }
 
-  // 4. 处理评论或回复
+  // 处理评论或回复
   const targetId = n.replyId || n.commentId;
   const actionNode = allInteractions.find(c => c.id === targetId);
-  const actionText = actionNode?.text || "[内容已删除]";
-
-  // 如果 actionText 拿到的和原帖一样，说明这就是评论本身，不需要额外显示引用
-  // 但为了清晰，我们通常采用 [评论内容 + 分隔线 + 原帖内容]
-  if (targetId) {
-    return `${actionText}\n---\n原帖: ${rootContent}`;
+  
+  if (targetId && actionNode) {
+    const actionSummary = summarize(actionNode.text);
+    // 这里的格式为: "评论内容 // 原帖: 原帖内容"
+    return rootSummary 
+      ? `${actionSummary} // 原帖: ${rootSummary}` 
+      : actionSummary;
   }
 
-  return rootContent;
+  return rootSummary || "[媒体动态]";
 }
 </script>
 
