@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { useKeyStore } from "./keys";
-import { useInteractionsStore, Comment } from "./interactions";
+import { useInteractionsStore, type Comment } from "./interactions";
 
 export interface NotificationItem {
   id: string;
@@ -11,8 +11,6 @@ export interface NotificationItem {
   replyId?: string;
   created_at: number;
   read: boolean;
-
-  // 自动填充内容
   postContent?: string;
   commentContent?: string;
 }
@@ -47,9 +45,10 @@ export const useNotificationsStore = defineStore("notifications", {
   getters: {
     visibleList: (state) => state.list.filter(n => !state.dismissed.has(n.id)),
     unreadCount(): number { return this.visibleList.filter(n => !n.read).length; },
+    // since 仅用于订阅 Relay 时的起始时间，不再用于 addNotification 的硬性拦截
     since(): number { 
       const now = Math.floor(Date.now() / 1000);
-      return this.meta?.lastSeenAt || now - FIRST_LOGIN_DAYS * DAY_SECONDS;
+      return this.meta?.lastSeenAt || (now - FIRST_LOGIN_DAYS * DAY_SECONDS);
     },
   },
 
@@ -62,19 +61,19 @@ export const useNotificationsStore = defineStore("notifications", {
       if (this.loadedFor === targetPk) return;
       this.loadedFor = targetPk;
 
-      // Load notifications
+      // 1. 加载基本列表
       try {
         const raw = localStorage.getItem(notificationsKeyFor(targetPk)!);
         this.list = raw ? JSON.parse(raw) : [];
       } catch { this.list = []; }
 
-      // Load dismissed
+      // 2. 加载屏蔽列表
       try {
         const raw = localStorage.getItem(dismissedKeyFor(targetPk)!);
         this.dismissed = raw ? new Set(JSON.parse(raw)) : new Set();
       } catch { this.dismissed = new Set(); }
 
-      // Load meta
+      // 3. 加载元数据
       let meta = loadMeta(targetPk);
       if (!meta) {
         const now = Math.floor(Date.now() / 1000);
@@ -83,14 +82,20 @@ export const useNotificationsStore = defineStore("notifications", {
       }
       this.meta = meta;
 
-      // ⭐ 填充帖文和评论内容
+      // 4. 填充缺失内容
+      this.refreshContent();
+    },
+
+    // 提取出的内容刷新逻辑
+    refreshContent() {
       const interactions = useInteractionsStore();
       this.list.forEach(n => {
-        // 填充评论内容
-        if (n.commentId) {
-          const comment: Comment | undefined = interactions.getComments(n.messageId).find(c => c.id === n.commentId);
-          n.commentContent = comment?.text || "[评论已删除]";
-          if (comment?.parentCommentId) n.replyId = comment.parentCommentId;
+        if (n.commentId && !n.commentContent) {
+          const comment = interactions.getComments(n.messageId).find(c => c.id === n.commentId);
+          if (comment) {
+            n.commentContent = comment.text;
+            if (comment.parentCommentId) n.replyId = comment.parentCommentId;
+          }
         }
       });
     },
@@ -106,46 +111,57 @@ export const useNotificationsStore = defineStore("notifications", {
     },
 
     addNotification(n: NotificationItem) {
-      if (!this.meta) return;
-      if (this.meta.seenEventIds.includes(n.id)) return;
-      if (n.created_at < this.since) return;
+      // 这里的逻辑修复最重要：
+      // 1. 检查是否重复
+      if (this.list.some(x => x.id === n.id)) return;
       if (this.dismissed.has(n.id)) return;
-      if (this.list.find(x => x.id === n.id)) return;
+      
+      // 2. 检查是否是太旧的历史记录（超过3天就不收了）
+      const threeDaysAgo = Math.floor(Date.now() / 1000) - (FIRST_LOGIN_DAYS * DAY_SECONDS);
+      if (n.created_at < threeDaysAgo) return;
 
-      // ⭐ 填充评论内容
+      // 3. 填充内容
       if (n.commentId) {
         const interactions = useInteractionsStore();
-        const comment: Comment | undefined = interactions.getComments(n.messageId).find(c => c.id === n.commentId);
-        n.commentContent = comment?.text || "[评论已删除]";
-        if (comment?.parentCommentId) n.replyId = comment.parentCommentId;
+        const comment = interactions.getComments(n.messageId).find(c => c.id === n.commentId);
+        if (comment) {
+          n.commentContent = comment.text;
+          if (comment.parentCommentId) n.replyId = comment.parentCommentId;
+        }
       }
 
+      // 4. 插入列表并排序
       this.list.unshift(n);
+      this.list.sort((a, b) => b.created_at - a.created_at);
+      
+      // 5. 保持列表不要无限长（比如只留200条）
+      if (this.list.length > 200) this.list = this.list.slice(0, 200);
+
       this.save();
     },
 
     markAsRead(id: string) { 
       const n = this.list.find(x => x.id === id); 
-      if (!n || !this.meta) return;
+      if (!n) return;
       n.read = true;
-      this.meta.lastSeenAt = Math.max(this.meta.lastSeenAt, n.created_at);
-      if (!this.meta.seenEventIds.includes(id)) this.meta.seenEventIds.push(id);
+      // 只有读取了更新的消息，才更新 lastSeenAt
+      if (this.meta) {
+        this.meta.lastSeenAt = Math.max(this.meta.lastSeenAt, n.created_at);
+      }
       this.save();
     },
 
     markAllRead() {
-      if (!this.meta) return;
-      this.visibleList.forEach(n => {
-        n.read = true;
-        this.meta!.lastSeenAt = Math.max(this.meta!.lastSeenAt, n.created_at);
-        if (!this.meta!.seenEventIds.includes(n.id)) this.meta!.seenEventIds.push(n.id);
-      });
+      const now = Math.floor(Date.now() / 1000);
+      this.list.forEach(n => { n.read = true; });
+      if (this.meta) {
+        this.meta.lastSeenAt = now;
+      }
       this.save();
     },
 
     dismiss(id: string) { 
       this.dismissed.add(id); 
-      if (this.meta && !this.meta.seenEventIds.includes(id)) this.meta.seenEventIds.push(id);
       this.save();
     },
 
