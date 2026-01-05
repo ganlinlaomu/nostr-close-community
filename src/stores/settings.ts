@@ -98,18 +98,18 @@ export const useSettingsStore = defineStore("settings", {
      * 4️⃣ 拉不到才认为是新账号
      * ================================================================ */
     async bootstrapFetch() {
-      const ks = useKeyStore();
-      if (!ks.isLoggedIn || !ks.supportsNip04 || !ks.pkHex) return;
+  const ks = useKeyStore();
+  if (!ks.isLoggedIn || !ks.supportsNip04 || !ks.pkHex) return;
 
-      try {
-        const fetched = await this.fetchFromRelays();
-        if (!fetched) {
-          logger.info("No remote settings found, keep bootstrap defaults");
-        }
-      } catch (e) {
-        logger.warn("Bootstrap fetch settings failed", e);
-      }
-    },
+  const prevSyncing = this.syncing;
+  this.syncing = false;
+
+  try {
+    await this.fetchFromRelays();
+  } finally {
+    this.syncing = prevSyncing;
+  }
+},
 
     /* ================================================================
      * apply — 应用当前 settings
@@ -244,69 +244,77 @@ export const useSettingsStore = defineStore("settings", {
      * fetch — 只拉
      * ================================================================ */
     async fetchFromRelays(): Promise<boolean> {
-      const ks = useKeyStore();
-      if (!ks.isLoggedIn || !ks.supportsNip04 || !ks.pkHex) {
-        this.syncError = "无法拉取设置";
-        return false;
-      }
+  const ks = useKeyStore();
+  if (!ks.isLoggedIn || !ks.supportsNip04 || !ks.pkHex) {
+    return false;
+  }
 
-      this.syncing = true;
-      this.syncError = "";
+  if (this._isFetching) {
+    return false;
+  }
 
-      try {
-        const relays = getRelaysFromStorage();
-        const sub = subscribe(relays, [{
-          kinds: [30000],
-          authors: [ks.pkHex],
-          "#d": ["close-settings"],
-          limit: 1
-        }]);
+  this._isFetching = true;
+  this.syncing = true;
+  this.syncError = "";
 
-        return new Promise(resolve => {
-          let latest: any = null;
+  let finished = false;
 
-          const timer = setTimeout(() => {
-            sub.unsub();
-            this.syncing = false;
-            resolve(false);
-          }, 5000);
+  try {
+    const relays = getRelaysFromStorage();
+    const sub = subscribe(relays, [{
+      kinds: [30000],
+      authors: [ks.pkHex],
+      "#d": ["close-settings"],
+      limit: 1
+    }]);
 
-          sub.on("event", e => {
-            if (!latest || e.created_at > latest.created_at) {
-              latest = e;
-            }
-          });
+    return await new Promise<boolean>(resolve => {
+      let latest: any = null;
 
-          sub.on("eose", async () => {
-            clearTimeout(timer);
-            sub.unsub();
+      const finish = (result: boolean) => {
+        if (finished) return;
+        finished = true;
+        try { sub.unsub(); } catch {}
+        resolve(result);
+      };
 
-            if (!latest) {
-              this.syncing = false;
-              resolve(false);
-              return;
-            }
+      const timer = setTimeout(() => finish(false), 5000);
 
-            try {
-              const decrypted = await ks.nip04Decrypt(ks.pkHex, latest.content);
-              this.settings = JSON.parse(decrypted);
-              this.lastSyncTimestamp = latest.created_at;
-              this.save();
-              this.applySettings();
-              resolve(true);
-            } catch {
-              this.syncError = "解密失败";
-              resolve(false);
-            } finally {
-              this.syncing = false;
-            }
-          });
-        });
-      } catch {
-        this.syncError = "拉取失败";
-        this.syncing = false;
-        return false;
-      }
-    }
+      sub.on("event", e => {
+        if (!latest || e.created_at > latest.created_at) {
+          latest = e;
+        }
+      });
+
+      sub.on("eose", async () => {
+        clearTimeout(timer);
+
+        if (!latest) {
+          finish(false);
+          return;
+        }
+
+        try {
+          const decrypted = await ks.nip04Decrypt(ks.pkHex, latest.content);
+          this.settings = JSON.parse(decrypted);
+          this.lastSyncTimestamp = latest.created_at;
+          this.save();
+          this.applySettings();
+          finish(true);
+        } catch {
+          this.syncError = "解密失败";
+          finish(false);
+        }
+      });
+    });
+  } catch {
+    this.syncError = "拉取失败";
+    return false;
+  } finally {
+    this.syncing = false;
+    this._isFetching = false;
+  }
+}
+
   }
 });
