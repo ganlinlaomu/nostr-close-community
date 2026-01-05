@@ -184,7 +184,7 @@ import { computed, reactive } from "vue";
 import { useNotificationsStore } from "@/stores/notifications";
 import { useFriendsStore } from "@/stores/friends";
 import { useRouter } from "vue-router";
-import { useNostrStore } from "@/stores/nostr";
+import { useNostrStore } from "@/stores/useNostrStore";
 
 const notifications = useNotificationsStore();
 const friends = useFriendsStore();
