@@ -1,6 +1,9 @@
 import Dexie, { type Table } from "dexie";
 
-// 定义表结构接口
+/* ------------------------------------------------------------------ */
+/* types */
+/* ------------------------------------------------------------------ */
+
 export type DBMessage = {
   id: string;
   pubkey: string;
@@ -15,13 +18,18 @@ export type DBFriend = {
 };
 
 export type DBImageCache = {
-  url: string; 
-  blob: Blob; 
-  timestamp: number; 
-  mime: string; 
+  url: string;
+  blob: Blob;
+  timestamp: number;
+  mime: string;
 };
 
-// 继承 Dexie 创建数据库类
+/* ------------------------------------------------------------------ */
+/* database */
+/* ------------------------------------------------------------------ */
+
+const DB_VERSION = 2;
+
 export class NostrDatabase extends Dexie {
   messages!: Table<DBMessage, string>;
   friends!: Table<DBFriend, string>;
@@ -29,19 +37,11 @@ export class NostrDatabase extends Dexie {
   imageCache!: Table<DBImageCache, string>;
 
   constructor(pk: string) {
-    // 关键：根据公钥前缀创建不同的数据库文件，实现物理隔离
-    // 如果没有 pk（未登录），使用 guest 库
-    const dbName = pk ? `cc_db_${pk.slice(0, 10)}` : "cc_db_guest";
-    super(dbName);
+    // ✅ 使用完整 pubkey，绝不截断
+    const name = pk ? `cc_db_${pk}` : "cc_db_guest";
+    super(name);
 
-    // 定义版本逻辑（保持你原有的版本号）
-    this.version(1).stores({
-      messages: "id, created_at, pubkey",
-      friends: "pubkey, name, group",
-      meta: "key"
-    });
-
-    this.version(2).stores({
+    this.version(DB_VERSION).stores({
       messages: "id, created_at, pubkey",
       friends: "pubkey, name, group",
       meta: "key",
@@ -50,16 +50,57 @@ export class NostrDatabase extends Dexie {
   }
 }
 
-// 缓存实例，防止同一个账号多次创建实例浪费资源
-const instances: Record<string, NostrDatabase> = {};
+/* ------------------------------------------------------------------ */
+/* lifecycle (CRITICAL) */
+/* ------------------------------------------------------------------ */
 
-export function getDatabase(pk: string): NostrDatabase {
-  if (!instances[pk]) {
-    instances[pk] = new NostrDatabase(pk);
+// ⚠️ 全 App 只允许一个活跃 DB
+let currentDB: NostrDatabase | null = null;
+let currentPk: string | null = null;
+
+/**
+ * 打开（或切换）当前账号数据库
+ * - 若 pk 相同，复用
+ * - 若 pk 不同，关闭旧库并新建
+ */
+export function openDatabase(pk: string): NostrDatabase {
+  if (currentDB && currentPk === pk) {
+    return currentDB;
   }
-  return instances[pk];
+
+  if (currentDB) {
+    try {
+      currentDB.close();
+    } catch {}
+  }
+
+  currentPk = pk;
+  currentDB = new NostrDatabase(pk);
+  return currentDB;
 }
 
-// 常量定义
-export const APP_VERSION = "0.1.0";
-export const DB_VERSION = 2;
+/**
+ * 获取当前已打开的数据库
+ * ❗ 所有 store / service 只能用这个
+ */
+export function getCurrentDatabase(): NostrDatabase {
+  if (!currentDB) {
+    throw new Error(
+      "[dexie] Database not initialized. Call openDatabase(pk) first."
+    );
+  }
+  return currentDB;
+}
+
+/**
+ * 登出 / 切账号时调用
+ */
+export function closeDatabase() {
+  if (currentDB) {
+    try {
+      currentDB.close();
+    } catch {}
+  }
+  currentDB = null;
+  currentPk = null;
+}
