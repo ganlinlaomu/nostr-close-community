@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { useKeyStore } from "./keys";
-import { getDatabase } from "@/db/dexie"; // 引入工厂函数
+import { getDatabase } from "@/db/dexie"; 
 import { getRelaysFromStorage, subscribe, publish } from "@/nostr/relays";
 import { logger } from "@/utils/logger";
 
@@ -8,7 +8,7 @@ export type Friend = {
   pubkey: string;
   name: string;
   groups?: string[];
-  group?: string; // 兼容旧版
+  group?: string; 
   note?: string;
 };
 
@@ -21,55 +21,87 @@ export const useFriendsStore = defineStore("friends", {
     version: 0
   }),
 
+  getters: {
+    // 增加一个排序后的列表 getter，方便 UI 调用
+    sortedList: (state) => {
+      return [...state.list].sort((a, b) => a.name.localeCompare(b.name));
+    }
+  },
+
   actions: {
-    // 获取当前账号对应的数据库实例
+    /**
+     * 获取数据库实例（增加空判断）
+     */
     getDB() {
       const ks = useKeyStore();
-      return getDatabase(this.loadedFor || ks.pkHex);
+      const pk = this.loadedFor || ks.pkHex;
+      if (!pk) return null; // ⭐ 关键：无公钥返回 null
+      return getDatabase(pk);
     },
 
+    /**
+     * 加载数据
+     */
     async load(pk?: string) {
       const ks = useKeyStore();
       const targetPk = pk ?? ks.pkHex;
-      if (!targetPk) return;
+      
+      // 1. 防御：无公钥不执行
+      if (!targetPk) {
+        logger.debug("[Friends] Load skipped: no pkHex");
+        return;
+      }
 
       // 避免重复加载
       if (this.loadedFor === targetPk && this.list.length > 0) return;
       this.loadedFor = targetPk;
 
-      // 1. 从属于该账号的物理数据库加载
       const db = this.getDB();
-      const localFriends = await db.friends.toArray();
-      
-      // 2. 从 localStorage 加载同步时间戳（这种轻量数据留着没关系）
-      const tsKey = `friends_ts_${targetPk.slice(0, 10)}`;
-      this.lastSyncTimestamp = Number(localStorage.getItem(tsKey) || 0);
+      // 2. 防御：db 为 null 不执行，防止 toArray() 报错
+      if (!db) return;
 
-      this.list = localFriends;
+      try {
+        // 从物理库加载
+        const localFriends = await db.friends.toArray();
+        
+        const tsKey = `friends_ts_${targetPk.slice(0, 10)}`;
+        this.lastSyncTimestamp = Number(localStorage.getItem(tsKey) || 0);
 
-      // 3. 如果已登录，尝试同步云端
-      if (ks.isLoggedIn && ks.supportsNip04) {
-        await this.fetchFromRelays();
+        this.list = localFriends;
+        logger.info(`[Friends] Loaded ${localFriends.length} friends for ${targetPk.slice(0, 8)}`);
+
+        // 3. 同步云端
+        if (ks.isLoggedIn && ks.supportsNip04) {
+          await this.fetchFromRelays();
+        }
+      } catch (e) {
+        logger.error("[Friends] Load failed", e);
       }
     },
 
+    /**
+     * 保存数据到物理库
+     */
     async save() {
       if (!this.loadedFor) return;
       const db = this.getDB();
+      if (!db) return; // ⭐ 关键：防御
       
-      // 写入物理数据库：先清空当前账号的表再写入（或逐个 put）
-      await db.transaction('rw', db.friends, async () => {
-        await db.friends.clear();
-        await db.friends.bulkAdd(this.list);
-      });
+      try {
+        await db.transaction('rw', db.friends, async () => {
+          await db.friends.clear();
+          await db.friends.bulkAdd(this.list);
+        });
 
-      // 记录同步时间戳到 localStorage
-      const tsKey = `friends_ts_${this.loadedFor.slice(0, 10)}`;
-      localStorage.setItem(tsKey, this.lastSyncTimestamp.toString());
+        const tsKey = `friends_ts_${this.loadedFor.slice(0, 10)}`;
+        localStorage.setItem(tsKey, this.lastSyncTimestamp.toString());
+      } catch (e) {
+        logger.error("[Friends] Save failed", e);
+      }
     },
 
     /* =========================
-     * 修改逻辑：调用后记得 save
+     * 业务操作
      * ========================= */
     async add(friend: Friend) {
       if (!friend.pubkey) return false;
@@ -90,7 +122,6 @@ export const useFriendsStore = defineStore("friends", {
       return true;
     },
 
-    // 重置方法（在切换账号时由 App.vue 或 logout 调用）
     reset() {
       this.list = [];
       this.loadedFor = "";
@@ -98,19 +129,21 @@ export const useFriendsStore = defineStore("friends", {
     },
 
     /* =========================
-     * Relay 同步逻辑（基本保留，但 save() 会写入 Dexie）
+     * 同步逻辑 (简版)
      * ========================= */
     async fetchFromRelays(): Promise<boolean> {
       const ks = useKeyStore();
       if (!ks.isLoggedIn || !ks.supportsNip04) return false;
 
       this.syncing = true;
-      // ... 订阅逻辑 (subscribe) 保持不变 ...
-      // 在监听到 event 且解密成功后：
-      // this.list = mergeList(this.list, incoming);
-      // this.lastSyncTimestamp = latest.created_at;
-      // await this.save(); // 这里会把云端数据存入物理隔离的 Dexie
+      // 这里应该包含具体的 subscribe 逻辑...
+      // 成功拉取并解密后调用 await this.save()
+      this.syncing = false;
       return true;
+    },
+
+    async publishToRelays() {
+        // ... 具体发布逻辑
     }
   }
 });
