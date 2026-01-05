@@ -48,10 +48,20 @@
               </div>
 
               <div class="content">
-                <div class="text">
-                  <span class="from">{{ displayName(n.from) }}</span>
-                  {{ n.type === "like" ? "点赞了你" : "评论了你" }}
-                </div>
+                <div class="title">
+  {{ userName(n.from) }}
+  <span v-if="n.type === 'like'">点赞了你的帖子</span>
+  <span v-else>评论了你的帖子</span>
+</div>
+
+<div class="post-preview">
+  {{ n.postPreview }}
+</div>
+
+<div v-if="n.commentPreview" class="comment-preview">
+  “{{ n.commentPreview }}”
+</div>
+
                 <div class="time">
                   {{ formatRelativeTime(n.created_at) }}
                 </div>
