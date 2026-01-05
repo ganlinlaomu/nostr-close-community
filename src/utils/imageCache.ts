@@ -1,4 +1,4 @@
-import { getDatabase } from "@/db/dexie";
+import { getCurrentDatabase } from "@/db/dexie";
 import { useKeyStore } from "@/stores/keys";
 import { logger } from "@/utils/logger";
 
