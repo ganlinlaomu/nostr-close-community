@@ -1,5 +1,4 @@
-import { SimplePool, getEventHash, getPublicKey, generatePrivateKey, nip04 } from 'nostr-tools';
-import { signEvent } from "nostr-tools/helpers";
+import { SimplePool, getEventHash, signEvent, getPublicKey, generatePrivateKey, nip04 } from 'nostr-tools';
 
 /**
  * NIP-44 style broadcast group implementation (for kind=8964 messages)
