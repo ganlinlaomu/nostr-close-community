@@ -8,6 +8,10 @@ export interface NotificationItem {
   messageId: string;
   commentId?: string;
   replyId?: string;
+  // ⭐ 新增
+  postPreview?: string;
+  postAuthor?: string;
+  commentPreview?: string;
   created_at: number;
   read: boolean;
 }
