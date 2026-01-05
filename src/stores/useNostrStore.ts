@@ -52,11 +52,10 @@ export default defineStore('nostr', () => {
     });
   };
 
-
   return {
     messages,
     connect,
     subscribeByAuthors,
-    publishMultiRecipient,
+    publishMultiRecipient
   };
 });
