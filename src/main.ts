@@ -4,37 +4,27 @@ import App from "./App.vue";
 import "./styles.css";
 import router from "./router";
 
-import { useKeyStore } from "@/stores/keys";
+// 注意：在 main.ts 顶层尽量不要直接 useStore，因为 Pinia 还没挂载
 import { clearExpiredCache } from "@/utils/imageCache";
 import { initVersionTracking, handleVersionUpdate } from "@/utils/versionManager";
 
-// 1. 检查版本变化
+// 1. 检查版本变化（同步逻辑）
 const versionChanged = initVersionTracking();
-
 if (versionChanged) {
-  console.log("[main] New version detected, updating markers...");
-  // 仅仅更新版本标记，不再执行导致 reload 的中断操作
+  console.log("[main] New version detected...");
   handleVersionUpdate().catch(console.error);
 }
 
-// 2. 正常初始化应用（无论是否更新，都必须加载）
+// 2. 初始化应用
 const app = createApp(App);
 const pinia = createPinia();
 
 app.use(pinia);
 app.use(router);
-app.mount("#app");
 
-// 3. 恢复会话和清理过期缓存
+// 3. 执行非阻塞的后台任务
+// 这里的清理缓存可以放异步，因为它不影响核心渲染
 (async () => {
-  const keys = useKeyStore();
-  try {
-    // 🔐 关键：确保即便版本更新，也能读取 localStorage 恢复私钥
-    await keys.restoreSession();
-  } catch (e) {
-    console.error("[main] restoreSession failed", e);
-  }
-  
   try {
     await clearExpiredCache();
   } catch (e) {
@@ -42,19 +32,21 @@ app.mount("#app");
   }
 })();
 
-// 4. 注册 Service Worker
+// 4. 挂载应用
+// 🔐 注意：真正的 restoreSession 逻辑建议完全移交给 App.vue 处理
+// 这样可以利用 Vue 的生命周期钩子完美控制“加载中”状态
+app.mount("#app");
+
+// 5. 注册 Service Worker
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("/service-worker.js")
       .then((registration) => {
-        console.log("[main] Service Worker registered");
-        setInterval(() => {
-          registration.update();
-        }, 60000);
+        console.log("[main] SW registered");
+        // 每小时检查一次更新
+        setInterval(() => registration.update(), 3600000); 
       })
-      .catch((err) => {
-        console.warn("SW registration failed", err);
-      });
+      .catch((err) => console.warn("SW failed", err));
   });
 }
