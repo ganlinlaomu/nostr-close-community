@@ -10,7 +10,7 @@ export type DBMessage = {
 
 export const useMessagesStore = defineStore("messages", {
   state: () => ({
-    list: [] as DBMessage[], // 內存列表
+    inbox: [] as DBMessage[], // 內存列表
   }),
 
   actions: {
@@ -18,14 +18,14 @@ export const useMessagesStore = defineStore("messages", {
     async loadFromDB(limit = 50) {
       try {
         const db = getCurrentDatabase();
-        this.list = await db.messages
+        this.inbox = await db.messages
           .orderBy("created_at")
           .reverse()
           .limit(limit)
           .toArray();
       } catch (e) {
         console.error("[messagesStore] loadFromDB failed", e);
-        this.list = [];
+        this.inbox = [];
       }
     },
 
@@ -41,8 +41,8 @@ export const useMessagesStore = defineStore("messages", {
 
       try {
         await db.messages.put(msg); // 存 Dexie
-        this.list.unshift(msg);     // 更新內存
-        if (this.list.length > 1000) this.list.splice(1000);
+        this.inbox.unshift(msg);     // 更新內存
+        if (this.inbox.length > 1000) this.inbox.splice(1000);
       } catch (e) {
         console.error("[messagesStore] addInbox failed", e);
       }
@@ -52,7 +52,7 @@ export const useMessagesStore = defineStore("messages", {
     async reset() {
       const db = getCurrentDatabase();
       await db.messages.clear();
-      this.list = [];
+      this.inbox = [];
     }
   }
 });
