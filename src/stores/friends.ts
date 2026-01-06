@@ -1,41 +1,63 @@
 import { defineStore } from "pinia";
 import { useKeyStore } from "./keys";
-import { getDatabase } from "@/db/dexie";
 import { getRelaysFromStorage, subscribe, publish } from "@/nostr/relays";
 import { logger } from "@/utils/logger";
 
 /* =========================
- * Types（基本保持）
+ * Types（原样保留）
  * ========================= */
 
 export type Friend = {
+  id?: string;
   pubkey: string;
   name: string;
   groups?: string[];
+  group?: string;
   note?: string;
 };
 
+type StoredFriendData = {
+  list: Friend[];
+  lastSyncTimestamp: number;
+};
+
+function storageKeyFor(pkHex: string | null | undefined) {
+  if (!pkHex) return null;
+  return `nostr_friends_${pkHex}`;
+}
+
 /* =========================
- * Helpers
+ * 工具函数（新增，但不破坏原结构）
  * ========================= */
 
 function normalizeFriend(f: Friend): Friend {
   return {
     ...f,
-    groups: f.groups ?? []
+    groups: f.groups ?? (f.group ? [f.group] : [])
+  };
+}
+
+function mergeFriend(oldF: Friend, newF: Friend): Friend {
+  return {
+    ...oldF,
+    ...newF,
+    groups: Array.from(
+      new Set([...(oldF.groups ?? []), ...(newF.groups ?? [])])
+    )
   };
 }
 
 function mergeList(local: Friend[], incoming: Friend[]): Friend[] {
   const map = new Map<string, Friend>();
 
-  for (const f of local) map.set(f.pubkey, normalizeFriend(f));
+  for (const f of local) {
+    map.set(f.pubkey, normalizeFriend(f));
+  }
+
   for (const f of incoming) {
-    const existing = map.get(f.pubkey);
-    map.set(
-      f.pubkey,
-      existing ? { ...existing, ...f } : normalizeFriend(f)
-    );
+    const nf = normalizeFriend(f);
+    const existing = map.get(nf.pubkey);
+    map.set(nf.pubkey, existing ? mergeFriend(existing, nf) : nf);
   }
 
   return Array.from(map.values());
@@ -51,7 +73,8 @@ export const useFriendsStore = defineStore("friends", {
     loadedFor: "",
     syncing: false,
     lastSyncTimestamp: 0,
-    syncError: ""
+    syncError: "",
+    version: 0
   }),
 
   getters: {
@@ -64,7 +87,7 @@ export const useFriendsStore = defineStore("friends", {
 
   actions: {
     /* =========================
-     * 核心：按 pk 加载（Dexie）
+     * Load（严格 timestamp 决策）
      * ========================= */
 
     async load(pk?: string) {
@@ -72,85 +95,138 @@ export const useFriendsStore = defineStore("friends", {
       const targetPk = pk ?? ks.pkHex;
       if (!targetPk) return;
 
-      // 账号切换 → 强制重载
-      if (this.loadedFor !== targetPk) {
-        this.$reset();
-        this.loadedFor = targetPk;
-      }
+      if (this.loadedFor === targetPk) return;
+      this.loadedFor = targetPk;
 
-      const db = getDatabase(targetPk);
+      const key = storageKeyFor(targetPk);
+      if (!key) return;
+
+      let localData: StoredFriendData | null = null;
 
       try {
-        const rows = await db.friends.toArray();
-        this.list = rows.map(normalizeFriend);
-
-        const meta = await db.meta.get("friends_last_sync");
-        this.lastSyncTimestamp = meta?.value ?? 0;
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            localData = { list: parsed, lastSyncTimestamp: 0 };
+          } else if (parsed?.list) {
+            localData = parsed;
+          }
+        }
       } catch (e) {
-        logger.error("Failed to load friends from db", e);
+        logger.warn("Failed to parse local friend data", e);
       }
 
-      if (ks.isLoggedIn && ks.supportsNip04) {
-        this.fetchFromRelays().catch(() => {});
+      if (!ks.isLoggedIn || !ks.supportsNip04) {
+        if (localData) {
+          this.list = localData.list;
+          this.lastSyncTimestamp = localData.lastSyncTimestamp;
+        }
+        return;
+      }
+
+      const relayFetched = await this.fetchFromRelays();
+      const relayTs = this.lastSyncTimestamp;
+      const localTs = localData?.lastSyncTimestamp ?? 0;
+
+      // ===== 决策表 =====
+      if (relayFetched) {
+        if (!localData || localTs === 0) {
+          return; // relay 已写入
+        }
+
+        if (relayTs > localTs) {
+          return; // relay 更新
+        }
+
+        if (relayTs < localTs) {
+          this.list = localData.list;
+          this.lastSyncTimestamp = localTs;
+          this.publishToRelays().catch(() => {});
+          return;
+        }
+
+        // 相等 → merge
+        this.list = mergeList(this.list, localData.list);
+        this.save();
+        return;
+      }
+
+      // relay 无数据
+      if (localData) {
+        this.list = localData.list;
+        this.lastSyncTimestamp = localTs;
+        this.publishToRelays().catch(() => {});
       }
     },
 
-    async saveToDB() {
-      if (!this.loadedFor) return;
-      const db = getDatabase(this.loadedFor);
+    save() {
+      const key = storageKeyFor(this.loadedFor);
+      if (!key) return;
 
-      await db.transaction("rw", db.friends, db.meta, async () => {
-        await db.friends.clear();
-        await db.friends.bulkPut(this.list);
-        await db.meta.put({
-          key: "friends_last_sync",
-          value: this.lastSyncTimestamp
-        });
-      });
+      const data: StoredFriendData = {
+        list: this.list,
+        lastSyncTimestamp: this.lastSyncTimestamp
+      };
+
+      localStorage.setItem(key, JSON.stringify(data));
     },
 
     /* =========================
-     * 本地修改
+     * 本地修改（永远 bump timestamp）
      * ========================= */
 
-    async add(friend: Friend) {
+    add(friend: Friend) {
       if (!friend.pubkey || !friend.name?.trim()) return false;
       if (this.list.some(f => f.pubkey === friend.pubkey)) return false;
 
       this.list.push(normalizeFriend(friend));
       this.lastSyncTimestamp = Math.floor(Date.now() / 1000);
-      await this.saveToDB();
+      this.version++;
+      this.save();
 
       const ks = useKeyStore();
-      if (ks.supportsNip04) this.publishToRelays().catch(() => {});
+      if (ks.supportsNip04) {
+        this.publishToRelays().catch(() => {});
+      }
       return true;
     },
 
-    async remove(pubkey: string) {
+    remove(pubkey: string) {
+      const before = this.list.length;
       this.list = this.list.filter(f => f.pubkey !== pubkey);
+      if (this.list.length === before) return false;
+
       this.lastSyncTimestamp = Math.floor(Date.now() / 1000);
-      await this.saveToDB();
+      this.version++;
+      this.save();
 
       const ks = useKeyStore();
-      if (ks.supportsNip04) this.publishToRelays().catch(() => {});
+      if (ks.supportsNip04) {
+        this.publishToRelays().catch(() => {});
+      }
       return true;
     },
 
-    async update(pubkey: string, patch: Partial<Friend>) {
+    update(pubkey: string, patch: Partial<Friend>) {
       const f = this.list.find(x => x.pubkey === pubkey);
       if (!f) return false;
+      if (patch.name !== undefined && !patch.name.trim()) return false;
 
       Object.assign(f, patch);
       this.lastSyncTimestamp = Math.floor(Date.now() / 1000);
-      await this.saveToDB();
+      this.version++;
+      this.save();
 
       const ks = useKeyStore();
-      if (ks.supportsNip04) this.publishToRelays().catch(() => {});
+      if (ks.supportsNip04) {
+        this.publishToRelays().catch(() => {});
+      }
       return true;
     },
 
     /* =========================
-     * Relay 同步（逻辑几乎不变）
+     * Relay：只做 IO，不做决策
      * ========================= */
 
     async publishToRelays(): Promise<boolean> {
@@ -176,7 +252,7 @@ export const useFriendsStore = defineStore("friends", {
 
         if (results.some(r => r.ok)) {
           this.lastSyncTimestamp = event.created_at;
-          await this.saveToDB();
+          this.save();
           return true;
         }
         return false;
@@ -193,15 +269,17 @@ export const useFriendsStore = defineStore("friends", {
 
       try {
         const relays = getRelaysFromStorage();
-        const sub = subscribe(relays, [{
+        const filters = {
           kinds: [30000],
           authors: [ks.pkHex],
           "#d": ["close-friends"],
           limit: 1
-        }]);
+        };
 
         return new Promise(resolve => {
           let latest: any = null;
+
+          const sub = subscribe(relays, [filters]);
 
           sub.on("event", evt => {
             if (!latest || evt.created_at > latest.created_at) {
@@ -226,7 +304,7 @@ export const useFriendsStore = defineStore("friends", {
               if (Array.isArray(incoming)) {
                 this.list = mergeList(this.list, incoming);
                 this.lastSyncTimestamp = latest.created_at;
-                await this.saveToDB();
+                this.save();
                 resolve(true);
               } else {
                 resolve(false);
