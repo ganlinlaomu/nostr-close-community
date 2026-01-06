@@ -97,7 +97,7 @@ export const useFriendsStore = defineStore("friends", {
 
     async saveToDB() {
       if (!this.loadedFor) return;
-      const db = getDatabase(this.loadedFor);
+      const db = getCurrentDatabase(this.loadedFor);
 
       await db.transaction("rw", db.friends, db.meta, async () => {
         await db.friends.clear();
