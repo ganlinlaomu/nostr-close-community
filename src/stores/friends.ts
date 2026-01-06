@@ -5,13 +5,13 @@ import { getRelaysFromStorage, subscribe, publish } from "@/nostr/relays";
 import { logger } from "@/utils/logger";
 
 /* =========================
- * Types（基本保持）
+ * Types
  * ========================= */
 
 export type Friend = {
   pubkey: string;
   name: string;
-  groups?: string[];
+  groups?: string[]; // UI 用
   note?: string;
 };
 
@@ -19,23 +19,29 @@ export type Friend = {
  * Helpers
  * ========================= */
 
-function normalizeFriend(f: Friend): Friend {
+function normalizeFromDB(row: any): Friend {
   return {
-    ...f,
-    groups: f.groups ?? []
+    pubkey: row.pubkey,
+    name: row.name || "",
+    groups: row.group ? [row.group] : []
+  };
+}
+
+function normalizeForDB(f: Friend) {
+  return {
+    pubkey: f.pubkey,
+    name: f.name,
+    group: f.groups && f.groups.length > 0 ? f.groups[0] : undefined
   };
 }
 
 function mergeList(local: Friend[], incoming: Friend[]): Friend[] {
   const map = new Map<string, Friend>();
 
-  for (const f of local) map.set(f.pubkey, normalizeFriend(f));
+  for (const f of local) map.set(f.pubkey, f);
   for (const f of incoming) {
-    const existing = map.get(f.pubkey);
-    map.set(
-      f.pubkey,
-      existing ? { ...existing, ...f } : normalizeFriend(f)
-    );
+    const old = map.get(f.pubkey);
+    map.set(f.pubkey, old ? { ...old, ...f } : f);
   }
 
   return Array.from(map.values());
@@ -64,7 +70,7 @@ export const useFriendsStore = defineStore("friends", {
 
   actions: {
     /* =========================
-     * 核心：按 pk 加载（Dexie）
+     * Load (Dexie + Relay)
      * ========================= */
 
     async load(pk?: string) {
@@ -72,36 +78,45 @@ export const useFriendsStore = defineStore("friends", {
       const targetPk = pk ?? ks.pkHex;
       if (!targetPk) return;
 
-      // 账号切换 → 强制重载
-      if (this.loadedFor !== targetPk) {
-        this.$reset();
-        this.loadedFor = targetPk;
+      // ⚠️ 不要 reset，除非账号真的变了
+      if (this.loadedFor && this.loadedFor !== targetPk) {
+        this.list = [];
+        this.lastSyncTimestamp = 0;
       }
+      this.loadedFor = targetPk;
 
-      const db = getCurrentDatabase();
+      let db;
+      try {
+        db = getCurrentDatabase();
+      } catch {
+        logger.warn("[friends] db not ready, skip load");
+        return;
+      }
 
       try {
         const rows = await db.friends.toArray();
-        this.list = rows.map(normalizeFriend);
+        this.list = rows.map(normalizeFromDB);
 
         const meta = await db.meta.get("friends_last_sync");
         this.lastSyncTimestamp = meta?.value ?? 0;
       } catch (e) {
-        logger.error("Failed to load friends from db", e);
+        logger.error("[friends] load db failed", e);
       }
 
-      if (ks.isLoggedIn && ks.supportsNip04) {
+      // Relay 同步（只要能 nip04 就拉）
+      if (ks.isLoggedIn && ks.loginMethod !== "nip07") {
         this.fetchFromRelays().catch(() => {});
       }
     },
 
     async saveToDB() {
       if (!this.loadedFor) return;
-      const db = getCurrentDatabase(this.loadedFor);
+
+      const db = getCurrentDatabase();
 
       await db.transaction("rw", db.friends, db.meta, async () => {
         await db.friends.clear();
-        await db.friends.bulkPut(this.list);
+        await db.friends.bulkPut(this.list.map(normalizeForDB));
         await db.meta.put({
           key: "friends_last_sync",
           value: this.lastSyncTimestamp
@@ -110,29 +125,18 @@ export const useFriendsStore = defineStore("friends", {
     },
 
     /* =========================
-     * 本地修改
+     * Local ops
      * ========================= */
 
     async add(friend: Friend) {
-      if (!friend.pubkey || !friend.name?.trim()) return false;
+      if (!friend.pubkey || !friend.name) return false;
       if (this.list.some(f => f.pubkey === friend.pubkey)) return false;
 
-      this.list.push(normalizeFriend(friend));
+      this.list.push(friend);
       this.lastSyncTimestamp = Math.floor(Date.now() / 1000);
       await this.saveToDB();
 
-      const ks = useKeyStore();
-      if (ks.supportsNip04) this.publishToRelays().catch(() => {});
-      return true;
-    },
-
-    async remove(pubkey: string) {
-      this.list = this.list.filter(f => f.pubkey !== pubkey);
-      this.lastSyncTimestamp = Math.floor(Date.now() / 1000);
-      await this.saveToDB();
-
-      const ks = useKeyStore();
-      if (ks.supportsNip04) this.publishToRelays().catch(() => {});
+      this.publishToRelays().catch(() => {});
       return true;
     },
 
@@ -144,27 +148,37 @@ export const useFriendsStore = defineStore("friends", {
       this.lastSyncTimestamp = Math.floor(Date.now() / 1000);
       await this.saveToDB();
 
-      const ks = useKeyStore();
-      if (ks.supportsNip04) this.publishToRelays().catch(() => {});
+      this.publishToRelays().catch(() => {});
+      return true;
+    },
+
+    async remove(pubkey: string) {
+      this.list = this.list.filter(f => f.pubkey !== pubkey);
+      this.lastSyncTimestamp = Math.floor(Date.now() / 1000);
+      await this.saveToDB();
+
+      this.publishToRelays().catch(() => {});
       return true;
     },
 
     /* =========================
-     * Relay 同步（逻辑几乎不变）
+     * Relay (kind:30000, encrypted)
      * ========================= */
 
-    async publishToRelays(): Promise<boolean> {
+    async publishToRelays() {
       const ks = useKeyStore();
-      if (!ks.isLoggedIn || !ks.supportsNip04) return false;
+      if (!ks.isLoggedIn || !ks.nip04Encrypt) return false;
 
       this.syncing = true;
+      this.syncError = "";
+
       try {
         const encrypted = await ks.nip04Encrypt(
           ks.pkHex,
           JSON.stringify(this.list)
         );
 
-        const event = await ks.signEvent({
+        const evt = await ks.signEvent({
           kind: 30000,
           created_at: Math.floor(Date.now() / 1000),
           tags: [["d", "close-friends"]],
@@ -172,33 +186,41 @@ export const useFriendsStore = defineStore("friends", {
         });
 
         const relays = getRelaysFromStorage();
-        const results = await publish(relays, event);
+        const results = await publish(relays, evt);
 
         if (results.some(r => r.ok)) {
-          this.lastSyncTimestamp = event.created_at;
+          this.lastSyncTimestamp = evt.created_at;
           await this.saveToDB();
           return true;
         }
+
+        return false;
+      } catch (e) {
+        this.syncError = "同步失败";
+        logger.error("[friends] publish failed", e);
         return false;
       } finally {
         this.syncing = false;
       }
     },
 
-    async fetchFromRelays(): Promise<boolean> {
+    async fetchFromRelays() {
       const ks = useKeyStore();
-      if (!ks.isLoggedIn || !ks.supportsNip04) return false;
+      if (!ks.isLoggedIn || !ks.nip04Decrypt) return false;
 
       this.syncing = true;
+      this.syncError = "";
 
       try {
         const relays = getRelaysFromStorage();
-        const sub = subscribe(relays, [{
-          kinds: [30000],
-          authors: [ks.pkHex],
-          "#d": ["close-friends"],
-          limit: 1
-        }]);
+        const sub = subscribe(relays, [
+          {
+            kinds: [30000],
+            authors: [ks.pkHex],
+            "#d": ["close-friends"],
+            limit: 1
+          }
+        ]);
 
         return new Promise(resolve => {
           let latest: any = null;
@@ -211,6 +233,7 @@ export const useFriendsStore = defineStore("friends", {
 
           sub.on("eose", async () => {
             sub.unsub();
+
             if (!latest) {
               this.syncing = false;
               resolve(false);
@@ -223,6 +246,7 @@ export const useFriendsStore = defineStore("friends", {
                 latest.content
               );
               const incoming = JSON.parse(decrypted);
+
               if (Array.isArray(incoming)) {
                 this.list = mergeList(this.list, incoming);
                 this.lastSyncTimestamp = latest.created_at;
@@ -231,14 +255,16 @@ export const useFriendsStore = defineStore("friends", {
               } else {
                 resolve(false);
               }
-            } catch {
+            } catch (e) {
+              logger.error("[friends] decrypt failed", e);
               resolve(false);
             } finally {
               this.syncing = false;
             }
           });
         });
-      } catch {
+      } catch (e) {
+        this.syncError = "同步失败";
         this.syncing = false;
         return false;
       }
