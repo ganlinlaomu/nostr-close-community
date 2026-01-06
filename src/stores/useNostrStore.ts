@@ -1,55 +1,23 @@
 import { defineStore } from 'pinia';
-import { ref, onMounted } from 'vue';
+import { ref } from 'vue';
 import { NostrService } from '../utils/nostr';
 import { getCurrentDatabase } from '../db/dexie';
 import { useKeyStore } from './keys';
 import { useFriendsStore } from './friends';
+import { useMessagesStore } from './messages'; // ✅ 引入消息存储
 import { logger } from '../utils/logger';
-
-export type Message = {
-  id: string;
-  pubkey: string;
-  content: string;
-  created_at: number;
-};
 
 const nostr = new NostrService();
 
 export default defineStore('nostr', () => {
-  const messages = ref<Message[]>([]);
+  const messagesStore = useMessagesStore();
+  
+  // ✅ 移除顶层的 let db; 改为在需要时调用 getCurrentDatabase()
 
-  // Dexie db 实例
-  let db;
-  try {
-    db = getCurrentDatabase();
-  } catch (e) {
-    logger.warn('[nostr] db not ready yet', e);
-  }
-
-  /* ------------------------------------------------------------------
-   * Load cached messages
-   * ------------------------------------------------------------------ */
-  const loadCached = async () => {
-    if (!db) {
-      try {
-        db = getCurrentDatabase();
-      } catch (e) {
-        logger.warn('[nostr] load aborted: db not ready', e);
-        return;
-      }
-    }
-
-    try {
-      messages.value = await db.messages.orderBy('created_at').reverse().toArray();
-      logger.info(`[nostr] loaded cached messages: ${messages.value.length}`);
-    } catch (e) {
-      logger.error('[nostr] load cached messages failed', e);
-    }
-  };
-
-  /* ------------------------------------------------------------------
-   * Subscribe to self + friends' messages (kind 8964)
-   * ------------------------------------------------------------------ */
+  /**
+   * 自动订阅：建议由 keys.ts 的 afterLogin 手动触发
+   * 而不是依赖 onMounted
+   */
   const autoSubscribe = () => {
     const ks = useKeyStore();
     const friendsStore = useFriendsStore();
@@ -59,39 +27,28 @@ export default defineStore('nostr', () => {
       return;
     }
 
-    if (!db) {
-      try {
-        db = getCurrentDatabase();
-      } catch (e) {
-        logger.warn('[nostr] autoSubscribe aborted: db not ready', e);
-        return;
-      }
-    }
-
     // 获取好友列表 pk
-    const friendPks = friendsStore.friends.map(f => f.pubkey);
+    const friendPks = friendsStore.list.map(f => f.pubkey); // 修正为 list
     const authors = [ks.pkHex, ...friendPks];
 
     nostr.subscribe({
       authors,
-      kinds: [8964], // 只订阅 kind 8964
+      kinds: [8964],
       onEvent: async (evt: any) => {
-        // 防 logout 串写
-        if (!useKeyStore().pkHex) return;
+        // 1. 安全检查
+        if (!ks.pkHex) return;
 
-        const msg: Message = {
+        // 2. 格式化
+        const msg = {
           id: evt.id,
           pubkey: evt.pubkey,
           content: evt.content,
           created_at: evt.created_at
         };
-        messages.value.unshift(msg);
 
-        try {
-          await db.messages.put(msg);
-        } catch (e) {
-          logger.warn('[nostr] save message failed', e);
-        }
+        // 3. ✅ 统一交给 messagesStore 处理存储和内存更新
+        // 这样就不需要在这里写 db.messages.put 了
+        await messagesStore.addInbox(msg);
       }
     });
   };
@@ -99,64 +56,36 @@ export default defineStore('nostr', () => {
   const connect = () => nostr.connect();
 
   /* ------------------------------------------------------------------
-   * Subscribe to specific authors
-   * ------------------------------------------------------------------ */
-  const subscribeByAuthors = (authors: string[]) => {
-    if (!db) {
-      try {
-        db = getCurrentDatabase();
-      } catch (e) {
-        logger.warn('[nostr] subscribe aborted: db not ready', e);
-        return;
-      }
-    }
-
-    nostr.subscribe({
-      authors,
-      kinds: [8964], // 只订阅 kind 8964
-      onEvent: async (evt: any) => {
-        const msg: Message = {
-          id: evt.id,
-          pubkey: evt.pubkey,
-          content: evt.content,
-          created_at: evt.created_at
-        };
-        messages.value.unshift(msg);
-
-        try {
-          await db.messages.put(msg);
-        } catch (e) {
-          logger.warn('[nostr] save message failed', e);
-        }
-      }
-    });
-  };
-
-  /* ------------------------------------------------------------------
-   * Publish messages
+   * 发布消息
    * ------------------------------------------------------------------ */
   const publishMultiRecipient = async (opts: { content: string; privateKey: string; recipients: string[] }) => {
     const { content, privateKey, recipients } = opts;
-    await nostr.publishMultiRecipient({
+    
+    // 调用协议层发布
+    const event = await nostr.publishMultiRecipient({
       content,
       privateKey,
       recipients,
       kind: 8964
     });
+
+    // 如果发送成功，将其存入自己的发件箱
+    if (event) {
+      await messagesStore.addOutbox({
+        id: event.id,
+        created_at: event.created_at,
+        sent_at: Math.floor(Date.now() / 1000),
+        content: content,
+        relayResults: [] // 实际开发中可以从 pool.publish 获取结果
+      });
+    }
   };
 
-  // 自动加载缓存 + 自动订阅
-  onMounted(() => {
-    loadCached();
-    autoSubscribe();
-  });
+  // ✅ 移除内部的 loadCached，因为 messagesStore.load() 已经做了这件事
 
   return {
-    messages,
     connect,
-    subscribeByAuthors,
-    publishMultiRecipient,
-    loadCached,
-    autoSubscribe
+    autoSubscribe,
+    publishMultiRecipient
   };
 });
