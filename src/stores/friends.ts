@@ -1,4 +1,4 @@
-import { defineStore } from "pinia";
+fimport { defineStore } from "pinia";
 import { useKeyStore } from "./keys";
 import { getCurrentDatabase } from "@/db/dexie";
 import { getRelaysFromStorage, subscribe, publish } from "@/nostr/relays";
@@ -78,7 +78,7 @@ export const useFriendsStore = defineStore("friends", {
         this.loadedFor = targetPk;
       }
 
-      const db = getDatabase(targetPk);
+      const db = getCurrentDatabase();
 
       try {
         const rows = await db.friends.toArray();
