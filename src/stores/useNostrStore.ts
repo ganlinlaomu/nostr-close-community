@@ -13,7 +13,7 @@ export const useNostrStore = defineStore("nostr", () => {
   const messages = ref<Message[]>([]);
   const loadedFor = ref<string>("");
 
-  let db: ReturnType<typeof getDatabase> | null = null;
+  let db: ReturnType<typeof getCurrentDatabase> | null = null;
 
   /* ================================================================
    * reset — 切账号 / logout
