@@ -178,7 +178,7 @@ export const useInteractionsStore = defineStore("interactions", {
       this.interactions.set(interaction.messageId, arr);
 
       const db = getDatabase(this.loadedFor);
-      db.messages.put(interaction as any);
+      db.interactions.put(interaction as any);
     },
 
     _emitNotificationFromInteraction(evt: any, interaction: Interaction, myPubkey: string) {
