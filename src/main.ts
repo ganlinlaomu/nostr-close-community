@@ -37,16 +37,34 @@ app.use(router);
 // 这样可以利用 Vue 的生命周期钩子完美控制“加载中”状态
 app.mount("#app");
 
-// 5. 注册 Service Worker
+// 5. 注册 Service Worker (环境感知版)
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("/service-worker.js")
-      .then((registration) => {
-        console.log("[main] SW registered");
-        // 每小时检查一次更新
-        setInterval(() => registration.update(), 3600000); 
-      })
-      .catch((err) => console.warn("SW failed", err));
+    // 检查是否为开发环境 (Vite 默认环境变量)
+    const isDev = import.meta.env.DEV;
+
+    if (isDev) {
+      // --- 开发环境逻辑：卸载 SW，确保调试顺畅 ---
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (let registration of registrations) {
+          registration.unregister();
+          console.log("[main] Dev mode detected: SW unregistered for better HMR");
+        }
+      });
+    } else {
+      // --- 生产环境逻辑：正式注册 ---
+      navigator.serviceWorker
+        .register("/service-worker.js") // 确保文件名与你实际的文件名一致
+        .then((registration) => {
+          console.log("[main] SW registered in Production");
+          
+          // 每小时检查一次更新
+          setInterval(() => {
+            registration.update();
+            console.log("[main] Checking for SW updates...");
+          }, 3600000); 
+        })
+        .catch((err) => console.warn("[main] SW registration failed", err));
+    }
   });
 }
