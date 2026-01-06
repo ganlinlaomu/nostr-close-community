@@ -3,7 +3,7 @@
  * 修改说明：移除自动清空数据的逻辑，仅更新版本号标记
  */
 
-import { APP_VERSION } from "@/db/dexie";
+
 
 const VERSION_KEY = "app_version";
 const LAST_UPDATE_CHECK_KEY = "last_update_check";
