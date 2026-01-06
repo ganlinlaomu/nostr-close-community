@@ -12,14 +12,13 @@
       </div>
 
       <!-- RouterView + KeepAlive -->
-      <router-view v-else v-slot="{ Component }">
-        <transition name="fade" mode="out-in">
-          <keep-alive :include="['Home','Friends','Notifications','Settings']">
-            <!-- ⚠️ 关键：用 $route.fullPath 作为 key -->
-            <component :is="Component" :key="$route.fullPath" />
-          </keep-alive>
-        </transition>
-      </router-view>
+    <router-view v-slot="{ Component }">
+  <transition name="fade" mode="out-in">
+    <keep-alive :include="['Home','Friends','Notifications','Settings']">
+      <component :is="Component" :key="$route.fullPath" />
+    </keep-alive>
+  </transition>
+</router-view>
     </main>
 
     <ToastContainer />
