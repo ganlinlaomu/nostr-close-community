@@ -67,7 +67,7 @@ export const useNotificationsStore = defineStore("notifications", {
       this.meta = null;
       this.loadedFor = targetPk;
 
-      const db = this.getDB(targetPk);
+      const db = getCurrentDatabase();
 
       try {
         this.list = await db.notifications
