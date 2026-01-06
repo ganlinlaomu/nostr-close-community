@@ -171,7 +171,7 @@ import { DEFAULT_BLOSSOM_SERVERS } from "@/utils/blossom";
 import { useKeyStore } from "@/stores/keys";
 import { useSettingsStore, type BlossomServer } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
-import { db } from "@/db/dexie";
+import { getCurrentDatabase } from "@/db/dexie";
 import { getCacheStats, clearAllCache } from "@/utils/imageCache";
 
 export default defineComponent({
