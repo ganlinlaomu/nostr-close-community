@@ -90,48 +90,53 @@ export const useInteractionsStore = defineStore("interactions", {
      * ========================= */
 
     async load(pk?: string) {
-      const ks = useKeyStore();
-      const targetPk = pk ?? ks.pkHex;
-      if (!targetPk) return;
+  const ks = useKeyStore();
+  const targetPk = pk ?? ks.pkHex;
+  if (!targetPk) return;
 
-      if (this.loadedFor !== targetPk) {
-        this.$reset();
-        this.loadedFor = targetPk;
-      }
+  if (this.loadedFor !== targetPk) {
+    this.$reset();
+    this.loadedFor = targetPk;
+  }
 
-      const db = getCurrentDatabase();
+  // ✅ 使用统一导出的 getCurrentDatabase
+  const db = getCurrentDatabase();
 
-      try {
-        const rows = await db.messages.toArray();
-        this.interactions.clear();
+  try {
+    // ⚠️ 修正：从 interactions 表读取，而不是 messages 表
+    const rows = await db.interactions.toArray(); 
+    this.interactions.clear();
 
-        for (const r of rows) {
-          const arr = this.interactions.get((r as any).messageId) || [];
-          arr.push(r as any);
-          this.interactions.set((r as any).messageId, arr);
-        }
+    for (const r of rows) {
+      const arr = this.interactions.get(r.messageId) || [];
+      arr.push(r);
+      this.interactions.set(r.messageId, arr);
+    }
 
-        const meta = await db.meta.get("interactions_meta");
-        if (meta?.value) {
-          this.lastSyncedAt = meta.value.lastSyncedAt || 0;
-          this.processedEvents = new Set(meta.value.processedEvents || []);
-        }
-      } catch (e) {
-        logger.error("[Interactions] load failed", e);
-      }
-    },
+    const meta = await db.meta.get("interactions_meta");
+    if (meta?.value) {
+      this.lastSyncedAt = meta.value.lastSyncedAt || 0;
+      this.processedEvents = new Set(meta.value.processedEvents || []);
+    }
+  } catch (e) {
+    logger.error("[Interactions] load failed", e);
+  }
+},
 
     async _persistMeta() {
-      if (!this.loadedFor) return;
-      const db = getDatabase(this.loadedFor);
-      await db.meta.put({
-        key: "interactions_meta",
-        value: {
-          lastSyncedAt: this.lastSyncedAt,
-          processedEvents: Array.from(this.processedEvents)
-        }
-      });
-    },
+  if (!this.loadedFor) return;
+  
+  // ✅ 替换 getDatabase 为 getCurrentDatabase
+  const db = getCurrentDatabase(); 
+  
+  await db.meta.put({
+    key: "interactions_meta",
+    value: {
+      lastSyncedAt: this.lastSyncedAt,
+      processedEvents: Array.from(this.processedEvents)
+    }
+  });
+},
 
     /* =========================
      * Send comment
@@ -171,15 +176,18 @@ export const useInteractionsStore = defineStore("interactions", {
     },
 
     _addInteraction(interaction: Interaction) {
-      const arr = this.interactions.get(interaction.messageId) || [];
-      if (arr.some(i => i.id === interaction.id)) return;
+  const arr = this.interactions.get(interaction.messageId) || [];
+  if (arr.some(i => i.id === interaction.id)) return;
 
-      arr.push(interaction);
-      this.interactions.set(interaction.messageId, arr);
+  arr.push(interaction);
+  this.interactions.set(interaction.messageId, arr);
 
-      const db = getDatabase(this.loadedFor);
-      db.interactions.put(interaction as any);
-    },
+  // ✅ 替换 getDatabase 为 getCurrentDatabase
+  const db = getCurrentDatabase(); 
+  
+  // ⚠️ 确保写入 interactions 表
+  db.interactions.put(interaction); 
+},
 
     _emitNotificationFromInteraction(evt: any, interaction: Interaction, myPubkey: string) {
       if (interaction.author === myPubkey) return;
