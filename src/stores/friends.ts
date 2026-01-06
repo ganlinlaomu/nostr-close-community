@@ -73,35 +73,31 @@ export const useFriendsStore = defineStore("friends", {
      * Load (Dexie + Relay)
      * ========================= */
 
-    async load(pk?: string) {
-      const ks = useKeyStore();
-      const targetPk = pk ?? ks.pkHex;
-      if (!targetPk) return;
+   async load(pk?: string) {
+  const ks = useKeyStore();
+  const targetPk = pk ?? ks.pkHex;
+  if (!targetPk) return;
 
-      // ⚠️ 不要 reset，除非账号真的变了
-      if (this.loadedFor && this.loadedFor !== targetPk) {
-        this.list = [];
-        this.lastSyncTimestamp = 0;
-      }
-      this.loadedFor = targetPk;
+  // 1. 如果账号变了，必须彻底重置内存状态
+  if (this.loadedFor !== targetPk) {
+    this.list = [];
+    this.lastSyncTimestamp = 0;
+    this.loadedFor = targetPk;
+  } else if (this.list.length > 0) {
+    // 如果已经加载过当前账号且有数据，不再重复读取 DB
+    return;
+  }
 
-      let db;
-      try {
-        db = getCurrentDatabase();
-      } catch {
-        logger.warn("[friends] db not ready, skip load");
-        return;
-      }
+  try {
+    const db = getCurrentDatabase(); // 确保 dexie.ts 中 openDatabase 已完成
+    const rows = await db.friends.toArray();
+    this.list = rows.map(normalizeFromDB);
 
-      try {
-        const rows = await db.friends.toArray();
-        this.list = rows.map(normalizeFromDB);
-
-        const meta = await db.meta.get("friends_last_sync");
-        this.lastSyncTimestamp = meta?.value ?? 0;
-      } catch (e) {
-        logger.error("[friends] load db failed", e);
-      }
+    const meta = await db.meta.get("friends_last_sync");
+    this.lastSyncTimestamp = meta?.value ?? 0;
+  } catch (e) {
+    logger.error("[friends] load db failed", e);
+  }
 
       // Relay 同步（只要能 nip04 就拉）
       if (ks.isLoggedIn && ks.loginMethod !== "nip07") {
@@ -110,19 +106,29 @@ export const useFriendsStore = defineStore("friends", {
     },
 
     async saveToDB() {
-      if (!this.loadedFor) return;
+  if (!this.loadedFor) return;
 
-      const db = getCurrentDatabase();
+  const db = getCurrentDatabase();
 
-      await db.transaction("rw", db.friends, db.meta, async () => {
-        await db.friends.clear();
-        await db.friends.bulkPut(this.list.map(normalizeForDB));
-        await db.meta.put({
-          key: "friends_last_sync",
-          value: this.lastSyncTimestamp
-        });
+  try {
+    // 确保事务涵盖了所有涉及的表
+    await db.transaction("rw", [db.friends, db.meta], async () => {
+      await db.friends.clear();
+      // 使用转换后的数据格式存入
+      const rowsForDB = this.list.map(normalizeForDB);
+      if (rowsForDB.length > 0) {
+        await db.friends.bulkPut(rowsForDB);
+      }
+      
+      await db.meta.put({
+        key: "friends_last_sync",
+        value: this.lastSyncTimestamp
       });
-    },
+    });
+  } catch (e) {
+    logger.error("[friends] transaction failed", e);
+  }
+},
 
     /* =========================
      * Local ops
