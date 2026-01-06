@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { useKeyStore } from "./keys";
-import { getCurrentDatabase } from "@/db/dexie";
+import { getCurrentDatabase } from "@/db/dexie"; // 确保引入了正确的方法
 
 /* =========================
  * Types
@@ -43,7 +43,7 @@ export const useMessagesStore = defineStore("messages", {
 
   actions: {
     /* =========================
-     * 核心：按 pk 加载（物理隔离）
+     * 核心：按 pk 加载
      * ========================= */
 
     async load(pk?: string) {
@@ -55,15 +55,15 @@ export const useMessagesStore = defineStore("messages", {
         return;
       }
 
-      // 切账号 → 强制清空内存
       if (this.loadedFor !== targetPk) {
         this.inbox = [];
         this.outbox = [];
         this.loadedFor = targetPk;
-      } else {
+      } else if (this.inbox.length > 0) {
         return;
       }
 
+      // ✅ 统一使用 getCurrentDatabase
       const db = getCurrentDatabase();
 
       /* 收件箱 */
@@ -90,19 +90,21 @@ export const useMessagesStore = defineStore("messages", {
     },
 
     /* =========================
-     * Inbox（增量安全）
+     * Inbox
      * ========================= */
 
     async addInbox(item: InboxItem) {
       if (!item?.id || !this.loadedFor) return;
 
+      const db = getCurrentDatabase(); // ✅ 替换 getDatabase
       const index = this.inbox.findIndex(m => m.id === item.id);
 
       if (index !== -1) {
         const existing = this.inbox[index];
         if (item._localMeta && !existing._localMeta) {
           this.inbox[index] = { ...existing, _localMeta: item._localMeta };
-          await getDatabase(this.loadedFor).messages.put(this.inbox[index] as any);
+          // ✅ 存入数据库
+          await db.messages.put(this.inbox[index]);
         }
         return;
       }
@@ -110,7 +112,8 @@ export const useMessagesStore = defineStore("messages", {
       this.inbox.unshift(item);
       if (this.inbox.length > 1000) this.inbox.splice(1000);
 
-      await getDatabase(this.loadedFor).messages.put(item as any);
+      // ✅ 存入数据库
+      await db.messages.put(item);
     },
 
     /* =========================
@@ -120,10 +123,11 @@ export const useMessagesStore = defineStore("messages", {
     async addOutbox(item: OutboxItem) {
       if (!item?.id || !this.loadedFor) return;
 
+      const db = getCurrentDatabase(); // ✅ 替换 getDatabase
       this.outbox.unshift(item);
       if (this.outbox.length > 500) this.outbox.splice(500);
 
-      await getDatabase(this.loadedFor).meta.put({
+      await db.meta.put({
         key: "outbox_cache",
         value: this.outbox
       });
@@ -141,7 +145,7 @@ export const useMessagesStore = defineStore("messages", {
       this.loadedFor = "";
 
       if (removeFromStorage && pk) {
-        const db = getDatabase(pk);
+        const db = getCurrentDatabase(); // ✅ 替换 getDatabase
         await db.messages.clear();
         await db.meta.delete("outbox_cache");
       }
