@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import * as nostr from "nostr-tools";
 import { useRouter } from "vue-router";
-
+import router from "@/router";
 import { useFriendsStore } from "./friends";
 import { useMessagesStore } from "./messages";
 import { useSettingsStore } from "./settings";
@@ -47,13 +47,15 @@ async function safeGetPublicKey(skHex: string): Promise<string> {
 }
 
 async function afterLogin(pk: string) {
-  openDatabase(pk);
+  // ✅ 必须等待数据库完全打开
+  await openDatabase(pk); 
 
+  // 数据库就绪后，再触发各子 Store 的加载
   await Promise.allSettled([
     useFriendsStore().load(pk),
     useMessagesStore().load(pk),
     useSettingsStore().load(pk),
-    useInteractionsStore().load(),
+    useInteractionsStore().load(pk), // 建议统一传入 pk
     useNotificationsStore().load(pk)
   ]);
 }
@@ -243,24 +245,40 @@ export const useKeyStore = defineStore("keys", {
     /* logout */
     /* -------------------------------------------------------------- */
 
-    logout() {
+    async logout() {
+      // 1. 断开外部签名器连接 (Bunker)
       try {
         this.bunkerSigner?.close();
-      } catch {}
+      } catch (e) {
+        console.warn("Bunker close error", e);
+      }
 
-      closeDatabase();
-      removeEncryptedKey();
-      this.$reset();
+      // 2. 数据库与密钥清理
+      closeDatabase();      // 关闭当前的 Dexie 实例
+      removeEncryptedKey(); // 清理 AES 加密相关的缓存
 
-      [
+      // 3. 核心：重置所有 Store 的状态
+      // 建议手动重置关键 Store 以防止内存泄露或数据残留
+      this.$reset(); 
+      // 如果其他 Store 也有 reset action，建议一并调用
+      // useMessagesStore().$reset();
+      // useFriendsStore().$reset();
+
+      // 4. 清理持久化存储
+      const keysToRemove = [
         "skHex",
         "pkHex",
         "loginMethod",
         "loginTimestamp",
-        "bunkerClientSecretKey"
-      ].forEach((k) => localStorage.removeItem(k));
+        "bunkerClientSecretKey",
+        "friends_last_sync", // 如果有其他的也一并清理
+      ];
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
 
-      useRouter().replace("/login");
+      // 5. 路由跳转
+      // ✅ 使用导入的 router 实例，而不是 useRouter()
+      await router.replace("/login");
+      
+      // 6. 可选：强制刷新页面 (这是最彻底的清理方式)
+      // window.location.reload(); 
     }
-  }
-});
