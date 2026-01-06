@@ -10,74 +10,72 @@ const nostr = new NostrService();
 export type Message = DBMessage;
 
 export const useNostrStore = defineStore("nostr", () => {
+  /* ------------------------------------------------------------------
+   * state
+   * ------------------------------------------------------------------ */
+
   const messages = ref<Message[]>([]);
-  const loadedFor = ref<string>("");
 
-  let db: ReturnType<typeof getCurrentDatabase> | null = null;
+  /* ------------------------------------------------------------------
+   * reset — logout / 切账号时由 keys.ts 统一触发
+   * ------------------------------------------------------------------ */
 
-  /* ================================================================
-   * reset — 切账号 / logout
-   * ================================================================ */
   function reset() {
     messages.value = [];
-    loadedFor.value = "";
-    db = null;
   }
 
-  /* ================================================================
-   * load — 按 pk 加载 Dexie
-   * ================================================================ */
-  async function load(pk?: string) {
-    const ks = useKeyStore();
-    const targetPk = pk ?? ks.pkHex;
+  /* ------------------------------------------------------------------
+   * load — 从「当前已打开的 Dexie」加载
+   * ❗ 不接收 pk
+   * ❗ 不判断账号
+   * ------------------------------------------------------------------ */
 
-    if (!targetPk) {
-      reset();
-      return;
-    }
-
-    // 🔥 切账号
-    if (loadedFor.value && loadedFor.value !== targetPk) {
-      reset();
-    }
-
-    if (loadedFor.value === targetPk) return;
-
-    loadedFor.value = targetPk;
-    db = getDatabase(targetPk);
-
+  async function load() {
     try {
+      const db = getCurrentDatabase();
+
       messages.value = await db.messages
         .orderBy("created_at")
         .reverse()
         .toArray();
     } catch (e) {
-      logger.error("load cached messages failed", e);
+      logger.error("[nostr] load cached messages failed", e);
     }
   }
 
-  /* ================================================================
+  /* ------------------------------------------------------------------
    * connect
-   * ================================================================ */
+   * ------------------------------------------------------------------ */
+
   function connect() {
     nostr.connect();
   }
 
-  /* ================================================================
+  /* ------------------------------------------------------------------
    * subscribe
-   * ================================================================ */
+   * ------------------------------------------------------------------ */
+
   function subscribeByAuthors(authors: string[]) {
     const ks = useKeyStore();
-    if (!ks.pkHex || ks.pkHex !== loadedFor.value || !db) {
-      logger.warn("subscribe aborted: not loaded for current pk");
+
+    if (!ks.pkHex) {
+      logger.warn("[nostr] subscribe aborted: not logged in");
+      return;
+    }
+
+    let db;
+    try {
+      db = getCurrentDatabase();
+    } catch {
+      logger.warn("[nostr] subscribe aborted: db not ready");
       return;
     }
 
     nostr.subscribe({
       authors,
       onEvent: async (evt: any) => {
-        // 🔒 防串号
-        if (ks.pkHex !== loadedFor.value || !db) return;
+        // 🔒 再次确认登录态（防 logout 后串写）
+        if (!useKeyStore().pkHex) return;
 
         const msg: Message = {
           id: evt.id,
@@ -91,15 +89,16 @@ export const useNostrStore = defineStore("nostr", () => {
         try {
           await db.messages.put(msg);
         } catch (e) {
-          logger.warn("save message failed", e);
+          logger.warn("[nostr] save message failed", e);
         }
       }
     });
   }
 
-  /* ================================================================
+  /* ------------------------------------------------------------------
    * publish
-   * ================================================================ */
+   * ------------------------------------------------------------------ */
+
   async function publishMultiRecipient(opts: {
     content: string;
     privateKey: string;
@@ -110,6 +109,10 @@ export const useNostrStore = defineStore("nostr", () => {
       kind: 8964
     });
   }
+
+  /* ------------------------------------------------------------------
+   * expose
+   * ------------------------------------------------------------------ */
 
   return {
     messages,
