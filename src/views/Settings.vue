@@ -1,5 +1,3 @@
-
-
 <template>
   <div class="settings-container">
     <!-- Sync Status Bar -->
@@ -9,62 +7,47 @@
     <div v-else-if="settings.syncError" class="sync-status error">
       <span class="sync-icon">⚠</span> 同步失败: {{ settings.syncError }}
     </div>
-    <div
-      v-else-if="settings.lastSyncTimestamp > 0 && showSyncSuccess"
-      class="sync-status success"
-      :class="{ 'fade-out': isFadingOut }"
-    >
+    <div v-else-if="settings.lastSyncTimestamp > 0 && showSyncSuccess" class="sync-status success" :class="{ 'fade-out': isFadingOut }">
       <span class="sync-icon icon-check-success">✓</span> 已同步
     </div>
 
     <div class="card">
       <h3 style="margin: 0 0 12px 0;">设置</h3>
 
-      <!-- Relay -->
+      <!-- Relay Management Section -->
       <div class="section">
         <h4>Relay 管理</h4>
-
         <div class="add-form">
-          <input
-            v-model="newRelay"
-            class="input"
+          <input 
+            v-model="newRelay" 
+            class="input" 
             placeholder="例如：wss://relay.example.com"
             @keyup.enter="addRelay"
           />
           <button class="btn btn-primary" @click="addRelay">添加</button>
         </div>
-
+        
         <div v-if="relayList.length === 0" class="empty-message">
-          <span class="small">暂无 relay</span>
+          <span class="small">暂无 relay，请添加</span>
         </div>
-
-        <div v-else class="item-list">
-          <div
-            v-for="relay in relayList"
-            :key="relay"
-            class="item-card"
-          >
+        
+        <div class="item-list" v-else>
+          <div v-for="(relay, index) in relayList" :key="relay" class="item-card">
             <div class="item-content">
               <div class="item-main">
                 <div v-if="editingRelay !== relay" class="item-info">
                   <div class="item-url">{{ shortRelay(relay) }}</div>
                   <div class="item-status">
-                    <span
-                      class="status-icon"
-                      :class="{
-                        'icon-check-success': statuses[relay]?.ready,
-                        'status-disconnected': !statuses[relay]?.ready
-                      }"
+                    <span 
+                      class="status-icon" 
+                      :class="{ 'icon-check-success': statuses[relay]?.ready, 'status-disconnected': !statuses[relay]?.ready }"
                     >
                       {{ statuses[relay]?.ready ? '✓' : '✗' }}
                     </span>
-                    <span class="status-text">
-                      {{ statuses[relay]?.ready ? '已连接' : '未连接' }}
-                    </span>
+                    <span class="status-text">{{ statuses[relay]?.ready ? '已连接' : '未连接' }}</span>
                   </div>
                 </div>
-
-                <input
+                <input 
                   v-else
                   v-model="editedRelayValue"
                   class="input input-inline"
@@ -72,72 +55,74 @@
                   @keyup.esc="cancelEditRelay"
                 />
               </div>
-
               <div class="item-actions">
                 <template v-if="editingRelay !== relay">
-                  <button class="btn-icon btn-edit" @click="startEditRelay(relay)">✎</button>
-                  <button class="btn-icon btn-delete" @click="deleteRelay(relay)">🗑</button>
+                  <button class="btn-icon btn-edit" @click="startEditRelay(relay)" title="编辑">✎</button>
+                  <button class="btn-icon btn-delete" @click="deleteRelay(relay)" title="删除">🗑</button>
                 </template>
                 <template v-else>
-                  <button class="btn-icon btn-save" @click="saveEditRelay(relay)">✓</button>
-                  <button class="btn-icon btn-cancel" @click="cancelEditRelay">✗</button>
+                  <button class="btn-icon btn-save" @click="saveEditRelay(relay)" title="保存">✓</button>
+                  <button class="btn-icon btn-cancel" @click="cancelEditRelay" title="取消">✗</button>
                 </template>
               </div>
             </div>
           </div>
         </div>
+        
+        <div v-if="relayList.length > 0" class="section-note">
+          <span class="small">注意：修改 relay 后需刷新页面以应用更改</span>
+        </div>
       </div>
 
-      <!-- Blossom -->
+      <!-- Blossom Management Section -->
       <div class="section">
         <h4>Blossom 图床管理</h4>
-
         <div class="add-form">
-          <input
-            v-model="newBlossomUrl"
-            class="input"
+          <input 
+            v-model="newBlossomUrl" 
+            class="input" 
             placeholder="例如：https://blossom.example"
             @keyup.enter="addBlossom"
           />
           <button class="btn btn-primary" @click="addBlossom">添加</button>
         </div>
-
+        
         <div v-if="blossomList.length === 0" class="empty-message">
-          <span class="small">暂无 Blossom 图床</span>
+          <span class="small">暂无 Blossom 图床，请添加</span>
         </div>
-
-        <div v-else class="item-list">
-          <div
-            v-for="(b, index) in blossomList"
-            :key="index"
-            class="item-card"
-          >
+        
+        <div class="item-list" v-else>
+          <div v-for="(blossom, index) in blossomList" :key="index" class="item-card">
             <div class="item-content">
               <div class="item-main">
                 <div v-if="editingBlossom !== index" class="item-info">
-                  <div class="item-url">{{ b.url }}</div>
+                  <div class="item-url">{{ blossom.url }}</div>
                   <div class="item-status">
                     <span class="status-icon icon-check-success">✓</span>
-                    <span class="status-text">
-                      {{ b.token ? '已配置 Token' : '无 Token' }}
-                    </span>
+                    <span class="status-text">{{ blossom.token ? '已配置 Token' : '无 Token' }}</span>
                   </div>
                 </div>
-
                 <div v-else class="edit-form">
-                  <input v-model="editedBlossomUrl" class="input input-inline" />
-                  <input v-model="editedBlossomToken" class="input input-inline" />
+                  <input 
+                    v-model="editedBlossomUrl"
+                    class="input input-inline"
+                    placeholder="图床地址"
+                  />
+                  <input 
+                    v-model="editedBlossomToken"
+                    class="input input-inline"
+                    placeholder="Token（可选）"
+                  />
                 </div>
               </div>
-
               <div class="item-actions">
                 <template v-if="editingBlossom !== index">
-                  <button class="btn-icon btn-edit" @click="startEditBlossom(index)">✎</button>
-                  <button class="btn-icon btn-delete" @click="deleteBlossom(index)">🗑</button>
+                  <button class="btn-icon btn-edit" @click="startEditBlossom(index)" title="编辑">✎</button>
+                  <button class="btn-icon btn-delete" @click="deleteBlossom(index)" title="删除">🗑</button>
                 </template>
                 <template v-else>
-                  <button class="btn-icon btn-save" @click="saveEditBlossom(index)">✓</button>
-                  <button class="btn-icon btn-cancel" @click="cancelEditBlossom">✗</button>
+                  <button class="btn-icon btn-save" @click="saveEditBlossom(index)" title="保存">✓</button>
+                  <button class="btn-icon btn-cancel" @click="cancelEditBlossom" title="取消">✗</button>
                 </template>
               </div>
             </div>
@@ -145,7 +130,29 @@
         </div>
       </div>
 
-      <!-- Account -->
+      <!-- Cache Management Section -->
+      <div class="section">
+        <h4>缓存管理</h4>
+        <div class="cache-info">
+          <div class="small">
+            <div>图片缓存: {{ cacheStats.count }} 个文件</div>
+            <div>缓存大小: {{ formatSize(cacheStats.size) }}</div>
+            <div v-if="cacheStats.oldestTimestamp > 0">
+              最早缓存: {{ new Date(cacheStats.oldestTimestamp).toLocaleDateString() }}
+            </div>
+          </div>
+          <div class="cache-actions">
+            <button class="btn btn-secondary" @click="refreshCacheStats" :disabled="loadingCache">
+              {{ loadingCache ? '加载中...' : '刷新统计' }}
+            </button>
+            <button class="btn btn-warning" @click="clearCache" :disabled="clearingCache">
+              {{ clearingCache ? '清理中...' : '清空缓存' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Account Section -->
       <div class="section">
         <h4>账户</h4>
         <div class="account-info">
@@ -158,166 +165,269 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, reactive, computed, watch, onMounted } from "vue";
-import { inspectRelays, reconnectRelay } from "@/nostr/relays";
+import { defineComponent, ref, reactive, onMounted, onBeforeUnmount, computed, watch } from "vue";
+import { DEFAULT_RELAYS, getRelaysFromStorage, inspectRelays, reconnectRelay } from "@/nostr/relays";
+import { DEFAULT_BLOSSOM_SERVERS } from "@/utils/blossom";
 import { useKeyStore } from "@/stores/keys";
-import { useSettingsStore } from "@/stores/settings";
+import { useSettingsStore, type BlossomServer } from "@/stores/settings";
+import { useUIStore } from "@/stores/ui";
+import { db } from "@/db/dexie";
+import { getCacheStats, clearAllCache } from "@/utils/imageCache";
 
 export default defineComponent({
   name: "Settings",
   setup() {
     const ks = useKeyStore();
     const settings = useSettingsStore();
+    const ui = useUIStore();
+    const shortPk = computed(() => (ks.pkHex ? ks.pkHex.slice(0, 8) + "..." : ""));
 
-    const shortPk = computed(() =>
-      ks.pkHex ? ks.pkHex.slice(0, 8) + "…" : ""
-    );
-
-    const newRelay = ref("");
-    const newBlossomUrl = ref("");
-
-    const editingRelay = ref<string | null>(null);
-    const editedRelayValue = ref("");
-
-    const editingBlossom = ref<number | null>(null);
-    const editedBlossomUrl = ref("");
-    const editedBlossomToken = ref("");
-
-    const statuses = reactive<Record<string, any>>({});
+    /* ================= sync ui ================= */
 
     const showSyncSuccess = ref(false);
     const isFadingOut = ref(false);
+    let hideTimeout: ReturnType<typeof setTimeout> | null = null;
+    let fadeTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    watch(
-      () => settings.lastSyncTimestamp,
-      (v, o) => {
-        if (v > 0 && v !== o) {
-          showSyncSuccess.value = true;
-          setTimeout(() => (isFadingOut.value = true), 2500);
-          setTimeout(() => {
+    watch(() => settings.lastSyncTimestamp, (newVal, oldVal) => {
+      if (newVal > 0 && newVal !== oldVal && !settings.syncing && !settings.syncError) {
+        if (hideTimeout) clearTimeout(hideTimeout);
+        if (fadeTimeout) clearTimeout(fadeTimeout);
+
+        showSyncSuccess.value = true;
+        isFadingOut.value = false;
+
+        hideTimeout = setTimeout(() => {
+          isFadingOut.value = true;
+          fadeTimeout = setTimeout(() => {
             showSyncSuccess.value = false;
             isFadingOut.value = false;
-          }, 3000);
-        }
+          }, 500);
+        }, 3000);
       }
-    );
+    });
+
+    /* ================= relay ================= */
+
+    const newRelay = ref("");
+    const statuses = reactive<Record<string, any>>({});
+    const editingRelay = ref<string | null>(null);
+    const editedRelayValue = ref("");
 
     function shortRelay(u: string) {
       return u.replace(/^wss?:\/\//, "").replace(/\/$/, "");
     }
 
+    function loadRelays() {
+      // 仅做一次旧数据迁移
+      const stored = localStorage.getItem("custom-relays");
+      if (stored && settings.relayList.length === 0) {
+        const relays = stored.split("\n").filter(Boolean);
+        if (relays.length) {
+          settings.updateRelays(relays);
+          localStorage.removeItem("custom-relays");
+        }
+      } else if (settings.relayList.length === 0) {
+        settings.updateRelays([...DEFAULT_RELAYS]);
+      }
+    }
+
+    function addRelay() {
+      const relay = newRelay.value.trim();
+      if (!relay || settings.relayList.includes(relay)) return;
+      settings.updateRelays([...settings.relayList, relay]);
+      newRelay.value = "";
+      refreshStatuses();
+    }
+
+    function deleteRelay(relay: string) {
+      if (!confirm(`确定要删除 ${shortRelay(relay)} 吗？`)) return;
+      settings.updateRelays(settings.relayList.filter(r => r !== relay));
+      delete statuses[relay];
+    }
+
+    function startEditRelay(relay: string) {
+      editingRelay.value = relay;
+      editedRelayValue.value = relay;
+    }
+
+    function saveEditRelay(oldRelay: string) {
+      const next = editedRelayValue.value.trim();
+      if (!next) return;
+
+      const list = [...settings.relayList];
+      const idx = list.indexOf(oldRelay);
+      if (idx !== -1) {
+        list[idx] = next;
+        settings.updateRelays(list);
+      }
+      editingRelay.value = null;
+      refreshStatuses();
+    }
+
+    function cancelEditRelay() {
+      editingRelay.value = null;
+      editedRelayValue.value = "";
+    }
+
     function refreshStatuses() {
       const info = inspectRelays();
+      const current = new Set(settings.relayList);
+
+      for (const r in statuses) {
+        if (!current.has(r)) delete statuses[r];
+      }
+
       for (const r of settings.relayList) {
         statuses[r] = info[r] || { ready: false };
       }
     }
 
-    function addRelay() {
-      const r = newRelay.value.trim();
-      if (!r || settings.relayList.includes(r)) return;
-      settings.updateRelays([...settings.relayList, r]);
-      newRelay.value = "";
-      refreshStatuses();
+    /* ================= blossom ================= */
+
+    const newBlossomUrl = ref("");
+    const editingBlossom = ref<number | null>(null);
+    const editedBlossomUrl = ref("");
+    const editedBlossomToken = ref("");
+
+    function migrateOldBlossomFormat() {
+      const url = localStorage.getItem("blossom_upload_url") || "";
+      const token = localStorage.getItem("blossom_token") || "";
+      if (url && settings.blossomList.length === 0) {
+        settings.updateBlossomServers([{ url, token }]);
+      }
     }
 
-    function deleteRelay(r: string) {
-      settings.updateRelays(settings.relayList.filter(x => x !== r));
-    }
-
-    function startEditRelay(r: string) {
-      editingRelay.value = r;
-      editedRelayValue.value = r;
-    }
-
-    function saveEditRelay(old: string) {
-      const v = editedRelayValue.value.trim();
-      if (!v) return;
-      const list = [...settings.relayList];
-      const i = list.indexOf(old);
-      if (i !== -1) list[i] = v;
-      settings.updateRelays(list);
-      editingRelay.value = null;
-    }
-
-    function cancelEditRelay() {
-      editingRelay.value = null;
+    function loadBlossoms() {
+      const stored = localStorage.getItem("blossom_servers");
+      if (stored && settings.blossomList.length === 0) {
+        try {
+          const servers = JSON.parse(stored);
+          if (Array.isArray(servers)) settings.updateBlossomServers(servers);
+        } catch {
+          migrateOldBlossomFormat();
+        }
+      }
+      if (settings.blossomList.length === 0) {
+        settings.updateBlossomServers([...DEFAULT_BLOSSOM_SERVERS]);
+      }
     }
 
     function addBlossom() {
       const url = newBlossomUrl.value.trim();
       if (!url) return;
-      settings.updateBlossomServers([
-        ...settings.blossomList,
-        { url, token: "" }
-      ]);
+      settings.updateBlossomServers([...settings.blossomList, { url, token: "" }]);
       newBlossomUrl.value = "";
     }
 
-    function deleteBlossom(i: number) {
+    function deleteBlossom(index: number) {
+      if (!confirm("确定要删除该 Blossom 图床吗？")) return;
       const list = [...settings.blossomList];
-      list.splice(i, 1);
+      list.splice(index, 1);
       settings.updateBlossomServers(list);
     }
 
-    function startEditBlossom(i: number) {
-      editingBlossom.value = i;
-      editedBlossomUrl.value = settings.blossomList[i].url;
-      editedBlossomToken.value = settings.blossomList[i].token;
+    function startEditBlossom(index: number) {
+      editingBlossom.value = index;
+      editedBlossomUrl.value = settings.blossomList[index].url;
+      editedBlossomToken.value = settings.blossomList[index].token;
     }
 
-    function saveEditBlossom(i: number) {
+    function saveEditBlossom(index: number) {
+      const url = editedBlossomUrl.value.trim();
+      if (!url) return;
       const list = [...settings.blossomList];
-      list[i] = {
-        url: editedBlossomUrl.value.trim(),
-        token: editedBlossomToken.value.trim()
-      };
+      list[index] = { url, token: editedBlossomToken.value.trim() };
       settings.updateBlossomServers(list);
       editingBlossom.value = null;
     }
 
     function cancelEditBlossom() {
       editingBlossom.value = null;
+      editedBlossomUrl.value = "";
+      editedBlossomToken.value = "";
     }
 
-    function doLogout() {
+    /* ================= cache / account ================= */
+
+    const cacheStats = reactive({ count: 0, size: 0, oldestTimestamp: 0 });
+    const loadingCache = ref(false);
+    const clearingCache = ref(false);
+
+    async function refreshCacheStats() {
+      loadingCache.value = true;
+      Object.assign(cacheStats, await getCacheStats());
+      loadingCache.value = false;
+    }
+
+    async function clearCache() {
+      if (!confirm("确定要清空所有图片缓存吗？")) return;
+      clearingCache.value = true;
+      await clearAllCache();
+      await refreshCacheStats();
+      clearingCache.value = false;
+    }
+
+    function formatSize(bytes: number) {
+      if (!bytes) return "0 B";
+      const k = 1024;
+      const sizes = ["B", "KB", "MB", "GB"];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return (bytes / Math.pow(k, i)).toFixed(2) + " " + sizes[i];
+    }
+
+    const doLogout = () => {
       ks.logout();
-    }
+      location.href = "/#/login";
+    };
 
-    onMounted(refreshStatuses);
+    onMounted(() => {
+      loadRelays();
+      loadBlossoms();
+      refreshStatuses();
+      refreshCacheStats();
+      const id = setInterval(refreshStatuses, 5000);
+      onBeforeUnmount(() => clearInterval(id));
+    });
 
     return {
-      settings,
       shortPk,
       newRelay,
-      newBlossomUrl,
       relayList: computed(() => settings.relayList),
-      blossomList: computed(() => settings.blossomList),
       statuses,
       editingRelay,
       editedRelayValue,
-      editingBlossom,
-      editedBlossomUrl,
-      editedBlossomToken,
       addRelay,
       deleteRelay,
       startEditRelay,
       saveEditRelay,
       cancelEditRelay,
+      newBlossomUrl,
+      blossomList: computed(() => settings.blossomList),
+      editingBlossom,
+      editedBlossomUrl,
+      editedBlossomToken,
       addBlossom,
       deleteBlossom,
       startEditBlossom,
       saveEditBlossom,
       cancelEditBlossom,
       shortRelay,
-      reconnectRelay,
+      doLogout,
+      settings,
       showSyncSuccess,
       isFadingOut,
-      doLogout
+      cacheStats,
+      loadingCache,
+      clearingCache,
+      refreshCacheStats,
+      clearCache,
+      formatSize
     };
   }
 });
 </script>
+
 
 <style scoped>
 .sync-status {
