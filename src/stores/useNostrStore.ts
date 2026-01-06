@@ -1,78 +1,61 @@
 import { defineStore } from 'pinia';
-import { useKeyStore } from './keys';
-import { useFriendsStore } from './friends';
-import { useMessagesStore, DBMessage } from './messages';
+import { ref } from 'vue';
 import { NostrService } from '../utils/nostr';
-import { getCurrentDatabase } from '../db/dexie';
-import { logger } from '../utils/logger';
+import { db } from '../db/dexie';
+
+type Message = {
+  id: string;
+  pubkey: string;
+  content: string;
+  created_at: number;
+};
 
 const nostr = new NostrService();
 
 export default defineStore('nostr', () => {
-  const messagesStore = useMessagesStore();
+  const messages = ref<Message[]>([]);
 
-  const autoSubscribe = () => {
-    const ks = useKeyStore();
-    const friendsStore = useFriendsStore();
+  // Load cached messages from Dexie
+  const loadCached = async () => {
+    messages.value = await db.messages.orderBy('created_at').reverse().toArray();
+  };
 
-    if (!ks.pkHex) {
-      logger.warn('[nostr] autoSubscribe aborted: not logged in');
-      return;
-    }
+  loadCached();
 
-    const friendPks = friendsStore.list.map(f => f.pubkey);
-    const authors = [ks.pkHex, ...friendPks];
+  const connect = () => nostr.connect();
 
+  const subscribeByAuthors = (authors: string[]) => {
+    // subscribe with authors filter
     nostr.subscribe({
       authors,
-      kinds: [8964],
       onEvent: async (evt: any) => {
-        if (!ks.pkHex) return;
-
-        const msg: DBMessage = {
+        const msg: Message = {
           id: evt.id,
           pubkey: evt.pubkey,
           content: evt.content,
           created_at: evt.created_at
         };
-
-        try {
-          // ✅ 直接寫入 Dexie 並更新內存
-          await messagesStore.addInbox(msg);
-        } catch (e) {
-          logger.error("[usenostrstore] addInbox failed", e);
-        }
+        messages.value.unshift(msg);
+        await db.messages.put(msg);
       }
     });
   };
 
-  const connect = () => nostr.connect();
-
   const publishMultiRecipient = async (opts: { content: string; privateKey: string; recipients: string[] }) => {
     const { content, privateKey, recipients } = opts;
-
-    const event = await nostr.publishMultiRecipient({
+    // publish via NostrService
+    await nostr.publishMultiRecipient({
       content,
       privateKey,
       recipients,
       kind: 8964
     });
-
-    if (event) {
-      // 發件箱可選存入 Dexie 或僅內存
-      const outboxMsg: DBMessage = {
-        id: event.id,
-        pubkey: getCurrentDatabase ? event.pubkey : '', // 可以選擇記錄自己的pubkey
-        content: content,
-        created_at: event.created_at
-      };
-      await messagesStore.addInbox(outboxMsg); // 發送後也存入內存/DB
-    }
   };
 
   return {
+    messages,
     connect,
-    autoSubscribe,
+    subscribeByAuthors,
     publishMultiRecipient
   };
 });
