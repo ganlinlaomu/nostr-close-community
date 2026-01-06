@@ -1,9 +1,7 @@
 <template>
-  <div v-if="loadingStore" class="loading-screen">
-    <div class="loader">正在同步加密动态...</div>
-  </div>
-
-  <div v-else class="home-container" ref="container">
+  <div 
+    class="home-container" ref="container"
+  >
     <div
       class="pull-indicator"
       :style="{ height: pullDistance + 'px' }"
@@ -12,30 +10,40 @@
       <span v-else>⟳ 刷新中...</span>
     </div>
     
+    <!-- New messages notification - only show on PC/desktop (non-touch devices) -->
     <div 
       v-if="pendingMessages.length > 0" 
       class="new-messages-notification" 
+      role="button"
+      tabindex="0"
+      :aria-label="`有 ${pendingMessages.length} 条新消息，点击查看`"
       @click="showPendingMessages"
+      @keyup.enter="showPendingMessages"
+      @keyup.space.prevent="showPendingMessages"
     >
       <span class="notification-icon">↓</span>
       <span class="notification-text">{{ pendingMessages.length }} 条新消息</span>
     </div>
 
+
     <div class="card">
       <h4 style="margin: 0 0 12px 0;">好友动态</h4>
       <div v-if="displayedMessages.length === 0" class="small">还没有消息</div>
       <div class="list">
-        <div v-for="m in displayedMessages" :key="m.id" :id="`msg-${m.id}`" class="card post-card">
+        <div v-for="m in displayedMessages" :key="m.id" :id="`msg-${m.id}`" class="card">
           <div class="small">
-            <strong>{{ displayName(m.pubkey) }}</strong>
+            {{ displayName(m.pubkey) }}
             <span class="muted"> · {{ toLocalTime(m.created_at) }}</span>
           </div>
-
-          <div v-if="textWithoutVideos(m.content)" class="message-text">{{ textWithoutVideos(m.content) }}</div>
-          
+          <!-- 如果仍需显示文本（去除了图片 URL/Markdown），使用 textWithoutVideos -->
+          <div v-if="textWithoutVideos(m.content)" class="message-text message-text-top">{{ textWithoutVideos(m.content) }}</div>
+          <!-- 图片预览（9宫格展示多图） -->
           <PostImagePreview v-if="m.content" :content="m.content" :showAll="true" :max="9" class="post-images" />
+
+          <!-- 视频预览 -->
           <VideoPlayer v-if="extractVideoData(m.content)" :videoData="extractVideoData(m.content)" style="margin-top:8px;" />
           
+          <!-- 操作按钮：点赞和评论 -->
           <div class="message-actions">
             <button class="action-btn" @click="toggleLike(m)" :class="{ 'liked': isLiked(m.id) }">
               <span class="action-icon">{{ isLiked(m.id) ? '❤️' : '🤍' }}</span>
@@ -45,71 +53,101 @@
               <span class="action-icon">💬</span>
               <span class="action-text">{{ getCommentCount(m.id) }}</span>
             </button>
+            <!-- SEND META (only author) -->
             <div v-if="m._localMeta?.groupCount" class="send-meta">
-              <button class="action-btn send-btn" @click="toggleSendMeta(m.id)">
-                <span class="action-icon">👀</span>
-                <span class="action-text">{{ m._localMeta.groupCount }}</span>
-              </button>
-            </div>
+             <button
+               class="action-btn send-btn"
+               @click="toggleSendMeta(m.id)"
+             >
+               <span class="action-icon">👀</span>
+               <span class="action-text">{{ m._localMeta.groupCount }}</span>
+            </button>
           </div>
 
-          <div class="message-expanded">
-            <div v-if="showingSendMeta.has(m.id)" class="send-meta-panel">
-              <div class="send-meta-title">对谁可见:</div>
-              <div v-for="g in m._localMeta.groups" :key="g.name" class="send-meta-row">
-                <span class="group-name">{{ g.name }}</span>
-                <span class="group-count">{{ g.count }} 人</span>
-              </div>
-            </div>
+          </div>
+<div class="message-expanded">
 
-            <div v-if="showingComments.has(m.id)" class="comments-section">
-              <div class="comments-list">
-                <div v-for="comment in getComments(m.id)" :key="comment.id" class="comment-thread">
-                  <div class="comment-item" :id="`comment-${comment.id}`">
+           <!-- SEND META EXPANDED (like comments) -->
+<div
+  v-if="showingSendMeta.has(m.id)"
+  class="send-meta-panel"
+>
+  <div class="send-meta-title">对谁可见:</div>
+
+  <div class="send-meta-groups">
+    <div
+      v-for="g in m._localMeta.groups"
+      :key="g.name"
+      class="send-meta-row"
+    >
+      <span class="group-name">{{ g.name }}</span>
+      <span class="group-count">{{ g.count }} 人</span>
+    </div>
+  </div>
+</div>
+
+          <!-- 评论区域 -->
+          <div v-if="showingComments.has(m.id)" class="comments-section">
+            <div class="comments-list">
+              <div v-for="comment in getComments(m.id)" :key="comment.id"  class="comment-thread">
+                <!-- 主评论 -->
+                <div class="comment-item" :id="`comment-${comment.id}`">
+                  <div class="comment-header small">
+                    <strong>{{ displayName(comment.author) }}</strong>
+                    <span class="muted"> · {{ toLocalTime(comment.timestamp) }}</span>
+                  </div>
+                  <div class="comment-text">{{ comment.text }}</div>
+                  <button class="reply-btn small" @click="startReply(m.id, comment.id, displayName(comment.author))">
+                    回复
+                  </button>
+                </div>
+                
+                <!-- 回复列表 -->
+                <div v-if="getReplies(m.id, comment.id).length > 0" class="replies-list">
+                  <div v-for="reply in getReplies(m.id, comment.id)" :key="reply.id" class="comment-item reply-item">
                     <div class="comment-header small">
-                      <strong>{{ displayName(comment.author) }}</strong>
-                      <span class="muted"> · {{ toLocalTime(comment.timestamp) }}</span>
+                      <strong>{{ displayName(reply.author) }}</strong>
+                      <span class="muted"> · {{ toLocalTime(reply.timestamp) }}</span>
                     </div>
-                    <div class="comment-text">{{ comment.text }}</div>
-                    <button class="reply-btn small" @click="startReply(m.id, comment.id, displayName(comment.author))">回复</button>
-                  </div>
-                  
-                  <div v-if="getReplies(m.id, comment.id).length > 0" class="replies-list">
-                    <div v-for="reply in getReplies(m.id, comment.id)" :key="reply.id" class="comment-item reply-item">
-                      <div class="comment-header small">
-                        <strong>{{ displayName(reply.author) }}</strong>
-                        <span class="muted"> · {{ toLocalTime(reply.timestamp) }}</span>
-                      </div>
-                      <div class="comment-text">{{ reply.text }}</div>
-                    </div>
+                    <div class="comment-text">{{ reply.text }}</div>
+                    <!-- 不显示回复按钮，因为只支持两层评论 -->
                   </div>
                 </div>
-                <div v-if="getComments(m.id).length === 0" class="small muted">暂无评论</div>
               </div>
-              
-              <div class="comment-input-container">
-                <div v-if="replyingTo[m.id]" class="replying-indicator small">
-                  <span>正在回复...</span>
-                  <button class="cancel-reply-btn" @click="cancelReply(m.id)">✕</button>
-                </div>
-                <div class="comment-input-wrapper">
-                  <input 
-                    v-model="commentInputs[m.id]" 
-                    class="comment-input" 
-                    placeholder="写下你的评论..."
-                    :data-message-id="m.id"
-                    @keyup.enter="addComment(m.id)"
-                  />
-                  <button class="comment-submit" @click="addComment(m.id)" :disabled="!commentInputs[m.id]?.trim()">发送</button>
-                </div>
+              <div v-if="getComments(m.id).length === 0" class="small muted">暂无评论</div>
+            </div>
+            
+            <!-- 评论输入框 -->
+            <div class="comment-input-container">
+              <div v-if="replyingTo[m.id]" class="replying-indicator small">
+                <span>正在回复...</span>
+                <button class="cancel-reply-btn" @click="cancelReply(m.id)">✕</button>
+              </div>
+              <div class="comment-input-wrapper">
+                <input 
+                  v-model="commentInputs[m.id]" 
+                  class="comment-input" 
+                  placeholder="写下你的评论..."
+                  :data-message-id="m.id"
+                  @keyup.enter="addComment(m.id)"
+                />
+                <button class="comment-submit" @click="addComment(m.id)" :disabled="!commentInputs[m.id]?.trim()">
+                  发送
+                </button>
               </div>
             </div>
           </div>
         </div>
+        </div>
       </div>
       
+      <!-- 加载更多按钮 -->
       <div v-if="hasMore" class="load-more-container">
-        <button class="load-more-btn" @click="loadMoreMessages" :disabled="isLoadingMore">
+        <button 
+          class="load-more-btn" 
+          @click="loadMoreMessages" 
+          :disabled="isLoadingMore"
+        >
           <span v-if="!isLoadingMore">加载更多 (还有 {{ remainingMessagesCount }} 条)</span>
           <span v-else>加载中...</span>
         </button>
@@ -122,17 +160,45 @@
 import { defineComponent, ref, onMounted, onBeforeUnmount, computed, watch, nextTick } from "vue";
 import { useFriendsStore } from "@/stores/friends";
 import { useKeyStore } from "@/stores/keys";
-import { pool, getRelaysFromStorage, subscribe } from "@/nostr/relays";
-import { useMessagesStore } from "@/stores/messages";
+import { getRelaysFromStorage, subscribe } from "@/nostr/relays";
+import { symDecryptPackage } from "@/nostr/crypto";
+import { useMessagesStore, type InboxItem } from "@/stores/messages";
 import { useInteractionsStore } from "@/stores/interactions";
 import { logger } from "@/utils/logger";
 import { formatRelativeTime } from "@/utils/format";
 import PostImagePreview from "@/components/PostImagePreview.vue";
 import VideoPlayer from "@/components/VideoPlayer.vue";
+import { backfillEvents, saveBackfillBreakpoint, loadBackfillBreakpoint } from "@/utils/backfill";
 import { useRoute } from "vue-router";
 import { usePullToRefresh } from "@/components/usePullToRefresh";
-import { getLastSeenCreatedAt, updateLastSeenToNewest } from "@/utils/lastSeen";
+import { getLastSeenCreatedAt, setLastSeenCreatedAt, updateLastSeenToNewest } from "@/utils/lastSeen";
 import { extractVideoData as extractVideoDataUtil, getVideoUrlRemovalPatterns } from "@/utils/videoUtils";
+
+
+// reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
+const mdImageRE = /!\[[^\]]*?\]\(\s*(https?:\/\/[^\s)]+)\s*\)/gi;
+const plainImgUrlRE = /(https?:\/\/[^\s)]+?\.(?:png|jpe?g|gif|webp|avif|svg)(?:\?[^\s)]*)?)/gi;
+// Match encrypted image references in markdown: ![](blossom+aesgcm:...)
+// This is needed to prevent raw encrypted markdown from appearing in the message text area
+// while PostImagePreview handles the actual decryption and rendering
+const mdEncryptedImageRE = /!\[[^\]]*?\]\(\s*(blossom\+aesgcm:[^\s)]+)\s*\)/gi;
+
+// Video pattern: [video:{json}] - constant for video metadata format
+const VIDEO_METADATA_PREFIX = '[video:';
+const VIDEO_METADATA_SUFFIX = ']';
+const videoDataRE = /\[video:(\{[^\]]+\})\]/g;
+
+// Get video URL removal patterns for text cleanup
+const videoUrlPatterns = getVideoUrlRemovalPatterns();
+
+// Constants for time calculations
+const SECONDS_PER_DAY = 24 * 60 * 60;
+const THREE_DAYS_IN_SECONDS = 3 * SECONDS_PER_DAY;
+
+// Constants for scroll and layout calculations
+const BOTTOM_NAV_HEIGHT = 80; // Must match --bottom-nav-height in styles.css
+const SCROLL_SAFE_OFFSET = 20; // Extra padding to ensure elements are fully visible
+const SCROLL_CONTAINER_SELECTOR = 'body > #app'; // Main scrollable container
 
 export default defineComponent({
   name: "Home",
@@ -142,230 +208,1074 @@ export default defineComponent({
     const keys = useKeyStore();
     const msgs = useMessagesStore();
     const interactions = useInteractionsStore();
+    const readyForPending = ref(false);
     const route = useRoute();
+    const notificationJumpDone = ref(false);
+    const lastSeenCreatedAt = ref(0); // Track the watermark for filtering pending messages
 
-    // 状态锁
-    const loadingStore = ref(true);
-    const refreshing = ref(false);
-    
-    // 消息数据
-    const messagesRef = ref<any[]>([]);
-    const displayedMessages = ref<any[]>([]);
-    const pendingMessages = ref<any[]>([]);
-    const lastSeenCreatedAt = ref(0);
 
-    // UI 状态
-    const showingComments = ref<Set<string>>(new Set());
+    const status = ref("未连接");
+    let sub: any = null;
+    let interactionsSub: any = null;
+
+    const messagesRef = ref([] as any[]);
+    const displayedMessages = ref([] as any[]);
+    const pendingMessages = ref([] as any[]); // Messages fetched but not yet displayed
+    const isInitialLoad = ref(true); // Track if this is the first load
     const showingSendMeta = ref<Set<string>>(new Set());
-    const commentInputs = ref<Record<string, string>>({});
-    const replyingTo = ref<Record<string, string>>({});
-    const replyingToAuthor = ref<Record<string, string>>({});
-
-    // 分页
-    const PAGE_SIZE = 20;
-    const currentPage = ref(1);
+    
+    // 分页相关状态
+    const PAGE_SIZE = 20; // 每页显示 20 条
+    const currentPage = ref(1); // 当前页码
+    const hasMore = computed(() => {
+      return messagesRef.value.length > displayedMessages.value.length;
+    });
     const isLoadingMore = ref(false);
+    const remainingMessagesCount = computed(() => {
+      return messagesRef.value.length - displayedMessages.value.length;
+    });
 
-    const hasMore = computed(() => messagesRef.value.length > displayedMessages.value.length);
-    const remainingMessagesCount = computed(() => messagesRef.value.length - displayedMessages.value.length);
-
-    // 1. 初始化逻辑 (核心修复)
-    onMounted(async () => {
-      try {
-        if (!keys.pkHex) {
-          await keys.load();
+    
+    
+    // State for comments UI
+    const showingComments = ref<Set<string>>(new Set());
+    const commentInputs = ref<Record<string, string>>({});
+    const replyingTo = ref<Record<string, string>>({}); // messageId -> commentId being replied to
+    const replyingToAuthor = ref<Record<string, string>>({}); // messageId -> author pubkey of comment being replied to
+    
+    // State for message time range display
+    const messageTimeRange = ref<string>("");
+    
+    /**
+     * Merge two sorted arrays of messages with de-duplication by message ID
+     * @param array1 First sorted array (descending by created_at)
+     * @param array2 Second sorted array (descending by created_at)
+     * @returns Merged and de-duplicated array, sorted by created_at (descending)
+     */
+    function mergeSortedMessagesWithDedup<T extends { id: string; created_at?: number }>(
+      array1: T[],
+      array2: T[]
+    ): T[] {
+      const merged: T[] = [];
+      const seenIds = new Set<string>();
+      let i = 0, j = 0;
+      
+      while (i < array1.length || j < array2.length) {
+        if (i >= array1.length) {
+          // Add remaining items from array2 (de-duplicating)
+          for (let k = j; k < array2.length; k++) {
+            if (!seenIds.has(array2[k].id)) {
+              merged.push(array2[k]);
+              seenIds.add(array2[k].id);
+            }
+          }
+          break;
+        }
+        if (j >= array2.length) {
+          // Add remaining items from array1 (de-duplicating)
+          for (let k = i; k < array1.length; k++) {
+            if (!seenIds.has(array1[k].id)) {
+              merged.push(array1[k]);
+              seenIds.add(array1[k].id);
+            }
+          }
+          break;
+        }
+        // Merge based on timestamp, but de-duplicate by id
+        if ((array1[i].created_at || 0) >= (array2[j].created_at || 0)) {
+          if (!seenIds.has(array1[i].id)) {
+            merged.push(array1[i]);
+            seenIds.add(array1[i].id);
+          }
+          i++;
+        } else {
+          if (!seenIds.has(array2[j].id)) {
+            merged.push(array2[j]);
+            seenIds.add(array2[j].id);
+          }
+          j++;
+        }
+      }
+      
+      return merged;
+    }
+    
+    
+    function showPendingMessages() {
+      if (pendingMessages.value.length > 0) {
+        logger.info(`手动显示 ${pendingMessages.value.length} 条待显示消息`);
+        // Sort pending messages first
+        const sortedPending = [...pendingMessages.value].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        // Use efficient merge with de-duplication
+        const merged = mergeSortedMessagesWithDedup(sortedPending, displayedMessages.value);
+        displayedMessages.value = merged;
+        
+        // Update lastSeen watermark to the newest message timestamp across all displayed messages
+        lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, merged);
+        logger.info(`更新 lastSeenCreatedAt: ${new Date(lastSeenCreatedAt.value * 1000).toLocaleString()}`);
+        
+        pendingMessages.value = [];
+        updateMessageTimeRange();
+      }
+    }
+    
+    
+    
+    function updateLocalRefs() {
+      // Sort messages by timestamp descending (newest first)
+      messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+      
+      // Check for new messages that aren't currently displayed
+      const displayedIds = new Set(displayedMessages.value.map(m => m.id));
+      const pendingIds = new Set(pendingMessages.value.map(m => m.id));
+      const newMessages = messagesRef.value.filter(m => !displayedIds.has(m.id) && !pendingIds.has(m.id));
+      
+      if (newMessages.length > 0 && readyForPending.value) {
+        // Separate own messages from others' messages using filter for better readability
+        const ownMessages: InboxItem[] = newMessages.filter(msg => msg.pubkey === keys.pkHex);
+        const othersMessages: InboxItem[] = newMessages.filter(msg => msg.pubkey !== keys.pkHex);
+        
+        // Own messages: insert directly into displayedMessages (immediate display)
+        if (ownMessages.length > 0) {
+          logger.info(`收到 ${ownMessages.length} 条自己的新消息，立即显示`);
+          // Sort own messages first
+          const sortedOwn = ownMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+          // Merge with displayedMessages using efficient sorted merge with de-duplication
+          displayedMessages.value = mergeSortedMessagesWithDedup(sortedOwn, displayedMessages.value);
         }
         
-        if (keys.pkHex) {
-          // 必须等待所有 Store 加载完成
-          await Promise.all([
-            friends.load(keys.pkHex),
-            msgs.load(),
-            interactions.load()
-          ]);
+        // Others' messages: filter by lastSeenCreatedAt before adding to pending queue
+        if (othersMessages.length > 0) {
+          const currentLastSeen = lastSeenCreatedAt.value;
+          // Only consider messages newer than lastSeen as "new"
+          const trulyNewMessages = othersMessages.filter(msg => (msg.created_at || 0) > currentLastSeen);
           
-          lastSeenCreatedAt.value = getLastSeenCreatedAt(keys.pkHex);
-          updateLocalRefs();
-          
-          // 初始显示第一页
-          if (messagesRef.value.length > 0) {
-            displayedMessages.value = messagesRef.value.slice(0, PAGE_SIZE);
+          if (trulyNewMessages.length > 0) {
+            logger.info(`收到 ${trulyNewMessages.length} 条其他用户的新消息（晚于 lastSeen），等待刷新显示`);
+            // Sort other messages by timestamp (newest first) before adding
+            const sortedOthers = trulyNewMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+            // Merge with existing pending messages, de-duplicate by id, and keep sorted
+            const combined = [...sortedOthers, ...pendingMessages.value];
+            const deduped = Array.from(new Map(combined.map(m => [m.id, m])).values());
+            pendingMessages.value = deduped.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+          } else {
+            logger.debug(`收到 ${othersMessages.length} 条其他用户的消息，但都不晚于 lastSeen (${new Date(currentLastSeen * 1000).toLocaleString()})，不显示提示`);
           }
         }
-      } catch (e) {
-        logger.error("Home initialization failed", e);
-      } finally {
-        loadingStore.value = false;
-        startSub();
-        if (route.query.mid) handleNotificationJump();
       }
-    });
-
-    // 2. 数据更新逻辑
-    function updateLocalRefs() {
-      // 这里的 msgs.inbox 需要确保在 store 已经 load 之后才是有意义的
-      messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-    }
-
-    function showPendingMessages() {
-      const sortedPending = [...pendingMessages.value].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-      // 合并并去重
-      const combined = [...sortedPending, ...displayedMessages.value];
-      displayedMessages.value = Array.from(new Map(combined.map(m => [m.id, m])).values())
-        .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
       
-      lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, displayedMessages.value);
-      pendingMessages.value = [];
+      updateMessageTimeRange();
     }
-
+    
+    // 加载更多消息
     function loadMoreMessages() {
       if (isLoadingMore.value || !hasMore.value) return;
-      isLoadingMore.value = true;
-      setTimeout(() => {
-        const start = displayedMessages.value.length;
-        const nextBatch = messagesRef.value.slice(start, start + PAGE_SIZE);
-        displayedMessages.value = [...displayedMessages.value, ...nextBatch];
-        isLoadingMore.value = false;
-        currentPage.value++;
-      }, 200);
-    }
-
-    // 3. 互动逻辑 (增加防御性代码)
-    const isLiked = (id: string) => {
-      if (!keys.pkHex || !interactions.interactions) return false;
-      return interactions.isLikedByUser(id, keys.pkHex);
-    };
-
-    const getLikeCount = (id: string) => {
-      return interactions.getLikeCount?.(id) || 0;
-    };
-
-    const getCommentCount = (id: string) => {
-      return interactions.getCommentCount?.(id) || 0;
-    };
-
-    const getComments = (id: string) => {
-      return (interactions.getComments?.(id) || []).filter((c: any) => !c.parentCommentId);
-    };
-
-    const getReplies = (mid: string, cid: string) => {
-      return interactions.getReplies?.(mid, cid) || [];
-    };
-
-    async function toggleLike(m: any) {
-      if (!keys.pkHex) return;
-      try {
-        if (isLiked(m.id)) {
-          await interactions.removeLike(m.id, m.pubkey);
-        } else {
-          await interactions.sendLike(m.id, m.pubkey);
-        }
-      } catch (e) { logger.error("Like error", e); }
-    }
-
-    // 4. 其他辅助
-    const displayName = (pk: string) => {
-      if (!pk) return "未知";
-      if (pk === keys.pkHex) return "自己";
-      const f = (friends.list || []).find((x: any) => x.pubkey === pk);
-      return (f?.name?.trim()) ? f.name : pk.slice(0, 8);
-    };
-
-    const toLocalTime = (ts: number) => formatRelativeTime(ts);
-    const textWithoutVideos = (c: string) => {
-      if (!c) return "";
-      return c.replace(/!\[[^\]]*?\]\(\s*(https?:\/\/[^\s)]+)\s*\)/gi, "")
-              .replace(/(https?:\/\/[^\s)]+?\.(?:png|jpe?g|gif|webp|avif|svg))/gi, "")
-              .replace(/\[video:(\{[^\]]+\})\]/g, "").trim();
-    };
-    const extractVideoData = (c: string) => extractVideoDataUtil(c);
-
-    // UI 开关
-    function toggleComments(id: string) {
-      showingSendMeta.value.delete(id);
-      if (showingComments.value.has(id)) showingComments.value.delete(id);
-      else {
-        showingComments.value.clear();
-        showingComments.value.add(id);
-      }
-      showingComments.value = new Set(showingComments.value);
-    }
-
-    function toggleSendMeta(id: string) {
-      showingComments.value.delete(id);
-      if (showingSendMeta.value.has(id)) showingSendMeta.value.delete(id);
-      else {
-        showingSendMeta.value.clear();
-        showingSendMeta.value.add(id);
-      }
-      showingSendMeta.value = new Set(showingSendMeta.value);
-    }
-
-    // 订阅逻辑
-    let sub: any = null;
-    async function startSub() {
-      if (sub) sub.unsub();
-      const relays = getRelaysFromStorage();
-      const friendPks = (friends.list || []).map(f => f.pubkey);
-      const authors = Array.from(new Set([...friendPks, keys.pkHex]));
       
-      sub = pool.subscribeMany(relays, [
-        { kinds: [8964], authors, since: Math.floor(Date.now()/1000) - 3600 },
-        { kinds: [8965], "#p": [keys.pkHex] }
-      ], {
-        onevent(evt) {
-          if (evt.kind === 8964) {
-             // 逻辑：如果是自己的消息立即显示，别人的消息进 pending
-             // 简化处理：直接交给 store，然后 updateLocalRefs
-             // 此处需根据你的业务需求细化
-          } else if (evt.kind === 8965) {
-             interactions.processInteractionEvent(evt, keys.pkHex);
-          }
-        }
-      });
+      isLoadingMore.value = true;
+      logger.info(`加载更多消息，当前页: ${currentPage.value}`);
+      
+      // 使用 setTimeout 模拟异步加载，避免阻塞主线程
+      setTimeout(() => {
+        const startIndex = displayedMessages.value.length;
+        const endIndex = Math.min(startIndex + PAGE_SIZE, messagesRef.value.length);
+        const newMessages = messagesRef.value.slice(startIndex, endIndex);
+        
+        displayedMessages.value = [...displayedMessages.value, ...newMessages];
+        currentPage.value++;
+        isLoadingMore.value = false;
+        updateMessageTimeRange();
+        
+        logger.info(`加载了 ${newMessages.length} 条消息，总共显示 ${displayedMessages.value.length} 条`);
+      }, 100);
     }
-
-    // 下拉刷新适配
-    const { container, pullDistance } = usePullToRefresh({
+    const {
+       container,
+       pullDistance,
+       refreshing
+    } = usePullToRefresh({
       onRefresh: async () => {
-        refreshing.value = true;
-        await startSub();
-        refreshing.value = false;
+        await startSub();      // 重逻辑
+        updateLocalRefs();     // UI 刷新
       }
     });
 
-    // 通知跳转逻辑
-    async function handleNotificationJump() {
-      const mid = route.query.mid as string;
-      const iid = route.query.iid as string;
-      if (!mid) return;
+    function updateMessageTimeRange() {
+      if (displayedMessages.value.length === 0) {
+        messageTimeRange.value = "";
+        return;
+      }
       
-      await nextTick();
-      const el = document.getElementById(`msg-${mid}`);
-      if (el) {
-        if (iid) {
-          showingComments.value.add(mid);
-          showingComments.value = new Set(showingComments.value);
+      // Calculate oldest and newest in displayed messages
+      const { oldest, newest } = displayedMessages.value.reduce((acc, msg) => {
+        const ts = msg?.created_at || 0;
+        if (ts > 0) {
+          if (acc.oldest === 0 || ts < acc.oldest) {
+            acc.oldest = ts;
+          }
+          if (ts > acc.newest) {
+            acc.newest = ts;
+          }
         }
-        el.scrollIntoView({ behavior: 'smooth' });
-        el.classList.add("highlight");
-        setTimeout(() => el.classList.remove("highlight"), 2000);
+        return acc;
+      }, { oldest: 0, newest: 0 });
+      
+      if (oldest > 0 && newest > 0) {
+        const oldestDate = new Date(oldest * 1000);
+        const newestDate = new Date(newest * 1000);
+        messageTimeRange.value = `${oldestDate.toLocaleDateString('zh-CN')} - ${newestDate.toLocaleDateString('zh-CN')}`;
       }
     }
 
-    return {
-      loadingStore, keys, displayedMessages, pendingMessages,
-      showingComments, showingSendMeta, commentInputs, replyingTo,
-      hasMore, isLoadingMore, remainingMessagesCount,
-      container, pullDistance, refreshing,
-      displayName, toLocalTime, textWithoutVideos, extractVideoData,
-      isLiked, getLikeCount, getCommentCount, getComments, getReplies,
-      toggleLike, toggleComments, toggleSendMeta, loadMoreMessages, showPendingMessages
+    const toLocalTime = (ts: number) => formatRelativeTime(ts);
+    const shortPub = (s: string) => (s ? s.slice(0, 8) + "..." : "");
+    const shortRelay = (r: string) => (r ? r.replace(/^wss?:\/\//, "").replace(/\/$/, "").slice(0, 22) : "");
+
+    function displayName(pubkey: string) {
+      if (!pubkey) return "未知用户";
+      if (keys.pkHex && pubkey === keys.pkHex) return "自己";
+      const f = (friends.list || []).find((x: any) => x.pubkey === pubkey);
+      if (f && f.name && String(f.name).trim().length > 0) return f.name;
+      // Return shortened public key as fallback
+      return pubkey.slice(0, 8) + "...";
+    }
+
+    function addMessageIfNew(evt: any, plain: string) {
+      if (!evt || !evt.id) return false;
+      
+      // Check if message already exists in inbox
+      const existing = msgs.inbox.find((m) => m.id === evt.id);
+      if (existing) {
+        // Message already exists - the stores layer (addInbox) handles preservation
+        // of _localMeta, so we just return false to skip adding this duplicate
+        return false;
+      }
+      
+      // Add new message to inbox
+      const added = { id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at, content: plain };
+      msgs.addInbox(added);
+      nextTick(() => {
+        updateLocalRefs();
+      });
+      return true;
+    }
+
+    function textWithoutImages(content: string): string {
+      if (!content) return "";
+      // remove markdown image ![alt](url)
+      let s = content.replace(mdImageRE, "");
+      // remove encrypted image markdown ![](blossom+aesgcm:...)
+      s = s.replace(mdEncryptedImageRE, "");
+      // remove plain image urls
+      s = s.replace(plainImgUrlRE, "");
+      // remove video data
+      s = s.replace(videoDataRE, "");
+      // remove plain video URLs using patterns from utility
+      s = s.replace(videoUrlPatterns.youtubePattern, "");
+      s = s.replace(videoUrlPatterns.vimeoPattern, "");
+      s = s.replace(videoUrlPatterns.directVideoPattern, "");
+      // collapse multiple blank lines and trim
+      s = s.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+      return s;
+    }
+
+    // Alias for backward compatibility - removes both images and videos
+    function textWithoutVideos(content: string): string {
+      return textWithoutImages(content);
+    }
+
+    function extractVideoData(content: string): any {
+      // Use the shared utility function
+      return extractVideoDataUtil(content);
+    }
+
+    // Like functionality
+    async function toggleLike(message: any) {
+      if (!keys.pkHex) return;
+      
+      const messageId = message.id;
+      const isCurrentlyLiked = interactions.isLikedByUser(messageId, keys.pkHex);
+      
+      try {
+        if (isCurrentlyLiked) {
+          await interactions.removeLike(messageId, message.pubkey);
+        } else {
+          await interactions.sendLike(messageId, message.pubkey);
+        }
+      } catch (e: any) {
+        logger.error("Toggle like failed", e);
+      }
+    }
+
+    function isLiked(messageId: string): boolean {
+      if (!keys.pkHex) return false;
+      return interactions.isLikedByUser(messageId, keys.pkHex);
+    }
+
+    function getLikeCount(messageId: string): number {
+      return interactions.getLikeCount(messageId);
+    }
+
+    function toggleSendMeta(messageId: string) {
+  // ⭐ 关闭评论
+  showingComments.value.delete(messageId);
+
+  if (showingSendMeta.value.has(messageId)) {
+    showingSendMeta.value.delete(messageId);
+  } else {
+    showingSendMeta.value.clear();
+    showingSendMeta.value.add(messageId);
+  }
+
+  showingSendMeta.value = new Set(showingSendMeta.value);
+  showingComments.value = new Set(showingComments.value);
+}
+
+
+
+    // Comment functionality
+    function toggleComments(messageId: string) {
+     // ⭐ 关闭 send-meta
+     showingSendMeta.value.delete(messageId);
+
+     if (showingComments.value.has(messageId)) {
+        showingComments.value.delete(messageId);
+     } else {
+       showingComments.value.clear();
+       showingComments.value.add(messageId);
+     }
+
+     showingComments.value = new Set(showingComments.value);
+     showingSendMeta.value = new Set(showingSendMeta.value);
+    }
+
+    async function addComment(messageId: string) {
+      if (!keys.pkHex) return;
+      const text = commentInputs.value[messageId]?.trim();
+      if (!text) return;
+
+      // Find the message to get the author
+      const message = msgs.inbox.find((m) => m.id === messageId);
+      if (!message) return;
+
+      try {
+        const parentCommentId = replyingTo.value[messageId];
+        // Determine recipient: if replying to a comment, send to comment author; otherwise send to post author
+        const recipient = replyingToAuthor.value[messageId] || message.pubkey;
+        await interactions.sendComment(messageId, recipient, text, parentCommentId);
+        // Clear input and reply state
+        commentInputs.value[messageId] = "";
+        replyingTo.value[messageId] = "";
+        replyingToAuthor.value[messageId] = "";
+      } catch (e: any) {
+        logger.error("Add comment failed", e);
+      }
+    }
+
+    // Helper to check if query has notification params
+    function hasNotificationParams(query: any): boolean {
+      return !!(query.mid || query.iid);
+    }
+
+
+  async function handleNotificationJump() {
+  const mid = route.query.mid as string | undefined;
+  const iid = route.query.iid as string | undefined;
+ 
+
+
+  if (!mid) return;
+
+  // ① 等消息本身存在（点赞能跳就是靠这个）
+  const waitForMessage = async () => {
+    for (let i = 0; i < 20; i++) {
+      if (displayedMessages.value.some(m => m.id === mid)) return true;
+      await new Promise(r => setTimeout(r, 50));
+    }
+    return false;
+  };
+
+  const msgReady = await waitForMessage();
+  if (!msgReady) {
+    console.warn("通知跳转失败：消息未出现", mid);
+    return;
+  }
+
+  // ② 如果是评论，强制展开评论区
+  if (iid) {
+    showingComments.value.add(mid);
+    showingComments.value = new Set(showingComments.value);
+  }
+
+  // ③ 等评论 DOM 真正渲染出来（核心）
+  const targetId = iid ? `comment-${iid}` : `msg-${mid}`;
+
+  const waitForElement = async () => {
+    for (let i = 0; i < 40; i++) {
+      const el = document.getElementById(targetId);
+      if (el) return el;
+      await new Promise(r => setTimeout(r, 50));
+    }
+    return null;
+  };
+
+  const el = await waitForElement();
+
+  if (!el) {
+    console.warn("通知跳转失败：DOM 未找到", targetId);
+    return;
+  }
+
+  // ④ 滚动 + 高亮
+  // Use custom scroll calculation to prevent bottom bar from disappearing
+  // when scrolling to elements near the bottom
+  await nextTick();
+  
+  // Get the scrollable container
+  const scrollContainer = document.querySelector(SCROLL_CONTAINER_SELECTOR) as HTMLElement | null;
+  if (scrollContainer) {
+    const rect = el.getBoundingClientRect();
+    const containerRect = scrollContainer.getBoundingClientRect();
+    
+    // Calculate where the element currently is in the viewport
+    const elementTop = rect.top - containerRect.top;
+    const elementBottom = rect.bottom - containerRect.top;
+    
+    // Calculate safe viewing area (viewport minus bottom bar)
+    const viewportHeight = containerRect.height;
+    const safeViewportBottom = viewportHeight - BOTTOM_NAV_HEIGHT - SCROLL_SAFE_OFFSET;
+    
+    // Determine if element needs scrolling
+    if (elementTop < SCROLL_SAFE_OFFSET) {
+      // Element is above viewport, scroll to bring it to top with safe offset
+      const targetTop = scrollContainer.scrollTop + elementTop - SCROLL_SAFE_OFFSET;
+      scrollContainer.scrollTo({ top: targetTop, behavior: 'smooth' });
+    } else if (elementBottom > safeViewportBottom) {
+      // Element extends into bottom bar area
+      // Try to scroll to show it at the top of safe area
+      const desiredScrollDelta = elementTop - SCROLL_SAFE_OFFSET;
+      const targetTop = scrollContainer.scrollTop + desiredScrollDelta;
+      scrollContainer.scrollTo({ top: targetTop, behavior: 'smooth' });
+    }
+    // If element is already fully visible in safe area, no scroll needed
+  } else {
+    // Fallback to scrollIntoView if container not found
+    // Use instant behavior to match custom scroll implementation
+    el.scrollIntoView({
+      behavior: "auto",
+      block: "start"
+    });
+  }
+
+  el.classList.add("highlight");
+  setTimeout(() => el.classList.remove("highlight"), 1500);
+  notificationJumpDone.value = true;
+    
+}
+
+
+
+
+    function startReply(messageId: string, commentId: string, authorName: string) {
+      replyingTo.value[messageId] = commentId;
+      commentInputs.value[messageId] = `@${authorName} `;
+      
+      // Find the comment to get its author pubkey
+      // Note: interactions.getComments() returns ALL comments (including nested replies)
+      const allComments = interactions.getComments(messageId);
+      const comment = allComments.find((c: any) => c.id === commentId);
+      if (comment) {
+        replyingToAuthor.value[messageId] = comment.author;
+      } else {
+        logger.warn("Could not find comment to reply to", { messageId, commentId });
+      }
+      
+      // Focus input after state update
+      setTimeout(() => {
+        const input = document.querySelector(`input[data-message-id="${messageId}"]`) as HTMLInputElement;
+        if (input) input.focus();
+      }, 100);
+    }
+
+    function cancelReply(messageId: string) {
+      replyingTo.value[messageId] = "";
+      replyingToAuthor.value[messageId] = "";
+      commentInputs.value[messageId] = "";
+    }
+
+    function getComments(messageId: string) {
+      // Get only top-level comments (no parent)
+      return interactions.getComments(messageId).filter((c: any) => !c.parentCommentId);
+    }
+
+    function getReplies(messageId: string, commentId: string) {
+      return interactions.getReplies(messageId, commentId);
+    }
+
+    function getCommentCount(messageId: string): number {
+      return interactions.getCommentCount(messageId);
+    }
+    
+    async function backfillMessages(friendSet: Set<string>, relays: string[]) {
+      try {
+        const now = Math.floor(Date.now() / 1000);
+        const breakpointKey = `messages_${keys.pkHex}`;
+        const savedBreakpoint = loadBackfillBreakpoint(breakpointKey); 
+        // Determine time range for backfill - always use 3-day window
+        let since: number;
+        let until: number = now;
+        
+        if (savedBreakpoint && savedBreakpoint > 0) {
+          since = savedBreakpoint + 1;
+          logger.info(
+            `use backfillpoint to pull: since=${new Date(since * 1000).toLocaleString()}`
+          );
+        } else {
+          since = now - THREE_DAYS_IN_SECONDS;
+          logger.info(
+          `no backfillpoint,pull three days: since=${new Date(since * 1000).toLocaleString()}`
+          );
+        }
+        
+        logger.info(`回填参数: kinds=[8964], authors数量=${friendSet.size}, since=${new Date(since * 1000).toLocaleString()}, until=${new Date(until * 1000).toLocaleString()}`);
+        logger.debug(`好友列表: ${Array.from(friendSet).slice(0, 5).map(pk => pk.slice(0, 8)).join(', ')}${friendSet.size > 5 ? `... (共${friendSet.size}个)` : ''}`);
+        
+        status.value = "获取历史消息中...";
+        
+        // Track decryption statistics
+        let fetchedEvents = 0;
+        let decryptedEvents = 0;
+        let notForMe = 0;
+        let parseErrors = 0;
+        let decryptErrors = 0;
+        let notFromFriends = 0;
+        let newestTimestamp = 0;
+        
+        // Process event and decrypt
+        const processEvent = async (evt: any) => {
+          fetchedEvents++;
+          try {
+            if (!friendSet.has(evt.pubkey)) {
+              notFromFriends++;
+              return;
+            }
+            
+            let payload: any;
+            try { 
+              payload = JSON.parse(evt.content); 
+            } catch { 
+              parseErrors++;
+              logger.warn(`事件 ${evt.id?.slice(0,8)} 解析失败: 无效的JSON`);
+              return; 
+            }
+            
+            if (!payload?.keys || !payload?.pkg) {
+              parseErrors++;
+              return;
+            }
+            
+            const myEntry = payload.keys.find((k: any) => k.to === keys.pkHex);
+            if (!myEntry) {
+              notForMe++;
+              return;
+            }
+            
+            let symHex: string | null = null;
+            try {
+              symHex = await keys.nip04Decrypt(evt.pubkey, myEntry.enc);
+            } catch (e) {
+              logger.warn(`事件 ${evt.id?.slice(0,8)} NIP-04解密失败，尝试备用方案`, e);
+              // Fallback: check if enc is already a hex key
+              if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
+                symHex = myEntry.enc;
+                logger.info(`事件 ${evt.id?.slice(0,8)} 使用备用hex key`);
+              } else {
+                decryptErrors++;
+                return;
+              }
+            }
+            
+            try {
+              const plain = await symDecryptPackage(symHex, payload.pkg);
+              const added = addMessageIfNew(evt, plain);
+              if (added) {
+                decryptedEvents++;
+                // Track the newest message timestamp for breakpoint
+                if (evt.created_at > newestTimestamp) {
+                  newestTimestamp = evt.created_at;
+                }
+              }
+            } catch (e) {
+              decryptErrors++;
+              logger.warn(`事件 ${evt.id?.slice(0,8)} 对称解密失败`, e);
+            }
+          } catch (e) {
+            logger.error("处理回填事件失败", e);
+          }
+        };
+        
+        // Use backfill utility with batching and pagination
+        const stats = await backfillEvents({
+          relays,
+          filters: {
+            kinds: [8964],
+            authors: Array.from(friendSet),
+            since,
+            until
+          },
+          onEvent: processEvent,
+          onProgress: (stats) => {
+            status.value = `获取中: ${stats.totalEvents} 条事件`;
+          },
+          onComplete: (stats) => {
+            const summary = [
+              `获取: ${fetchedEvents} 条`,
+              `解密成功: ${decryptedEvents} 条`,
+            ];
+            if (notFromFriends > 0) summary.push(`非好友: ${notFromFriends} 条`);
+            if (notForMe > 0) summary.push(`非自己: ${notForMe} 条`);
+            if (parseErrors > 0) summary.push(`解析失败: ${parseErrors} 条`);
+            if (decryptErrors > 0) summary.push(`解密失败: ${decryptErrors} 条`);
+            
+            const summaryText = summary.join(', ');
+            logger.info(`回填完成: ${summaryText}`);
+            
+            if (decryptedEvents > 0) {
+              status.value = `获取成功 ${decryptedEvents} 条消息`;
+            } else if (fetchedEvents > 0) {
+              status.value = `获取了 ${fetchedEvents} 条事件但无法解密`;
+              logger.warn(`回填获取了事件但全部解密失败。可能原因: 1) 事件不是发给自己的 2) 密钥不匹配 3) 数据格式错误`);
+            } else {
+              status.value = "已是最新";
+            }
+            
+            // Save the timestamp of the newest message for future reference
+            // This helps track the last time we successfully fetched messages
+            const breakpointKey = `messages_${keys.pkHex}`;
+            if (newestTimestamp > 0) {
+              saveBackfillBreakpoint(breakpointKey, newestTimestamp);
+              logger.info(`保存最新消息时间戳: ${new Date(newestTimestamp * 1000).toLocaleString()}`);
+            } else {
+              // No new messages, save current time
+              saveBackfillBreakpoint(breakpointKey, now);
+            }
+          },
+          batchSize: 1000, // Increased batch size for more efficient fetching
+          authorBatchSize: 50,
+          maxBatches: 20,
+          timeoutMs: 10000
+        });
+        
+      } catch (e) {
+        logger.error("回填失败", e);
+        status.value = "获取消息失败";
+      }
+    }
+    
+    async function backfillInteractions(relays: string[]) {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const breakpointKey = `interactions_${keys.pkHex}`;
+    const saved = loadBackfillBreakpoint(breakpointKey);
+
+    const since = saved && saved > 0
+      ? saved + 1
+      : now - THREE_DAYS_IN_SECONDS;
+
+    let newestTs = 0;
+
+    await interactions.backfillInteractions({
+      relays,
+      since,
+      until: now,
+      maxBatches: 10,
+      onEvent: (evt) => {
+        if (evt.created_at && evt.created_at > newestTs) {
+          newestTs = evt.created_at;
+        }
+      },
+      onProgress: (fetched, processed) => {
+        logger.debug(`互动回填: fetched=${fetched}, processed=${processed}`);
+      }
+    });
+
+    // ⭐ 只有真的拿到互动，才推进断点
+    if (newestTs > 0) {
+      saveBackfillBreakpoint(breakpointKey, newestTs);
+      logger.info(
+        `互动断点更新至 ${new Date(newestTs * 1000).toLocaleString()}`
+      );
+    } else {
+      logger.info("互动回填无新事件，不推进断点");
+    }
+
+  } catch (e) {
+    logger.error("回填互动失败", e);
+  }
+}
+
+
+    async function startSub() {
+      try {
+        logger.info("开始订阅流程");
+        
+        // ============ 阶段1：首屏本地数据加载（同步，快速） ============
+        friends.load().catch(console.error);
+        logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
+        
+        if (!keys.isLoggedIn) {
+          status.value = "未登录";
+          return;
+        }
+        
+        // Initialize lastSeenCreatedAt from localStorage
+        lastSeenCreatedAt.value = getLastSeenCreatedAt(keys.pkHex);
+        logger.info(`初始化 lastSeenCreatedAt: ${lastSeenCreatedAt.value > 0 ? new Date(lastSeenCreatedAt.value * 1000).toLocaleString() : '未设置'}`);
+        
+        // 同步加载本地缓存的消息和互动数据
+        await Promise.all([
+          msgs.load(),
+          interactions.load()
+        ]);
+        readyForPending.value = true;
+        
+        // 首屏只显示最新 20 条消息
+        messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        if (isInitialLoad.value) {
+          // 首次加载：只显示前 20 条
+          displayedMessages.value = messagesRef.value.slice(0, PAGE_SIZE);
+          currentPage.value = 1;
+          isInitialLoad.value = false;
+          logger.info(`首屏加载: 显示 ${displayedMessages.value.length} 条消息（共 ${messagesRef.value.length} 条）`);
+          
+          // If lastSeenCreatedAt not set, initialize it to the newest displayed message
+          if (lastSeenCreatedAt.value === 0 && displayedMessages.value.length > 0) {
+            lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, displayedMessages.value);
+            logger.info(`首次初始化 lastSeenCreatedAt: ${new Date(lastSeenCreatedAt.value * 1000).toLocaleString()}`);
+          }
+        } else {
+          // 后续刷新：新消息进入待显示队列
+          updateLocalRefs();
+        }
+        updateMessageTimeRange();
+
+        const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
+        if (keys.pkHex) friendSet.add(keys.pkHex);
+        logger.info(`准备订阅 ${friendSet.size} 个作者（包括自己）`);
+        
+        if (friendSet.size === 0) {
+          status.value = "好友为空";
+          logger.warn("好友列表为空，无法订阅");
+          return;
+        }
+
+        const relays = getRelaysFromStorage();
+        logger.info(`使用中继: ${relays.join(', ')}`);
+        
+        // ============ 阶段2：下一帧启动实时订阅（避免阻塞首屏渲染） ============
+        requestAnimationFrame(() => {
+          startRealtimeSubscription(friendSet, relays);
+        });
+        
+        // ============ 阶段3：空闲时启动回填（避免抢占主线程） ============
+        const scheduleBackfill = () => {
+          if (typeof requestIdleCallback !== 'undefined') {
+            requestIdleCallback(() => {
+              startBackfill(friendSet, relays);
+            }, { timeout: 2000 });
+          } else {
+            // 浏览器不支持 requestIdleCallback，使用 setTimeout 兜底
+            setTimeout(() => {
+              startBackfill(friendSet, relays);
+            }, 500);
+          }
+        };
+        scheduleBackfill();
+        
+      } catch (e) {
+        logger.error("startSub failed", e);
+        status.value = "订阅失败";
+      }
+    }
+    
+    // 阶段2：启动实时订阅
+    async function startRealtimeSubscription(friendSet: Set<string>, relays: string[]) {
+      try {
+        logger.info("启动实时订阅...");
+        
+        // 从本地取回填断点
+        // ⭐ 从本地取回填断点（关键）
+        const messageBreakpoint =
+        loadBackfillBreakpoint(`messages_${keys.pkHex}`) || 0;
+
+        const filters = {
+          kinds: [8964],
+          authors: Array.from(friendSet),
+          since: messageBreakpoint + 1 // ⭐ 关键符号就在这里
+        };
+
+        logger.info(
+          `实时订阅过滤器: kinds=[8964], authors数量=${friendSet.size}, since=${
+            messageBreakpoint > 0
+            ? new Date(messageBreakpoint * 1000).toLocaleString()
+            : "0"
+         }`
+       );
+        status.value = "连接中";
+
+        try {
+          if (sub) {
+            logger.debug("关闭之前的订阅");
+            if (typeof sub.close === "function") sub.close();
+            else if (typeof sub.unsub === "function") sub.unsub();
+            else if (typeof sub.unsubscribe === "function") sub.unsubscribe();
+            else if (typeof sub === "function") sub();
+          }
+        } catch (e) {
+          logger.warn("close prev sub error", e);
+        }
+        sub = null;
+
+        try {
+          logger.info("开始实时订阅 kind=8964 事件...");
+          const adapterSub = subscribe(relays, [filters]);
+          sub = adapterSub;
+          adapterSub.on("event", async (evt: any) => {
+            try {
+              if (!friendSet.has(evt.pubkey)) return;
+              let payload: any;
+              try { 
+                payload = JSON.parse(evt.content); 
+              } catch { 
+                logger.warn(`实时事件 ${evt.id?.slice(0,8)} JSON解析失败`);
+                return; 
+              }
+              if (!payload?.keys || !payload?.pkg) return;
+              const myEntry = payload.keys.find((k: any) => k.to === keys.pkHex);
+              if (!myEntry) return;
+              let symHex: string | null = null;
+              try {
+                symHex = await keys.nip04Decrypt(evt.pubkey, myEntry.enc);
+              } catch (e) {
+                logger.warn(`实时事件 ${evt.id?.slice(0,8)} NIP-04解密失败，尝试备用方案`, e);
+                if (typeof myEntry.enc === "string" && /^[0-9a-fA-F]{64}$/.test(myEntry.enc)) {
+                  symHex = myEntry.enc;
+                } else {
+                  return;
+                }
+              }
+              try {
+                const plain = await symDecryptPackage(symHex, payload.pkg);
+                addMessageIfNew(evt, plain);
+              } catch (e) {
+                logger.warn(`实时事件 ${evt.id?.slice(0,8)} 对称解密失败`, e);
+              }
+            } catch (e) {
+              logger.warn("handle event fail", e);
+            }
+          });
+          adapterSub.on("eose", () => { status.value = "同步完成"; });
+
+          setTimeout(() => { if (status.value === "连接中") status.value = "已订阅"; }, 800);
+        } catch (e) {
+          logger.warn("subscribe adapter failed", e);
+          status.value = "订阅失败";
+        }
+        
+        // Backfill historical interactions before subscribing to real-time events
+        // Now uses inbox (#p) and outbox (authors) filters for privacy compliance
+        // await backfillInteractions(relays);
+        backfillInteractions(relays).catch(console.error);
+        
+        // Close existing interactions subscription before creating a new one
+        try {
+          if (interactionsSub) {
+            logger.debug("关闭之前的互动订阅");
+            if (typeof interactionsSub.close === "function") interactionsSub.close();
+            else if (typeof interactionsSub.unsub === "function") interactionsSub.unsub();
+            else if (typeof interactionsSub.unsubscribe === "function") interactionsSub.unsubscribe();
+            else if (typeof interactionsSub === "function") interactionsSub();
+          }
+        } catch (e) {
+          logger.warn("close prev interactions sub error", e);
+        }
+        interactionsSub = null;
+        
+        // Subscribe to interactions (kind 8965)
+        try {
+          // Subscribe to two types of interactions for comprehensive coverage:
+          // 1. Inbox: Interactions where user is tagged (#p) - for notifications
+          // 2. Outbox: Interactions authored by user - for cross-device sync
+          const interactionBreakpoint =
+          loadBackfillBreakpoint(`interactions_${keys.pkHex}`) || 0;
+          
+          const interactionFilters = [
+            {
+              kinds: [8965],
+              "#p": [keys.pkHex], // Inbox: interactions targeted at us
+              since: interactionBreakpoint + 1 // ⭐ inbox
+            },
+            {
+              kinds: [8965],
+              authors: [keys.pkHex], // Outbox: our own interactions
+              since: interactionBreakpoint + 1 // ⭐ outbox
+            }
+          ];
+          
+          interactionsSub = subscribe(relays, interactionFilters);
+          
+          interactionsSub.on("event", async (evt: any) => {
+           // ① 只处理互动事件
+           if (evt.kind !== 8965) return;
+
+           // ② 确保 key 已就绪（PWA 这里很关键）
+           if (!keys.pkHex) {
+           logger.warn("[互动事件] 收到但 pkHex 未就绪，跳过", evt.id);
+           return;
+           }
+
+           // ③ 打点日志（现在你最需要的是“确定有没有进来”）
+           logger.info(
+             "[互动事件] Home.vue 收到",
+             evt.id.slice(0, 8),
+             "from",
+             evt.pubkey.slice(0, 8)
+           );
+
+           // ④ 真正交给 interactions 处理
+           await interactions.processInteractionEvent(evt, keys.pkHex);
+         });
+
+          logger.debug("已订阅互动事件 (收件箱+发件箱)");
+        } catch (e) {
+          logger.warn("subscribe to interactions failed", e);
+        }
+      } catch (e) {
+        logger.error("startRealtimeSubscription failed", e);
+      }
+    }
+    
+    // 阶段3：启动回填
+    async function startBackfill(friendSet: Set<string>, relays: string[]) {
+      try {
+        logger.info("开始回填历史数据...");
+        
+        // 串行执行回填，避免并发压力
+        await backfillMessages(friendSet, relays);
+        await backfillInteractions(relays);
+        
+        logger.info("回填完成");
+      } catch (e) {
+        logger.error("startBackfill failed", e);
+      }
+    }
+
+    onMounted(() => { 
+      startSub().catch(console.error); 
+      handleNotificationJump();
+    });
+
+   watch(
+     () => interactions.interactions,
+     () => {
+       if (notificationJumpDone.value) return;
+       handleNotificationJump();
+     },
+     { deep: true }
+   );
+
+   watch(readyForPending, (v) => {
+      if (v) {
+        updateLocalRefs();
+      }
+   });
+   
+   // Watch for changes to friend list (add/remove) and restart subscriptions
+   // This ensures that when friends are added or removed, the subscription
+   // automatically updates to include/exclude them
+   watch(() => friends.version, (newVersion, oldVersion) => {
+     // Only restart if this is not the initial load
+     if (oldVersion !== undefined && !isInitialLoad.value) {
+       logger.info(`好友列表版本变化 (${oldVersion} -> ${newVersion})，重新启动订阅`);
+       startSub().catch(e => logger.error('Failed to restart subscription after friends change', e));
+     }
+   });
+   
+    // Watch for changes to msgs.inbox to handle optimistic UI updates
+    // This ensures own messages added via PostEditorModal appear immediately
+    // Using 'post' flush to batch updates and run after component updates
+    watch(() => msgs.inbox.length, (newLength, oldLength) => {
+      // Only update if not during initial load and if messages were added (not removed)
+      if (!isInitialLoad.value && newLength > oldLength) {
+        updateLocalRefs();
+      }
+    }, { flush: 'post' });
+    
+    // Watch for route query changes to handle notification jump state
+    watch(() => route.query, (newQuery, oldQuery) => {
+      // If we had notification jump params but they're now gone, reset the state
+      if (hasNotificationParams(oldQuery) && !hasNotificationParams(newQuery)) {
+        notificationJumpDone.value = false;
+      }
+      // If new notification jump params arrive, trigger the jump
+      if (hasNotificationParams(newQuery) && !notificationJumpDone.value) {
+        handleNotificationJump();
+      }
+    });
+
+    onBeforeUnmount(() => {
+      if (sub) {
+        try { if (typeof sub.close === "function") sub.close(); else if (typeof sub.unsub === "function") sub.unsub(); else if (typeof sub.unsubscribe === "function") sub.unsubscribe(); else if (typeof sub === "function") sub(); } catch {}
+      }
+      if (interactionsSub) {
+        try { if (typeof interactionsSub.close === "function") interactionsSub.close(); else if (typeof interactionsSub.unsub === "function") interactionsSub.unsub(); else if (typeof interactionsSub.unsubscribe === "function") interactionsSub.unsubscribe(); else if (typeof interactionsSub === "function") interactionsSub(); } catch {}
+      }
+    });
+
+    return { 
+      displayedMessages,
+      pendingMessages,
+      messagesRef,
+      toLocalTime, 
+      shortPub, 
+      status, 
+      shortRelay, 
+      displayName, 
+      textWithoutImages,
+      textWithoutVideos,
+      extractVideoData,
+      // Like and comment functions
+      toggleLike,
+      isLiked,
+      getLikeCount,
+      toggleComments,
+      toggleSendMeta,
+      addComment,
+      getComments,
+      getCommentCount,
+      showingComments,
+      showingSendMeta,
+      commentInputs,
+      // Reply functions
+      startReply,
+      cancelReply,
+      getReplies,
+      replyingTo,
+      replyingToAuthor,
+      messageTimeRange,
+      showPendingMessages,
+      container,
+      pullDistance,
+      refreshing,
+      // Pagination
+      hasMore,
+      isLoadingMore,
+      loadMoreMessages,
+      remainingMessagesCount
+      
     };
   }
 });
 </script>
-
 
 <style scoped>
 .home-container {
