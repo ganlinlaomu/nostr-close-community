@@ -44,12 +44,18 @@ export const useNotificationsStore = defineStore("notifications", {
   },
 
   actions: {
-    /* =========================
-     * DB helpers（不再 fallback）
-     * ========================= */
-    getDB(pk: string) {
-      return getDatabase(pk);
+    async loadNotifications() {
+      // 直接使用导入的函数，不需要参数
+      const db = getCurrentDatabase(); 
+      const rows = await db.notifications.toArray();
+      this.list = rows;
     },
+    
+    // 如果你依然想要一个本地 helper
+    getDB() {
+      return getCurrentDatabase();
+    }
+  },
 
     /* =========================
      * Load（账号隔离安全）
