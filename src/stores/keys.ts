@@ -1,6 +1,5 @@
 import { defineStore } from "pinia";
 import * as nostr from "nostr-tools";
-import { useRouter } from "vue-router";
 import router from "@/router";
 import { useFriendsStore } from "./friends";
 import { useMessagesStore } from "./messages";
@@ -8,7 +7,6 @@ import { useSettingsStore } from "./settings";
 import { useInteractionsStore } from "./interactions";
 import { useNotificationsStore } from "./notifications";
 
-import type { WindowNostr } from "nostr-tools/lib/types/nip07";
 import { BunkerSigner, parseBunkerInput } from "nostr-tools/nip46";
 import { finalizeEvent, nip19 } from "nostr-tools";
 import type { EventTemplate, VerifiedEvent } from "nostr-tools/lib/types/core";
@@ -27,41 +25,33 @@ import {
 import { openDatabase, closeDatabase } from "@/db/dexie";
 
 /* ------------------------------------------------------------------ */
-/* helpers */
+/* Helpers */
 /* ------------------------------------------------------------------ */
-
-declare global {
-  interface Window {
-    nostr?: WindowNostr;
-  }
-}
 
 async function safeGetPublicKey(skHex: string): Promise<string> {
-  if ((nostr as any)?.getPublicKey) {
-    return (nostr as any).getPublicKey(skHex);
-  }
-  if ((nostr as any)?.secp256k1?.getPublicKey) {
-    return (nostr as any).secp256k1.getPublicKey(skHex);
-  }
-  throw new Error("无法从私钥派生公钥");
+  return nostr.getPublicKey(skHex);
 }
 
+/**
+ * 核心初始化逻辑：确保数据库打开后，再并行加载所有子 Store
+ */
 async function afterLogin(pk: string) {
-  // ✅ 必须等待数据库完全打开
-  await openDatabase(pk); 
-
-  // 数据库就绪后，再触发各子 Store 的加载
-  await Promise.allSettled([
-    useFriendsStore().load(pk),
-    useMessagesStore().load(pk),
-    useSettingsStore().load(pk),
-    useInteractionsStore().load(pk), // 建议统一传入 pk
-    useNotificationsStore().load(pk)
-  ]);
+  try {
+    await openDatabase(pk);
+    await Promise.allSettled([
+      useFriendsStore().load(pk),
+      useMessagesStore().load(pk),
+      useSettingsStore().load(pk),
+      useInteractionsStore().load(pk),
+      useNotificationsStore().load(pk)
+    ]);
+  } catch (e) {
+    console.error("初始化数据失败:", e);
+  }
 }
 
 /* ------------------------------------------------------------------ */
-/* store */
+/* Store */
 /* ------------------------------------------------------------------ */
 
 export const useKeyStore = defineStore("keys", {
@@ -70,118 +60,125 @@ export const useKeyStore = defineStore("keys", {
     pkHex: "",
     loginMethod: "" as "sk" | "nip07" | "nip46" | "",
     bunkerSigner: null as BunkerSigner | null,
-
     loginTimestamp: 0,
-
     isEncrypted: false,
     isUnlocked: false,
-
-    bunkerClientSecretKey: null as Uint8Array | null,
-
-    isRestoring: false,
-    isRestored: false
+    isRestored: false // 标记是否完成初始化检查
   }),
 
   getters: {
     isLoggedIn(): boolean {
-      return !!this.pkHex && !!this.loginMethod;
+      return !!this.pkHex && (this.loginMethod !== "sk" || this.isUnlocked);
     }
   },
 
   actions: {
-    /* -------------------------------------------------------------- */
-    /* crypto wrappers */
-    /* -------------------------------------------------------------- */
+    /**
+     * 🔥 修复 1: 增加初始化方法 (在 App.vue 挂载时调用)
+     * 解决页面刷新后状态丢失的问题
+     */
+    async init() {
+      if (this.isRestored) return;
+
+      const storedMethod = localStorage.getItem("loginMethod") as any;
+      const storedPk = localStorage.getItem("pkHex");
+
+      if (!storedMethod || !storedPk) {
+        this.isRestored = true;
+        return;
+      }
+
+      this.pkHex = storedPk;
+      this.loginMethod = storedMethod;
+
+      try {
+        if (storedMethod === "sk") {
+          if (hasEncryptedKey()) {
+            this.isEncrypted = true;
+            this.isUnlocked = false; // 等待用户输入密码
+          } else {
+            // 安全起见，非加密私钥不建议存 LocalStorage，若存了则恢复
+            const rawSk = localStorage.getItem("skHex");
+            if (rawSk) {
+              this.skHex = rawSk;
+              this.isUnlocked = true;
+              await afterLogin(storedPk);
+            }
+          }
+        } else if (storedMethod === "nip07") {
+          // NIP-07 刷新页面后可直接恢复，因为插件环境一直存在
+          await afterLogin(storedPk);
+        } else if (storedMethod === "nip46") {
+          // 修复 2: Bunker 自动重连
+          const bunkerInput = localStorage.getItem("bunkerInput");
+          if (bunkerInput) {
+            await this.loginWithBunker(bunkerInput, true);
+          }
+        }
+      } catch (e) {
+        console.error("恢复会话失败:", e);
+      } finally {
+        this.isRestored = true;
+      }
+    },
+
+    /* --- 加密/签名 代理 --- */
 
     async nip04Decrypt(senderPubHex: string, ciphertext: string) {
-      if (!this.isLoggedIn) throw new Error("未登录");
-
-      if (this.loginMethod === "sk") {
-        return nostr.nip04.decrypt(this.skHex, senderPubHex, ciphertext);
-      }
-      if (this.loginMethod === "nip07") {
-        return window.nostr!.nip04!.decrypt(senderPubHex, ciphertext);
-      }
+      if (!this.isLoggedIn) throw new Error("未登录或未解锁");
+      if (this.loginMethod === "sk") return nostr.nip04.decrypt(this.skHex, senderPubHex, ciphertext);
+      if (this.loginMethod === "nip07") return window.nostr!.nip04!.decrypt(senderPubHex, ciphertext);
       return this.bunkerSigner!.nip04Decrypt(senderPubHex, ciphertext);
     },
 
     async nip04Encrypt(recipientPubHex: string, plaintext: string) {
-      if (!this.isLoggedIn) throw new Error("未登录");
-
-      if (this.loginMethod === "sk") {
-        return nostr.nip04.encrypt(this.skHex, recipientPubHex, plaintext);
-      }
-      if (this.loginMethod === "nip07") {
-        return window.nostr!.nip04!.encrypt(recipientPubHex, plaintext);
-      }
+      if (!this.isLoggedIn) throw new Error("未登录或未解锁");
+      if (this.loginMethod === "sk") return nostr.nip04.encrypt(this.skHex, recipientPubHex, plaintext);
+      if (this.loginMethod === "nip07") return window.nostr!.nip04!.encrypt(recipientPubHex, plaintext);
       return this.bunkerSigner!.nip04Encrypt(recipientPubHex, plaintext);
     },
 
     async signEvent(event: EventTemplate): Promise<VerifiedEvent> {
-      if (!this.isLoggedIn) throw new Error("未登录");
-
-      if (this.loginMethod === "sk") {
-        return finalizeEvent(event, this.skHex);
-      }
-      if (this.loginMethod === "nip07") {
-        return window.nostr!.signEvent!(event);
-      }
+      if (!this.isLoggedIn) throw new Error("未登录或未解锁");
+      if (this.loginMethod === "sk") return finalizeEvent(event, this.skHex);
+      if (this.loginMethod === "nip07") return window.nostr!.signEvent!(event);
       return this.bunkerSigner!.signEvent(event);
     },
 
-    /* -------------------------------------------------------------- */
-    /* 🔑 私钥登录（Login.vue 调用的关键方法） */
-    /* -------------------------------------------------------------- */
+    /* --- 登录逻辑 --- */
 
     async loginWithNsec(input: string, password?: string) {
       let skHex: string;
-
       if (input.startsWith("nsec1")) {
         const decoded = nip19.decode(input);
-        if (decoded.type !== "nsec") {
-          throw new Error("无效的 nsec 私钥");
-        }
+        if (decoded.type !== "nsec") throw new Error("无效的 nsec");
         skHex = decoded.data as string;
-      } else if (/^[0-9a-fA-F]{64}$/.test(input)) {
-        skHex = input;
       } else {
-        throw new Error("私钥格式不正确");
+        skHex = input;
       }
 
       const pk = await safeGetPublicKey(skHex);
-
       this.skHex = skHex;
       this.pkHex = pk;
       this.loginMethod = "sk";
-      this.loginTimestamp = Math.floor(Date.now() / 1000);
+      this.isUnlocked = true;
 
       if (password) {
         const encrypted = await encryptPrivateKey(skHex, password);
         storeEncryptedKey(encrypted);
         this.isEncrypted = true;
-        this.isUnlocked = true;
+        localStorage.removeItem("skHex"); // 修复 3: 加密后移除明文
       } else {
         this.isEncrypted = false;
-        this.isUnlocked = true;
-        localStorage.setItem("skHex", skHex);
+        localStorage.setItem("skHex", skHex); // 注意：这有安全风险
       }
 
       localStorage.setItem("pkHex", pk);
       localStorage.setItem("loginMethod", "sk");
-      localStorage.setItem("loginTimestamp", String(this.loginTimestamp));
-
       await afterLogin(pk);
     },
 
-    /* -------------------------------------------------------------- */
-    /* 🔓 解锁加密私钥（Login.vue needsUnlock 用） */
-    /* -------------------------------------------------------------- */
-
     async unlockWithPassword(password: string) {
-      if (!hasEncryptedKey()) {
-        throw new Error("没有已加密的私钥");
-      }
-
       const encrypted = retrieveEncryptedKey();
       const skHex = await decryptPrivateKey(encrypted, password);
       const pk = await safeGetPublicKey(skHex);
@@ -189,96 +186,71 @@ export const useKeyStore = defineStore("keys", {
       this.skHex = skHex;
       this.pkHex = pk;
       this.loginMethod = "sk";
-      this.isEncrypted = true;
       this.isUnlocked = true;
+      this.isEncrypted = true;
 
       localStorage.setItem("pkHex", pk);
       localStorage.setItem("loginMethod", "sk");
-
       await afterLogin(pk);
     },
 
-    /* -------------------------------------------------------------- */
-    /* 其它登录方式（你原本就有的） */
-    /* -------------------------------------------------------------- */
-
     async loginWithExtension() {
-      if (!window.nostr) throw new Error("未检测到 Nostr 插件");
-
-      this.pkHex = await window.nostr.getPublicKey();
+      if (!window.nostr) throw new Error("未检测到 Nostr 扩展");
+      const pk = await window.nostr.getPublicKey();
+      this.pkHex = pk;
       this.loginMethod = "nip07";
-      this.loginTimestamp = Math.floor(Date.now() / 1000);
-
-      localStorage.setItem("pkHex", this.pkHex);
+      localStorage.setItem("pkHex", pk);
       localStorage.setItem("loginMethod", "nip07");
-      localStorage.setItem("loginTimestamp", String(this.loginTimestamp));
-
-      await afterLogin(this.pkHex);
+      await afterLogin(pk);
     },
 
-    async loginWithBunker(input: string) {
+    async loginWithBunker(input: string, isRestoring = false) {
       const pointer = await parseBunkerInput(input);
-      if (!pointer) throw new Error("无效 bunker 输入");
+      if (!pointer) throw new Error("无效的 Bunker 地址");
 
-      const clientKey =
-        localStorage.getItem("bunkerClientSecretKey")
-          ? base64ToUint8Array(localStorage.getItem("bunkerClientSecretKey")!)
-          : crypto.getRandomValues(new Uint8Array(32));
+      let clientSecret: Uint8Array;
+      const savedSecret = localStorage.getItem("bunkerClientSecretKey");
+      
+      if (savedSecret) {
+        clientSecret = base64ToUint8Array(savedSecret);
+      } else {
+        clientSecret = crypto.getRandomValues(new Uint8Array(32));
+      }
 
-      const signer = BunkerSigner.fromBunker(clientKey, pointer);
-      await signer.sendRequest("connect", []);
+      const signer = BunkerSigner.fromBunker(clientSecret, pointer);
+      // 如果不是恢复模式，需要显式连接
+      if (!isRestoring) await signer.sendRequest("connect", []);
 
       this.pkHex = await signer.getPublicKey();
       this.loginMethod = "nip46";
       this.bunkerSigner = signer;
-      this.loginTimestamp = Math.floor(Date.now() / 1000);
 
       localStorage.setItem("pkHex", this.pkHex);
       localStorage.setItem("loginMethod", "nip46");
-      localStorage.setItem("loginTimestamp", String(this.loginTimestamp));
-      localStorage.setItem("bunkerClientSecretKey", uint8ArrayToBase64(clientKey));
+      localStorage.setItem("bunkerInput", input); // 保存以便刷新恢复
+      localStorage.setItem("bunkerClientSecretKey", uint8ArrayToBase64(clientSecret));
 
       await afterLogin(this.pkHex);
     },
 
-    /* -------------------------------------------------------------- */
-    /* logout */
-    /* -------------------------------------------------------------- */
-
     async logout() {
-      // 1. 断开外部签名器连接 (Bunker)
       try {
         this.bunkerSigner?.close();
-      } catch (e) {
-        console.warn("Bunker close error", e);
-      }
+      } catch (e) {}
 
-      // 2. 数据库与密钥清理
-      closeDatabase();      // 关闭当前的 Dexie 实例
-      removeEncryptedKey(); // 清理 AES 加密相关的缓存
+      closeDatabase();
+      removeEncryptedKey();
 
-      // 3. 核心：重置所有 Store 的状态
-      // 建议手动重置关键 Store 以防止内存泄露或数据残留
-      this.$reset(); 
-      // 如果其他 Store 也有 reset action，建议一并调用
-      // useMessagesStore().$reset();
-      // useFriendsStore().$reset();
+      // 修复 4: 彻底重置所有 Store 状态
+      this.$reset();
+      useFriendsStore().$reset();
+      useMessagesStore().$reset();
+      useSettingsStore().$reset();
+      useInteractionsStore().$reset();
+      useNotificationsStore().$reset();
 
-      // 4. 清理持久化存储
-      const keysToRemove = [
-        "skHex",
-        "pkHex",
-        "loginMethod",
-        "loginTimestamp",
-        "bunkerClientSecretKey",
-        "friends_last_sync", // 如果有其他的也一并清理
-      ];
-      keysToRemove.forEach((k) => localStorage.removeItem(k));
-
-      // 5. 路由跳转
-      // ✅ 使用导入的 router 实例，而不是 useRouter()
+      localStorage.clear(); // 简单粗暴的清理
       await router.replace("/login");
-      
-      // 6. 可选：强制刷新页面 (这是最彻底的清理方式)
-      // window.location.reload(); 
     }
+  }
+});
