@@ -1,123 +1,59 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
-import { NostrService } from "@/utils/nostr";
-import { getCurrentDatabase, type DBMessage } from "@/db/dexie";
-import { useKeyStore } from "@/stores/keys";
-import { logger } from "@/utils/logger";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
+import { NostrService } from '../utils/nostr';
+import { getCurrentDatabase } from '../db/dexie';
+
+type Message = {
+  id: string;
+  pubkey: string;
+  content: string;
+  created_at: number;
+};
 
 const nostr = new NostrService();
 
-export type Message = DBMessage;
-
-export const useNostrStore = defineStore("nostr", () => {
-  /* ------------------------------------------------------------------
-   * state
-   * ------------------------------------------------------------------ */
-
+export default defineStore('nostr', () => {
   const messages = ref<Message[]>([]);
 
-  /* ------------------------------------------------------------------
-   * reset — logout / 切账号时由 keys.ts 统一触发
-   * ------------------------------------------------------------------ */
+  // Load cached messages from Dexie
+  const loadCached = async () => {
+    messages.value = await db.messages.orderBy('created_at').reverse().toArray();
+  };
 
-  function reset() {
-    messages.value = [];
-  }
+  loadCached();
 
-  /* ------------------------------------------------------------------
-   * load — 从「当前已打开的 Dexie」加载
-   * ❗ 不接收 pk
-   * ❗ 不判断账号
-   * ------------------------------------------------------------------ */
+  const connect = () => nostr.connect();
 
-  async function load() {
-    try {
-      const db = getCurrentDatabase();
-
-      messages.value = await db.messages
-        .orderBy("created_at")
-        .reverse()
-        .toArray();
-    } catch (e) {
-      logger.error("[nostr] load cached messages failed", e);
-    }
-  }
-
-  /* ------------------------------------------------------------------
-   * connect
-   * ------------------------------------------------------------------ */
-
-  function connect() {
-    nostr.connect();
-  }
-
-  /* ------------------------------------------------------------------
-   * subscribe
-   * ------------------------------------------------------------------ */
-
-  function subscribeByAuthors(authors: string[]) {
-    const ks = useKeyStore();
-
-    if (!ks.pkHex) {
-      logger.warn("[nostr] subscribe aborted: not logged in");
-      return;
-    }
-
-    let db;
-    try {
-      db = getCurrentDatabase();
-    } catch {
-      logger.warn("[nostr] subscribe aborted: db not ready");
-      return;
-    }
-
+  const subscribeByAuthors = (authors: string[]) => {
+    // subscribe with authors filter
     nostr.subscribe({
       authors,
       onEvent: async (evt: any) => {
-        // 🔒 再次确认登录态（防 logout 后串写）
-        if (!useKeyStore().pkHex) return;
-
         const msg: Message = {
           id: evt.id,
           pubkey: evt.pubkey,
           content: evt.content,
           created_at: evt.created_at
         };
-
         messages.value.unshift(msg);
-
-        try {
-          await db.messages.put(msg);
-        } catch (e) {
-          logger.warn("[nostr] save message failed", e);
-        }
+        await db.messages.put(msg);
       }
     });
-  }
+  };
 
-  /* ------------------------------------------------------------------
-   * publish
-   * ------------------------------------------------------------------ */
-
-  async function publishMultiRecipient(opts: {
-    content: string;
-    privateKey: string;
-    recipients: string[];
-  }) {
+  const publishMultiRecipient = async (opts: { content: string; privateKey: string; recipients: string[] }) => {
+    const { content, privateKey, recipients } = opts;
+    // publish via NostrService
     await nostr.publishMultiRecipient({
-      ...opts,
+      content,
+      privateKey,
+      recipients,
       kind: 8964
     });
-  }
-
-  /* ------------------------------------------------------------------
-   * expose
-   * ------------------------------------------------------------------ */
+  };
 
   return {
     messages,
-    load,
-    reset,
     connect,
     subscribeByAuthors,
     publishMultiRecipient
