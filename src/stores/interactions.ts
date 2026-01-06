@@ -99,7 +99,7 @@ export const useInteractionsStore = defineStore("interactions", {
         this.loadedFor = targetPk;
       }
 
-      const db = getDatabase(targetPk);
+      const db = getCurrentDatabase();
 
       try {
         const rows = await db.messages.toArray();
