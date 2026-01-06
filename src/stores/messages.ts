@@ -64,7 +64,7 @@ export const useMessagesStore = defineStore("messages", {
         return;
       }
 
-      const db = getDatabase(targetPk);
+      const db = getCurrentDatabase();
 
       /* 收件箱 */
       try {
