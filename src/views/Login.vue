@@ -7,7 +7,6 @@
         <p>纯·知己</p> 
       </div>
 
-      <!-- Unlock Form (when encrypted key exists) -->
       <div v-if="needsUnlock" class="unlock-form">
         <div class="unlock-message">
           <span class="unlock-icon">🔒</span>
@@ -27,7 +26,7 @@
 
         <div style="margin-top:12px;">
           <button
-            class="btn"
+            class="btn btn-primary"
             @click="doUnlock"
             :disabled="loading"
           >
@@ -40,149 +39,85 @@
             @click="cancelUnlock"
             :disabled="loading"
           >
-            取消
+            退出账号
           </button>
         </div>
       </div>
 
-      <!-- Login Actions -->
       <div v-else class="login-actions">
-        <!-- Browser Extension Login (NIP-07) -->
-        <button
-          class="btn"
-          @click="loginWithExtension"
-          :disabled="loading"
-          aria-label="Login with browser extension"
-        >
-          <span class="btn-icon" role="img" aria-label="plugin icon">🔌</span>
-          {{ loading ? "处理中..." : "插件登录" }}
-        </button>
-
-        <!-- Private Key Login -->
-        <button
-          class="btn"
-          :class="{ 'btn-active': showNsec }"
-          @click="showNsecLogin"
-          :disabled="loading"
-          aria-label="Login with private key"
-        >
-          <span class="btn-icon" role="img" aria-label="key icon">🔑</span>
-          私钥登录
-        </button>
-
-        <!-- Bunker Login -->
-        <button
-          class="btn"
-          :class="{ 'btn-active': showBunker }"
-          @click="showBunkerLogin"
-          :disabled="loading"
-          aria-label="Login with remote signer"
-        >
-          <span class="btn-icon" role="img" aria-label="lock icon">🔐</span>
-          Bunker登录
-        </button>
-      </div>
-
-      <!-- Private Key Login Form -->
-      <div v-if="showNsec" class="form card" style="margin-top:12px;">
-        <label>私钥 (nsec 或 hex)</label>
-
-        <input
-          ref="nsecInputEl"
-          v-model="nsecInput"
-          class="input"
-          type="password"
-          placeholder="nsec1... 或 64位十六进制私钥"
-          :disabled="loading"
-          @keyup.enter="doLoginNsec"
-        />
-
-        <div class="small" style="margin-top:8px; text-align:left;">
-          输入 nsec 私钥或 64 位十六进制私钥
-        </div>
-
-        <label style="margin-top:12px;">加密密码（可选）</label>
-
-        <input
-          v-model="nsecPassword"
-          class="input"
-          type="password"
-          placeholder="设置密码以加密保存私钥（推荐）"
-          :disabled="loading"
-          @keyup.enter="doLoginNsec"
-        />
-
-        <div class="small" style="margin-top:8px; text-align:left;">
-          设置密码后，私钥将加密保存在本地。重新打开应用时需要输入密码解锁。
-        </div>
-
-        <div style="margin-top:12px;">
-          <button
-            class="btn"
-            @click="doLoginNsec"
-            :disabled="loading"
-            :aria-label="loading ? 'Logging in...' : 'Login'"
-          >
-            {{ loading ? "登录中..." : "登录" }}
+        <div v-if="!showNsec && !showBunker" class="main-buttons">
+          <button class="btn" @click="loginWithExtension" :disabled="loading">
+            <span class="btn-icon">🔌</span> 插件登录 (NIP-07)
           </button>
 
-          <button
-            class="btn btn-cancel"
-            style="margin-left:8px"
-            @click="cancelNsec"
-            :disabled="loading"
-          >
-            取消
+          <button class="btn" @click="showNsecLogin" :disabled="loading">
+            <span class="btn-icon">🔑</span> 私钥登录
           </button>
+
+          <button class="btn" @click="showBunkerLogin" :disabled="loading">
+            <span class="btn-icon">🔐</span> Bunker 登录
+          </button>
+        </div>
+
+        <div v-if="showNsec" class="form card">
+          <label>私钥 (nsec 或 hex)</label>
+          <input
+            ref="nsecInputEl"
+            v-model="nsecInput"
+            class="input"
+            type="password"
+            placeholder="nsec1... 或 64位十六进制"
+            :disabled="loading"
+          />
+
+          <label style="margin-top:12px;">加密密码（可选）</label>
+          <input
+            v-model="nsecPassword"
+            class="input"
+            type="password"
+            placeholder="设置密码以加密保存私钥"
+            :disabled="loading"
+            @keyup.enter="doLoginNsec"
+          />
+
+          <div class="small-tip">
+            设置密码后，私钥将加密保存在本地 IndexedDB 中。
+          </div>
+
+          <div class="form-ops">
+            <button class="btn btn-primary" @click="doLoginNsec" :disabled="loading">
+              {{ loading ? "登录中..." : "确认登录" }}
+            </button>
+            <button class="btn btn-cancel" @click="cancelNsec" :disabled="loading">取消</button>
+          </div>
+        </div>
+
+        <div v-if="showBunker" class="form card">
+          <label>Bunker URL 或 NIP-05</label>
+          <input
+            ref="bunkerInputEl"
+            v-model="bunkerInput"
+            class="input"
+            placeholder="bunker://... 或 name@domain.com"
+            :disabled="loading"
+            @keyup.enter="doLoginBunker"
+          />
+          <div class="small-tip">输入远程签名器地址或 NIP-05 标识符。</div>
+
+          <div class="form-ops">
+            <button class="btn btn-primary" @click="doLoginBunker" :disabled="loading">
+              {{ loading ? "连接中..." : "开始连接" }}
+            </button>
+            <button class="btn btn-cancel" @click="cancelBunker" :disabled="loading">取消</button>
+          </div>
         </div>
       </div>
 
-      <!-- Bunker Login Form -->
-      <div v-if="showBunker" class="form card" style="margin-top:12px;">
-        <label>Bunker URL 或 NIP-05</label>
-
-        <input
-          ref="bunkerInputEl"
-          v-model="bunkerInput"
-          class="input"
-          placeholder="bunker://... 或 name@domain.com"
-          :disabled="loading"
-          @keyup.enter="doLoginBunker"
-        />
-
-        <div class="small" style="margin-top:8px; text-align:left;">
-          输入 bunker:// URL 或 NIP-05 地址（如 user@nsec.app）
+      <transition name="shake">
+        <div v-if="errorMessage" class="error-message">
+          {{ errorMessage }}
         </div>
-
-        <div style="margin-top:12px;">
-          <button
-            class="btn"
-            @click="doLoginBunker"
-            :disabled="loading"
-            :aria-label="loading ? 'Connecting to remote signer' : 'Connect to remote signer'"
-          >
-            {{ loading ? "连接中..." : "连接" }}
-          </button>
-
-          <button
-            class="btn btn-cancel"
-            style="margin-left:8px"
-            @click="cancelBunker"
-            :disabled="loading"
-          >
-            取消
-          </button>
-        </div>
-      </div>
-
-      <!-- Error Message -->
-      <div v-if="errorMessage" class="error-message" style="margin-top:12px;">
-        {{ errorMessage }}
-      </div>
-
-      <!-- Help Text -->
-      <div class="help-text" style="margin-top:24px;">
-      </div>
+      </transition>
     </div>
   </div>
 </template>
@@ -191,203 +126,113 @@
 import { defineComponent, ref, onMounted, watch, nextTick, computed } from "vue";
 import { useKeyStore } from "@/stores/keys";
 import { useRouter } from "vue-router";
+import { logger } from "@/utils/logger";
 
 export default defineComponent({
+  name: "LoginView",
   setup() {
     const ks = useKeyStore();
     const router = useRouter();
 
+    // 状态控制
     const showBunker = ref(false);
     const showNsec = ref(false);
+    const loading = ref(false);
+    const errorMessage = ref("");
+
+    // 输入绑定
     const bunkerInput = ref("");
     const nsecInput = ref("");
     const nsecPassword = ref("");
     const unlockPassword = ref("");
-    const errorMessage = ref("");
-    const loading = ref(false);
 
+    // 元素引用
     const bunkerInputEl = ref<HTMLInputElement | null>(null);
     const nsecInputEl = ref<HTMLInputElement | null>(null);
     const unlockPasswordEl = ref<HTMLInputElement | null>(null);
 
+    // 计算属性：判断是否处于“已记住所选账号但未解锁私钥”的状态
     const needsUnlock = computed(() => {
+      // 逻辑：LocalStorage 有 pkHex 且标记为 isEncrypted，但内存中没有 skHex
       return ks.pkHex && ks.isEncrypted && !ks.isUnlocked;
     });
 
-    /* ---------------------------
-     * 自动跳转（已登录）或检测需解锁
-     * --------------------------- */
     onMounted(async () => {
+      // 1. 如果完全登录且解锁，直接去首页
       if (ks.isLoggedIn && ks.isUnlocked) {
         router.replace("/");
-      } else if (needsUnlock.value) {
-        // Need to unlock - focus password input
+        return;
+      }
+      
+      // 2. 如果需要解锁，自动聚焦
+      if (needsUnlock.value) {
         await nextTick();
         unlockPasswordEl.value?.focus();
       }
     });
 
-    /* ---------------------------
-     * 展开自动 focus
-     * --------------------------- */
-    watch(showBunker, async (v) => {
-      if (v) {
-        await nextTick();
-        bunkerInputEl.value?.focus();
-      }
-    });
+    // 自动聚焦监听
+    watch(showBunker, async (v) => v && (await nextTick(), bunkerInputEl.value?.focus()));
+    watch(showNsec, async (v) => v && (await nextTick(), nsecInputEl.value?.focus()));
 
-    watch(showNsec, async (v) => {
-      if (v) {
-        await nextTick();
-        nsecInputEl.value?.focus();
-      }
-    });
-
-    /* ---------------------------
-     * 通用登录处理器
-     * --------------------------- */
-    async function handleLogin(fn: () => Promise<void>) {
+    /**
+     * 核心登录/解锁处理包装器
+     */
+    async function handleLoginAction(task: () => Promise<void>) {
       errorMessage.value = "";
       loading.value = true;
-
       try {
-        await fn();
-
-        if (!ks.isLoggedIn) {
-          throw new Error("登录未完成");
-        }
-
+        await task();
+        // 登录成功后跳转。注意：Store 内部的 afterLogin 已确保数据库打开
         router.replace("/");
       } catch (e: any) {
-        if (e?.name === "TimeoutError") {
-          errorMessage.value = "远程签名器无响应";
-        } else if (e?.message?.includes("reject")) {
-          errorMessage.value = "用户拒绝签名";
-        } else {
-          errorMessage.value = e?.message || "登录失败";
-        }
+        logger.error("[Login] Action failed", e);
+        errorMessage.value = e.message || "操作失败，请重试";
       } finally {
         loading.value = false;
       }
     }
 
-    /* ---------------------------
-     * 登录方式
-     * --------------------------- */
-    const loginWithExtension = () => {
-      // Hide other login forms and clear error
-      showNsec.value = false;
-      showBunker.value = false;
-      errorMessage.value = "";
-      handleLogin(() => ks.loginWithExtension());
-    };
+    // --- 登录逻辑 ---
 
-    function isValidBunkerInput(v: string) {
-      return v.startsWith("bunker://") || v.includes("@");
-    }
-
-    const doLoginBunker = () => {
-      const v = bunkerInput.value.trim();
-
-      if (!v) {
-        errorMessage.value = "请输入 Bunker URL 或 NIP-05 地址";
-        return;
-      }
-
-      if (!isValidBunkerInput(v)) {
-        errorMessage.value = "格式不正确，请输入 bunker:// 或 NIP-05";
-        return;
-      }
-
-      handleLogin(() => ks.loginWithBunker(v));
-    };
-
-    const cancelBunker = () => {
-      if (loading.value) return;
-      showBunker.value = false;
-      bunkerInput.value = "";
-      errorMessage.value = "";
-    };
-
-    const showNsecLogin = () => {
-      showNsec.value = true;
-      showBunker.value = false;
-      errorMessage.value = "";
-    };
-
-    const showBunkerLogin = () => {
-      showBunker.value = true;
-      showNsec.value = false;
-      errorMessage.value = "";
-    };
+    const loginWithExtension = () => handleLoginAction(() => ks.loginWithExtension());
 
     const doLoginNsec = () => {
-      const v = nsecInput.value.trim();
-      const pwd = nsecPassword.value.trim();
-
-      if (!v) {
-        errorMessage.value = "请输入私钥";
-        return;
-      }
-
-      // Validate format
-      if (!v.startsWith("nsec1") && !/^[0-9a-fA-F]{64}$/.test(v)) {
-        errorMessage.value = "请输入有效的 nsec 私钥或 64 位十六进制私钥";
-        return;
-      }
-
-      handleLogin(() => ks.loginWithNsec(v, pwd || undefined));
+      const sk = nsecInput.value.trim();
+      if (!sk) return (errorMessage.value = "请输入私钥");
+      handleLoginAction(() => ks.loginWithNsec(sk, nsecPassword.value.trim() || undefined));
     };
 
-    const cancelNsec = () => {
-      if (loading.value) return;
-      showNsec.value = false;
-      nsecInput.value = "";
-      nsecPassword.value = "";
-      errorMessage.value = "";
+    const doLoginBunker = () => {
+      const input = bunkerInput.value.trim();
+      if (!input) return (errorMessage.value = "请输入地址");
+      handleLoginAction(() => ks.loginWithBunker(input));
     };
 
     const doUnlock = () => {
       const pwd = unlockPassword.value.trim();
-      if (!pwd) {
-        errorMessage.value = "请输入密码";
-        return;
-      }
-
-      handleLogin(() => ks.unlockWithPassword(pwd));
+      if (!pwd) return (errorMessage.value = "请输入密码");
+      handleLoginAction(() => ks.unlockWithPassword(pwd));
     };
 
+    // --- 取消/重置逻辑 ---
+
+    const cancelNsec = () => (showNsec.value = false, nsecInput.value = "", nsecPassword.value = "");
+    const cancelBunker = () => (showBunker.value = false, bunkerInput.value = "");
     const cancelUnlock = () => {
-      if (loading.value) return;
-      // Logout to go back to normal login
-      ks.logout();
+      ks.logout(); // 清理本地存储的账号信息，回到初始登录页
       unlockPassword.value = "";
-      errorMessage.value = "";
     };
+
+    const showNsecLogin = () => (showNsec.value = true, showBunker.value = false);
+    const showBunkerLogin = () => (showBunker.value = true, showNsec.value = false);
 
     return {
-      needsUnlock,
-      showBunker,
-      showNsec,
-      bunkerInput,
-      nsecInput,
-      nsecPassword,
-      unlockPassword,
-      bunkerInputEl,
-      nsecInputEl,
-      unlockPasswordEl,
-      errorMessage,
-      loading,
-      loginWithExtension,
-      showNsecLogin,
-      showBunkerLogin,
-      doLoginBunker,
-      cancelBunker,
-      doLoginNsec,
-      cancelNsec,
-      doUnlock,
-      cancelUnlock
+      ks, needsUnlock, showBunker, showNsec, loading, errorMessage,
+      bunkerInput, nsecInput, nsecPassword, unlockPassword,
+      bunkerInputEl, nsecInputEl, unlockPasswordEl,
+      loginWithExtension, doLoginNsec, doLoginBunker, doUnlock,
+      cancelNsec, cancelBunker, cancelUnlock, showNsecLogin, showBunkerLogin
     };
   }
 });
@@ -395,7 +240,7 @@ export default defineComponent({
 
 <style scoped>
 .login-card {
-  min-height: calc(100vh - 88px);
+  min-height: 90vh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -403,177 +248,118 @@ export default defineComponent({
 
 .login-center {
   width: 100%;
-  max-width: 420px;
-  text-align: center;
-  padding: 24px;
+  max-width: 400px;
+  padding: 2rem;
 }
 
 .title {
-  /* 字体 */
-  font-family:
-    "Source Han Serif SC",
-    "Noto Serif SC",
-    "Songti SC",
-    "STSong",
-    serif;
-
-  /* 字号 */
-  font-size: 2.6rem;
-
-  /* 字重：关键，不要太粗 */
+  font-family: "Source Han Serif SC", "Songti SC", serif;
+  font-size: 3rem;
   font-weight: 400;
-
-  /* 字距：宋体一定要松一点 */
-  letter-spacing: 0.08em;
-
-  /* 行高 */
-  line-height: 1.1;
-
-  /* 颜色（暗色模式专用） */
-  color: #D6D9E0;
-
-  /* 去装饰 */
-  margin: 0;
-  padding: 0;
-
-  /* 抗锯齿 */
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-.login-info {
-  margin-top: 12px;
-  font-size: 15px;
-  color: #9AA1AC; /* 冷灰，不抢标题 */
-  letter-spacing: 0.12em;
-}
-
-.login-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 24px;
-}
-
-.login-actions .btn {
-  width: 100%;
-  padding: 12px;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-:is(.login-actions .btn, .form .btn) {
-  background: transparent;
-  color: #C7CBD1;
-  border: 1px solid #2A3342;
-  border-radius: 10px;
-  transition: background-color 0.2s ease, border-color 0.2s ease;
-}
-
-/* Only apply hover effect when not active - this prevents double highlighting */
-.login-actions .btn:hover:not(:disabled):not(.btn-active) {
-  background: #151B26;
-  border-color: #3A4458;
-  color: #E5E7EB;
-  transform: none;
-}
-
-/* Keep hover effect for form buttons */
-.form .btn:hover:not(:disabled) {
-  background: #151B26;
-  border-color: #3A4458;
-  color: #E5E7EB;
-  transform: none;
-}
-
-.login-actions .btn.btn-active {
-  background: #151B26;
-  border-color: #3A4458;
-  color: #E5E7EB;
-}
-
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-icon {
-  font-size: 20px;
-}
-
-.btn-cancel {
-  color: #9AA1AC;
-  border-color: #2A3342;
-}
-
-.btn-cancel:hover:not(:disabled) {
-  background: #151B26;
-  color: #E5E7EB;
-}
-
-.form {
-  background: transparent;
-  border: none;
-  padding: 0;
-}
-
-.form label {
-  display: block;
-  font-size: 14px;
-  color: #9AA1AC;
-  margin-bottom: 4px;
-}
-
-.form .input {
-  width: 100%;
-  background: #0F141C;
-  border: 1px solid #2A3342;
-  color: #E5E7EB;
-  padding: 10px 12px;
-  border-radius: 8px;
-}
-
-.form .input::placeholder {
-  color: #6B7280;
-}
-
-.form .input:focus {
-  outline: none;
-  border-color: #3A4458;
-}
-
-.error-message {
-  background: rgba(153, 27, 27, 0.12);
-  color: #FCA5A5;
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(252, 165, 165, 0.3);
-  font-size: 14px;
-}
-
-.unlock-form {
-  margin-top: 24px;
+  letter-spacing: 0.1em;
+  color: #d6d9e0;
+  margin-bottom: 0.5rem;
   text-align: center;
 }
 
-.unlock-message {
+.login-info {
+  text-align: center;
+  color: #9aa1ac;
+  letter-spacing: 0.2em;
+  margin-bottom: 2.5rem;
+}
+
+.login-actions, .main-buttons {
   display: flex;
   flex-direction: column;
+  gap: 1rem;
+}
+
+.btn {
+  width: 100%;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid #2a3342;
+  background: transparent;
+  color: #c7cbd1;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 0.5rem;
 }
 
-.unlock-icon {
-  font-size: 32px;
+.btn:hover:not(:disabled) {
+  background: #151b26;
+  border-color: #3a4458;
 }
 
-.unlock-message p {
-  font-size: 15px;
-  color: #9AA1AC;
-  margin: 0;
+.btn-primary {
+  background: #151b26;
+  border-color: #4a5568;
+  color: #fff;
+}
+
+.btn-cancel {
+  border: none;
+  color: #718096;
+  font-size: 0.9rem;
+}
+
+.form {
+  text-align: left;
+  animation: slideUp 0.3s ease-out;
+}
+
+.form label {
+  font-size: 0.85rem;
+  color: #9aa1ac;
+  margin-left: 4px;
+}
+
+.input {
+  width: 100%;
+  margin-top: 0.4rem;
+  margin-bottom: 1rem;
+  padding: 12px;
+  background: #0f141c;
+  border: 1px solid #2a3342;
+  border-radius: 10px;
+  color: #e5e7eb;
+}
+
+.small-tip {
+  font-size: 0.75rem;
+  color: #64748b;
+  line-height: 1.4;
+  margin-bottom: 1.5rem;
+}
+
+.error-message {
+  margin-top: 1.5rem;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  color: #f87171;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 抖动动画 */
+.shake-enter-active {
+  animation: shake 0.4s;
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
 }
 </style>
-
