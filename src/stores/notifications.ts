@@ -1,8 +1,8 @@
 import { defineStore } from "pinia";
 import { useKeyStore } from "./keys";
-// 假设 interactions store 处理业务逻辑
 import { useInteractionsStore } from "./interactions"; 
-import { openDatabase, getCurrentDatabase } from "@/db/dexie"; // 修正引入
+import { openDatabase } from "@/db/dexie"; 
+import { toRaw } from "vue"; // 必须引入 toRaw 处理响应式对象
 
 export interface NotificationItem {
   id: string;
@@ -43,15 +43,10 @@ export const useNotificationsStore = defineStore("notifications", {
   },
 
   actions: {
-    /**
-     * 获取当前数据库实例
-     * 内部封装了对 openDatabase 的调用以确保实例存在
-     */
     async getDB() {
       const ks = useKeyStore();
       const targetPk = ks.pkHex;
       if (!targetPk) throw new Error("No active public key");
-      // openDatabase 会处理单例逻辑：pk 相同返回旧的，不同则切换
       return await openDatabase(targetPk);
     },
 
@@ -60,27 +55,26 @@ export const useNotificationsStore = defineStore("notifications", {
       const targetPk = pk ?? ks.pkHex;
       if (!targetPk) return;
 
-      // 如果已经加载过该账号且库已打开，直接返回
       if (this.loadedFor === targetPk && this.list.length > 0) return;
       
-      const db = await openDatabase(targetPk);
-      this.loadedFor = targetPk;
-
       try {
+        const db = await openDatabase(targetPk);
+        this.loadedFor = targetPk;
+
         // 1. 从 notifications 表加载列表
-        // 注意：需确保已经在 dexie.ts 中定义了 notifications table
         const rawList = await (db as any).notifications
           .orderBy("created_at")
           .reverse()
           .toArray();
-        this.list = rawList;
+        this.list = rawList || [];
 
-        // 2. 从 meta 表加载元数据
+        // 2. 从 meta 表加载被屏蔽的 ID
         const dismissedData = await db.meta.get("notifications_dismissed");
         this.dismissed = new Set(dismissedData?.value || []);
 
+        // 3. 从 meta 表加载元数据
         const metaData = await db.meta.get("notifications_meta");
-        if (metaData) {
+        if (metaData && metaData.value) {
           this.meta = metaData.value;
         } else {
           const now = Math.floor(Date.now() / 1000);
@@ -94,13 +88,22 @@ export const useNotificationsStore = defineStore("notifications", {
     },
 
     async saveNotification(n: NotificationItem) {
-      const db = await this.getDB();
-      await (db as any).notifications.put(n);
+      try {
+        const db = await this.getDB();
+        // 核心修复：使用 toRaw 转换，防止 DataCloneError
+        const plainObject = JSON.parse(JSON.stringify(toRaw(n)));
+        await (db as any).notifications.put(plainObject);
+      } catch (e) {
+        console.error("Dexie put error:", e);
+      }
     },
 
     async saveMeta() {
+      if (!this.meta) return;
       const db = await this.getDB();
-      await db.meta.put({ key: "notifications_meta", value: this.meta });
+      // 核心修复：确保存入的是纯对象
+      const plainMeta = JSON.parse(JSON.stringify(toRaw(this.meta)));
+      await db.meta.put({ key: "notifications_meta", value: plainMeta });
     },
 
     async saveDismissed() {
@@ -149,19 +152,22 @@ export const useNotificationsStore = defineStore("notifications", {
     async dismiss(id: string) { 
       this.dismissed.add(id); 
       await this.saveDismissed();
-      // 可选：同时从数据库物理删除该通知
       const db = await this.getDB();
       await (db as any).notifications.delete(id);
     },
 
     async reset(removeFromStorage = false) {
-      const db = await this.getDB();
-      const pk = this.loadedFor;
-      
-      if (removeFromStorage && pk) {
-        await (db as any).notifications.clear();
-        await db.meta.delete("notifications_meta");
-        await db.meta.delete("notifications_dismissed");
+      try {
+        const db = await this.getDB();
+        const pk = this.loadedFor;
+        
+        if (removeFromStorage && pk) {
+          await (db as any).notifications.clear();
+          await db.meta.delete("notifications_meta");
+          await db.meta.delete("notifications_dismissed");
+        }
+      } catch (e) {
+        console.warn("Reset database error:", e);
       }
 
       this.list = [];
