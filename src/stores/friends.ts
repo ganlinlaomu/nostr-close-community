@@ -1,4 +1,4 @@
-fimport { defineStore } from "pinia";
+import { defineStore } from "pinia";
 import { useKeyStore } from "./keys";
 import { getCurrentDatabase } from "@/db/dexie";
 import { getRelaysFromStorage, subscribe, publish } from "@/nostr/relays";
