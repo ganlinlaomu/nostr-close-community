@@ -45,7 +45,8 @@ export class NostrDatabase extends Dexie {
       messages: "id, created_at, pubkey",
       friends: "pubkey, name, group",
       meta: "key",
-      imageCache: "url, timestamp"
+      imageCache: "url, timestamp",
+      notifications: "id, created_at, read, type"
     });
   }
 }
