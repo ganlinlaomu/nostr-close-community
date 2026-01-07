@@ -301,71 +301,52 @@ export default defineComponent({
     }
     
     
-    function showPendingMessages() {
-      if (pendingMessages.value.length > 0) {
-        logger.info(`手动显示 ${pendingMessages.value.length} 条待显示消息`);
-        // Sort pending messages first
-        const sortedPending = [...pendingMessages.value].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-        // Use efficient merge with de-duplication
-        const merged = mergeSortedMessagesWithDedup(sortedPending, displayedMessages.value);
-        displayedMessages.value = merged;
-        
-        // Update lastSeen watermark to the newest message timestamp across all displayed messages
-        lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, merged);
-        logger.info(`更新 lastSeenCreatedAt: ${new Date(lastSeenCreatedAt.value * 1000).toLocaleString()}`);
-        
-        pendingMessages.value = [];
-        updateMessageTimeRange();
-      }
-    }
+   function showPendingMessages() {
+  if (!pendingMessages.value.length) return;
+
+  const sortedPending = [...pendingMessages.value].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+  displayedMessages.value = mergeSortedMessagesWithDedup(sortedPending, displayedMessages.value);
+
+  // ⭐ 只在显示后更新 lastSeenCreatedAt
+  lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, displayedMessages.value);
+  logger.info(`更新 lastSeenCreatedAt: ${new Date(lastSeenCreatedAt.value * 1000).toLocaleString()}`);
+
+  pendingMessages.value = [];
+  updateMessageTimeRange();
+}
     
     
     
     function updateLocalRefs() {
-      // Sort messages by timestamp descending (newest first)
-      messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-      
-      // Check for new messages that aren't currently displayed
-      const displayedIds = new Set(displayedMessages.value.map(m => m.id));
-      const pendingIds = new Set(pendingMessages.value.map(m => m.id));
-      const newMessages = messagesRef.value.filter(m => !displayedIds.has(m.id) && !pendingIds.has(m.id));
-      
-      if (newMessages.length > 0 && readyForPending.value) {
-        // Separate own messages from others' messages using filter for better readability
-        const ownMessages: InboxItem[] = newMessages.filter(msg => msg.pubkey === keys.pkHex);
-        const othersMessages: InboxItem[] = newMessages.filter(msg => msg.pubkey !== keys.pkHex);
-        
-        // Own messages: insert directly into displayedMessages (immediate display)
-        if (ownMessages.length > 0) {
-          logger.info(`收到 ${ownMessages.length} 条自己的新消息，立即显示`);
-          // Sort own messages first
-          const sortedOwn = ownMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-          // Merge with displayedMessages using efficient sorted merge with de-duplication
-          displayedMessages.value = mergeSortedMessagesWithDedup(sortedOwn, displayedMessages.value);
-        }
-        
-        // Others' messages: filter by lastSeenCreatedAt before adding to pending queue
-        if (othersMessages.length > 0) {
-          const currentLastSeen = lastSeenCreatedAt.value;
-          // Only consider messages newer than lastSeen as "new"
-          const trulyNewMessages = othersMessages.filter(msg => (msg.created_at || 0) > currentLastSeen);
-          
-          if (trulyNewMessages.length > 0) {
-            logger.info(`收到 ${trulyNewMessages.length} 条其他用户的新消息（晚于 lastSeen），等待刷新显示`);
-            // Sort other messages by timestamp (newest first) before adding
-            const sortedOthers = trulyNewMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-            // Merge with existing pending messages, de-duplicate by id, and keep sorted
-            const combined = [...sortedOthers, ...pendingMessages.value];
-            const deduped = Array.from(new Map(combined.map(m => [m.id, m])).values());
-            pendingMessages.value = deduped.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-          } else {
-            logger.debug(`收到 ${othersMessages.length} 条其他用户的消息，但都不晚于 lastSeen (${new Date(currentLastSeen * 1000).toLocaleString()})，不显示提示`);
-          }
-        }
-      }
-      
-      updateMessageTimeRange();
+  messagesRef.value.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+
+  const displayedIds = new Set(displayedMessages.value.map(m => m.id));
+  const pendingIds = new Set(pendingMessages.value.map(m => m.id));
+  const newMessages = messagesRef.value.filter(m => !displayedIds.has(m.id) && !pendingIds.has(m.id));
+
+  if (newMessages.length > 0 && readyForPending.value) {
+    const ownMessages = newMessages.filter(msg => msg.pubkey === keys.pkHex);
+    const othersMessages = newMessages.filter(msg => msg.pubkey !== keys.pkHex);
+
+    if (ownMessages.length > 0) {
+      displayedMessages.value = mergeSortedMessagesWithDedup(ownMessages, displayedMessages.value);
     }
+
+    if (othersMessages.length > 0) {
+      const trulyNew = othersMessages.filter(msg => (msg.created_at || 0) > lastSeenCreatedAt.value);
+
+      if (trulyNew.length > 0) {
+        // ⚡ 去重 + 按时间排序
+        const combined = [...trulyNew, ...pendingMessages.value];
+        const deduped = Array.from(new Map(combined.map(m => [m.id, m])).values());
+        pendingMessages.value = deduped.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        logger.info(`待显示新消息: ${pendingMessages.value.length} 条`);
+      }
+    }
+  }
+
+  updateMessageTimeRange();
+}
     
     // 加载更多消息
     function loadMoreMessages() {
@@ -948,12 +929,13 @@ export default defineComponent({
           logger.info(`首屏加载: 显示 ${displayedMessages.value.length} 条消息（共 ${messagesRef.value.length} 条）`);
           
           // If lastSeenCreatedAt not set, initialize it to the newest displayed message
-          if (lastSeenCreatedAt.value === 0 && displayedMessages.value.length > 0) {
-            lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, displayedMessages.value);
-            logger.info(`首次初始化 lastSeenCreatedAt: ${new Date(lastSeenCreatedAt.value * 1000).toLocaleString()}`);
-          }
-        } else {
+         // if (lastSeenCreatedAt.value === 0 && displayedMessages.value.length > 0) {
+         //   lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, displayedMessages.value);
+         //   logger.info(`首次初始化 lastSeenCreatedAt: ${new Date(lastSeenCreatedAt.value * 1000).toLocaleString()}`);
+         // }
+        // } else {
           // 后续刷新：新消息进入待显示队列
+          readyForPending.value = true;
           updateLocalRefs();
         }
         updateMessageTimeRange();
