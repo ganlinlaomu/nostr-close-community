@@ -1267,7 +1267,19 @@ updateMessageTimeRange();
         updateLocalRefs();
       }
    });
-   
+
+    watch(active, (isActive) => {
+  if (!isActive) return;
+  if (!displayedMessages.value.length) return;
+
+  const newest = displayedMessages.value[0]?.created_at;
+  if (newest && newest > lastSeenCreatedAt.value) {
+    lastSeenCreatedAt.value = newest;
+    saveLastSeenCreatedAt(keys.pkHex, newest);
+    saveBackfillBreakpoint(`messages_${keys.pkHex}`, newest);
+  }
+});
+
    // Watch for changes to friend list (add/remove) and restart subscriptions
    // This ensures that when friends are added or removed, the subscription
    // automatically updates to include/exclude them
