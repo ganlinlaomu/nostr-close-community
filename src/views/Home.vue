@@ -1023,8 +1023,6 @@ messagesRef.value = [...msgs.inbox].sort(
   (a, b) => (b.created_at || 0) - (a.created_at || 0)
 );
 
-// ⭐ 如果你有 backfill，这一步非常关键
-await startBackfill(friendSet, relays);
 
 // ⭐ 到这里，才算“历史完成”
 historyReady.value = true;
@@ -1036,6 +1034,9 @@ if (isInitialLoad.value) {
 } else {
   updateLocalRefs();
 }
+startBackfill(friendSet, relays)
+  .then(() => logger.info("backfill done"))
+  .catch(console.error);
 
 updateMessageTimeRange();
 
