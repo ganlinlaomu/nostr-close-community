@@ -1004,22 +1004,29 @@ export default defineComponent({
         
         // 从本地取回填断点
         // ⭐ 从本地取回填断点（关键）
-        const messageBreakpoint =
-        loadBackfillBreakpoint(`messages_${keys.pkHex}`) || 0;
+        const now = Math.floor(Date.now() / 1000);
+const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
 
-        const filters = {
-          kinds: [8964],
-          authors: Array.from(friendSet),
-          since: messageBreakpoint + 1 // ⭐ 关键符号就在这里
-        };
+const messageBreakpoint =
+  loadBackfillBreakpoint(`messages_${keys.pkHex}`) || 0;
 
-        logger.info(
-          `实时订阅过滤器: kinds=[8964], authors数量=${friendSet.size}, since=${
-            messageBreakpoint > 0
-            ? new Date(messageBreakpoint * 1000).toLocaleString()
-            : "0"
-         }`
-       );
+// ⭐ 关键：订阅 since = max(断点, 3天前)
+const since = Math.max(
+  messageBreakpoint + 1,
+  threeDaysAgo
+);
+
+const filters = {
+  kinds: [8964],
+  authors: Array.from(friendSet),
+  since
+};
+
+logger.info(
+  `实时订阅 since = ${new Date(since * 1000).toLocaleString()}`
+);
+
+        
         status.value = "连接中";
 
         try {
