@@ -403,32 +403,51 @@ async function loadMoreMessages() {
 
   const displayedIds = new Set(displayedMessages.value.map(m => m.id));
   const pendingIds = new Set(pendingMessages.value.map(m => m.id));
-  const newMessages = messagesRef.value.filter(m => !displayedIds.has(m.id) && !pendingIds.has(m.id));
 
-  if (newMessages.length > 0 && readyForPending.value) {
-    const ownMessages = newMessages.filter(msg => msg.pubkey === keys.pkHex);
-    const othersMessages = newMessages.filter(msg => msg.pubkey !== keys.pkHex);
+  const newMessages = messagesRef.value.filter(
+    m => !displayedIds.has(m.id) && !pendingIds.has(m.id)
+  );
 
-    if (ownMessages.length > 0) {
-      displayedMessages.value = mergeSortedMessagesWithDedup(ownMessages, displayedMessages.value);
+  /* ================== ⭐ 新增：自己的帖子，永远立刻显示 ================== */
+  const ownMessages = newMessages.filter(m => m.pubkey === keys.pkHex);
+
+  if (ownMessages.length > 0) {
+    displayedMessages.value = mergeSortedMessagesWithDedup(
+      ownMessages,
+      displayedMessages.value
+    );
+
+    // ⭐ 推进时间游标（非常重要）
+    if (!lastDisplayedCreatedAt.value) {
+      lastDisplayedCreatedAt.value =
+        displayedMessages.value[displayedMessages.value.length - 1]?.created_at ?? null;
     }
+  }
+  /* =================================================================== */
 
-    if (othersMessages.length > 0) {
-      const trulyNew = othersMessages.filter(msg => (msg.created_at || 0) > lastSeenCreatedAt.value);
+  /* ======= 原来的 pending 逻辑（保持不变） ======= */
+  const othersMessages = newMessages.filter(m => m.pubkey !== keys.pkHex);
 
-      if (trulyNew.length > 0) {
-        // ⚡ 去重 + 按时间排序
-        const combined = [...trulyNew, ...pendingMessages.value];
-        const deduped = Array.from(new Map(combined.map(m => [m.id, m])).values());
-        pendingMessages.value = deduped.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-        logger.info(`待显示新消息: ${pendingMessages.value.length} 条`);
-      }
+  if (othersMessages.length > 0 && readyForPending.value) {
+    const trulyNew = othersMessages.filter(
+      msg => (msg.created_at || 0) > lastSeenCreatedAt.value
+    );
+
+    if (trulyNew.length > 0) {
+      const combined = [...trulyNew, ...pendingMessages.value];
+      const deduped = Array.from(
+        new Map(combined.map(m => [m.id, m])).values()
+      );
+
+      pendingMessages.value = deduped.sort(
+        (a, b) => (b.created_at || 0) - (a.created_at || 0)
+      );
     }
   }
 
   updateMessageTimeRange();
 }
-    
+
 
 
     function updateMessageTimeRange() {
