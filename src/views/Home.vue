@@ -998,6 +998,19 @@ async function loadMoreMessages() {
         // Initialize lastSeenCreatedAt from localStorage
         lastSeenCreatedAt.value = getLastSeenCreatedAt(keys.pkHex);
         logger.info(`初始化 lastSeenCreatedAt: ${lastSeenCreatedAt.value > 0 ? new Date(lastSeenCreatedAt.value * 1000).toLocaleString() : '未设置'}`);
+
+          const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
+        if (keys.pkHex) friendSet.add(keys.pkHex);
+        logger.info(`准备订阅 ${friendSet.size} 个作者（包括自己）`);
+        
+        if (friendSet.size === 0) {
+          status.value = "好友为空";
+          logger.warn("好友列表为空，无法订阅");
+          return;
+        }
+
+        const relays = getRelaysFromStorage();
+        logger.info(`使用中继: ${relays.join(', ')}`);
         
        // 同步加载本地缓存的消息和互动数据
 await Promise.all([
@@ -1027,18 +1040,7 @@ if (isInitialLoad.value) {
 updateMessageTimeRange();
 
 
-        const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
-        if (keys.pkHex) friendSet.add(keys.pkHex);
-        logger.info(`准备订阅 ${friendSet.size} 个作者（包括自己）`);
-        
-        if (friendSet.size === 0) {
-          status.value = "好友为空";
-          logger.warn("好友列表为空，无法订阅");
-          return;
-        }
-
-        const relays = getRelaysFromStorage();
-        logger.info(`使用中继: ${relays.join(', ')}`);
+      
         
         // ============ 阶段2：下一帧启动实时订阅（避免阻塞首屏渲染） ============
         requestAnimationFrame(() => {
