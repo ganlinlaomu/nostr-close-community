@@ -224,16 +224,44 @@ export default defineComponent({
     const isInitialLoad = ref(true); // Track if this is the first load
     const showingSendMeta = ref<Set<string>>(new Set());
     
-    // 分页相关状态
-    const PAGE_SIZE = 20; // 每页显示 20 条
-    const currentPage = ref(1); // 当前页码
-    const hasMore = computed(() => {
-      return messagesRef.value.length > displayedMessages.value.length;
-    });
-    const isLoadingMore = ref(false);
-    const remainingMessagesCount = computed(() => {
-      return messagesRef.value.length - displayedMessages.value.length;
-    });
+    // 分页相关状态（时间游标版）
+const PAGE_SIZE = 20;
+const isLoadingMore = ref(false);
+
+/** ⭐ 时间游标：当前 UI 显示中最旧一条消息的 created_at */
+const lastDisplayedCreatedAt = ref<number | null>(null);
+
+const hasMore = computed(() => {
+  if (!lastDisplayedCreatedAt.value) return false;
+  return messagesRef.value.some(
+    m => (m.created_at || 0) < lastDisplayedCreatedAt.value
+  );
+});
+
+const remainingMessagesCount = computed(() => {
+  if (!lastDisplayedCreatedAt.value) return 0;
+  return messagesRef.value.filter(
+    m => (m.created_at || 0) < lastDisplayedCreatedAt.value
+  ).length;
+});
+
+/* ======================= 初始化时间线（统一入口） ======================= */
+
+    function initTimeline() {
+      const sorted = [...messagesRef.value].sort(
+        (a, b) => (b.created_at || 0) - (a.created_at || 0)
+      );
+
+      const firstBatch = sorted.slice(0, PAGE_SIZE);
+      displayedMessages.value = firstBatch;
+
+      lastDisplayedCreatedAt.value =
+        firstBatch[firstBatch.length - 1]?.created_at ?? null;
+
+      logger.info(
+        `[Timeline] init: ${firstBatch.length} 条, cursor=${lastDisplayedCreatedAt.value}`
+      );
+    }
 
     
     
@@ -301,20 +329,37 @@ export default defineComponent({
     }
     
     
-   function showPendingMessages() {
-  if (!pendingMessages.value.length) return;
+       /* ======================= pending 显示（保持不变，仅补游标） ======================= */
 
-  const sortedPending = [...pendingMessages.value].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-  displayedMessages.value = mergeSortedMessagesWithDedup(sortedPending, displayedMessages.value);
+    function showPendingMessages() {
+      if (!pendingMessages.value.length) return;
 
-  // ⭐ 只在显示后更新 lastSeenCreatedAt
-  lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, displayedMessages.value);
-  logger.info(`更新 lastSeenCreatedAt: ${new Date(lastSeenCreatedAt.value * 1000).toLocaleString()}`);
+      const sortedPending = [...pendingMessages.value].sort(
+        (a, b) => (b.created_at || 0) - (a.created_at || 0)
+      );
 
-  pendingMessages.value = [];
-  updateMessageTimeRange();
-}
-    
+      displayedMessages.value = mergeSortedMessagesWithDedup(
+        sortedPending,
+        displayedMessages.value
+      );
+
+      lastDisplayedCreatedAt.value =
+        displayedMessages.value[displayedMessages.value.length - 1]?.created_at ??
+        lastDisplayedCreatedAt.value;
+
+      pendingMessages.value = [];
+      updateMessageTimeRange();
+    }
+
+    /* ======================= 下拉刷新 ======================= */
+
+    const { container, pullDistance, refreshing } = usePullToRefresh({
+      onRefresh: async () => {
+        await startSub();
+        initTimeline(); // ⭐ 重置时间线 + 游标
+      }
+    });
+
     
     
     function updateLocalRefs() {
@@ -348,37 +393,7 @@ export default defineComponent({
   updateMessageTimeRange();
 }
     
-    // 加载更多消息
-    function loadMoreMessages() {
-      if (isLoadingMore.value || !hasMore.value) return;
-      
-      isLoadingMore.value = true;
-      logger.info(`加载更多消息，当前页: ${currentPage.value}`);
-      
-      // 使用 setTimeout 模拟异步加载，避免阻塞主线程
-      setTimeout(() => {
-        const startIndex = displayedMessages.value.length;
-        const endIndex = Math.min(startIndex + PAGE_SIZE, messagesRef.value.length);
-        const newMessages = messagesRef.value.slice(startIndex, endIndex);
-        
-        displayedMessages.value = [...displayedMessages.value, ...newMessages];
-        currentPage.value++;
-        isLoadingMore.value = false;
-        updateMessageTimeRange();
-        
-        logger.info(`加载了 ${newMessages.length} 条消息，总共显示 ${displayedMessages.value.length} 条`);
-      }, 100);
-    }
-    const {
-       container,
-       pullDistance,
-       refreshing
-    } = usePullToRefresh({
-      onRefresh: async () => {
-        await startSub();      // 重逻辑
-        updateLocalRefs();     // UI 刷新
-      }
-    });
+
 
     function updateMessageTimeRange() {
       if (displayedMessages.value.length === 0) {
@@ -919,26 +934,19 @@ export default defineComponent({
         ]);
         readyForPending.value = true;
         
-        // 首屏只显示最新 20 条消息
-        messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-        if (isInitialLoad.value) {
-          // 首次加载：只显示前 20 条
-          displayedMessages.value = messagesRef.value.slice(0, PAGE_SIZE);
-          currentPage.value = 1;
-          isInitialLoad.value = false;
-          logger.info(`首屏加载: 显示 ${displayedMessages.value.length} 条消息（共 ${messagesRef.value.length} 条）`);
-          
-          // If lastSeenCreatedAt not set, initialize it to the newest displayed message
-         // if (lastSeenCreatedAt.value === 0 && displayedMessages.value.length > 0) {
-         //   lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, displayedMessages.value);
-         //   logger.info(`首次初始化 lastSeenCreatedAt: ${new Date(lastSeenCreatedAt.value * 1000).toLocaleString()}`);
-         // }
-        // } else {
-          // 后续刷新：新消息进入待显示队列
-          readyForPending.value = true;
-          updateLocalRefs();
-        }
-        updateMessageTimeRange();
+        messagesRef.value = [...msgs.inbox].sort(
+        (a, b) => (b.created_at || 0) - (a.created_at || 0)
+      );
+
+      if (isInitialLoad.value) {
+        initTimeline();          // ⭐ 首屏只走这里
+        isInitialLoad.value = false;
+      } else {
+        updateLocalRefs();       // 老逻辑
+      }
+
+      updateMessageTimeRange();
+
 
         const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
         if (keys.pkHex) friendSet.add(keys.pkHex);
