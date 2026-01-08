@@ -200,6 +200,7 @@ const BOTTOM_NAV_HEIGHT = 80; // Must match --bottom-nav-height in styles.css
 const SCROLL_SAFE_OFFSET = 20; // Extra padding to ensure elements are fully visible
 const SCROLL_CONTAINER_SELECTOR = 'body > #app'; // Main scrollable container
 
+
 export default defineComponent({
   name: "Home",
   components: { PostImagePreview, VideoPlayer },
@@ -212,6 +213,8 @@ export default defineComponent({
     const route = useRoute();
     const notificationJumpDone = ref(false);
     const lastSeenCreatedAt = ref(0); // Track the watermark for filtering pending messages
+    const historyReady = ref(false);
+
 
 
     const status = ref("未连接");
@@ -491,24 +494,38 @@ async function loadMoreMessages() {
     }
 
     function addMessageIfNew(evt: any, plain: string) {
-      if (!evt || !evt.id) return false;
-      
-      // Check if message already exists in inbox
-      const existing = msgs.inbox.find((m) => m.id === evt.id);
-      if (existing) {
-        // Message already exists - the stores layer (addInbox) handles preservation
-        // of _localMeta, so we just return false to skip adding this duplicate
-        return false;
-      }
-      
-      // Add new message to inbox
-      const added = { id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at, content: plain };
-      msgs.addInbox(added);
-      nextTick(() => {
-        updateLocalRefs();
-      });
-      return true;
-    }
+  if (!evt || !evt.id) return false;
+
+  // 已存在则跳过
+  const existing = msgs.inbox.find((m) => m.id === evt.id);
+  if (existing) return false;
+
+  const added = {
+    id: evt.id,
+    pubkey: evt.pubkey,
+    created_at: evt.created_at,
+    content: plain
+  };
+
+  // ⭐ 核心分流逻辑在这里
+  if (!historyReady.value) {
+    // ===== 历史阶段 =====
+    msgs.addInbox(added);
+
+    // 历史阶段：直接进主列表（不进 pending）
+    messagesRef.value.unshift(added);
+    displayedMessages.value.unshift(added);
+
+    return true;
+  }
+
+  // ===== 历史完成后：实时新消息 =====
+  msgs.addInbox(added);
+
+  pendingMessages.value.push(added);
+  return true;
+}
+
 
     function textWithoutImages(content: string): string {
       if (!content) return "";
@@ -982,25 +999,32 @@ async function loadMoreMessages() {
         lastSeenCreatedAt.value = getLastSeenCreatedAt(keys.pkHex);
         logger.info(`初始化 lastSeenCreatedAt: ${lastSeenCreatedAt.value > 0 ? new Date(lastSeenCreatedAt.value * 1000).toLocaleString() : '未设置'}`);
         
-        // 同步加载本地缓存的消息和互动数据
-        await Promise.all([
-          msgs.load(),
-          interactions.load()
-        ]);
-        readyForPending.value = true;
-        
-        messagesRef.value = [...msgs.inbox].sort(
-        (a, b) => (b.created_at || 0) - (a.created_at || 0)
-      );
+       // 同步加载本地缓存的消息和互动数据
+await Promise.all([
+  msgs.load(),
+  interactions.load()
+]);
 
-      if (isInitialLoad.value) {
-        initTimeline();          // ⭐ 首屏只走这里
-        isInitialLoad.value = false;
-      } else {
-        updateLocalRefs();       // 老逻辑
-      }
+// 先用本地数据填首屏
+messagesRef.value = [...msgs.inbox].sort(
+  (a, b) => (b.created_at || 0) - (a.created_at || 0)
+);
 
-      updateMessageTimeRange();
+// ⭐ 如果你有 backfill，这一步非常关键
+await startBackfill(friendSet, relays);
+
+// ⭐ 到这里，才算“历史完成”
+historyReady.value = true;
+readyForPending.value = true;
+
+if (isInitialLoad.value) {
+  initTimeline();          // ⭐ 只在历史完成后启动
+  isInitialLoad.value = false;
+} else {
+  updateLocalRefs();
+}
+
+updateMessageTimeRange();
 
 
         const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
