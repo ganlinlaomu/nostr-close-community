@@ -371,24 +371,31 @@ async function loadMoreMessages() {
        /* ======================= pending 显示（保持不变，仅补游标） ======================= */
 
     function showPendingMessages() {
-      if (!pendingMessages.value.length) return;
+  if (!pendingMessages.value.length) return;
 
-      const sortedPending = [...pendingMessages.value].sort(
-        (a, b) => (b.created_at || 0) - (a.created_at || 0)
-      );
+  const sortedPending = [...pendingMessages.value].sort(
+    (a, b) => (b.created_at || 0) - (a.created_at || 0)
+  );
 
-      displayedMessages.value = mergeSortedMessagesWithDedup(
-        sortedPending,
-        displayedMessages.value
-      );
+  displayedMessages.value = mergeSortedMessagesWithDedup(
+    sortedPending,
+    displayedMessages.value
+  );
 
-      lastDisplayedCreatedAt.value =
-        displayedMessages.value[displayedMessages.value.length - 1]?.created_at ??
-        lastDisplayedCreatedAt.value;
+  // ⭐⭐ 关键：推进“我已看过”的水位线
+  const newest = sortedPending[0]?.created_at;
+  if (newest) {
+    lastSeenCreatedAt.value = newest;
+    saveLastSeenCreatedAt(keys.pkHex, newest);
 
-      pendingMessages.value = [];
-      updateMessageTimeRange();
-    }
+    // 同时推进 realtime / backfill 的断点
+    saveBackfillBreakpoint(`messages_${keys.pkHex}`, newest);
+  }
+
+  pendingMessages.value = [];
+  updateMessageTimeRange();
+}
+
 
     /* ======================= 下拉刷新 ======================= */
 
