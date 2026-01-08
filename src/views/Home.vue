@@ -263,6 +263,42 @@ const remainingMessagesCount = computed(() => {
       );
     }
 
+    /* ======================= 加载更多（时间游标） ======================= */
+async function loadMoreMessages() {
+  if (isLoadingMore.value) return;
+  if (!lastDisplayedCreatedAt.value) return;
+
+  isLoadingMore.value = true;
+
+  try {
+    const older = messagesRef.value
+      .filter(m => (m.created_at || 0) < lastDisplayedCreatedAt.value!)
+      .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+      .slice(0, PAGE_SIZE);
+
+    if (older.length === 0) {
+      return;
+    }
+
+    displayedMessages.value = mergeSortedMessagesWithDedup(
+      displayedMessages.value,
+      older
+    );
+
+    lastDisplayedCreatedAt.value =
+      older[older.length - 1]?.created_at ?? lastDisplayedCreatedAt.value;
+
+    updateMessageTimeRange();
+
+    logger.info(
+      `[Timeline] loadMore: +${older.length}, cursor=${lastDisplayedCreatedAt.value}`
+    );
+  } finally {
+    isLoadingMore.value = false;
+  }
+}
+
+
     
     
     // State for comments UI
