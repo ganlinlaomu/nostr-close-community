@@ -853,10 +853,12 @@ export default defineComponent({
             const breakpointKey = `messages_${keys.pkHex}`;
             if (newestTimestamp > 0) {
               saveBackfillBreakpoint(breakpointKey, newestTimestamp);
-              logger.info(`保存最新消息时间戳: ${new Date(newestTimestamp * 1000).toLocaleString()}`);
-            } else {
-              // No new messages, save current time
-              saveBackfillBreakpoint(breakpointKey, now);
+              logger.info(
+              `保存最新消息断点: ${new Date(newestTimestamp * 1000).toLocaleString()}`
+              );
+             } else {
+  // ✅ 什么都不要做
+               logger.info("本次回填无新消息，不推进断点");
             }
           },
           batchSize: 1000, // Increased batch size for more efficient fetching
