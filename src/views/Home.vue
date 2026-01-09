@@ -1207,38 +1207,34 @@ logger.info(
       }
     }
 
-    onMounted(() => {
-  // ① 不 await，先渲染首屏
-  const localLoad = async () => {
-    await msgs.load();
-    displayedMessages.value = [...msgs.inbox]
-      .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
-      .slice(0, PAGE_SIZE);
+    onMounted(async () => {
+  // ① 【关键】必须先等待缓存加载完毕
+  await msgs.load();
 
-    currentPage.value = 1;
-    isInitialLoad.value = false;
+  // ② 确定水位线（这一步是确保提醒条“准”的前提，从缓存中恢复）
+  lastSeenCreatedAt.value = getLastSeenCreatedAt(keys.pkHex);
 
-    // 准备 pending 消息（首屏完成后）
-readyForPending.value = true;
+  // ③ 立即渲染首屏
+  displayedMessages.value = [...msgs.inbox]
+    .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+    .slice(0, PAGE_SIZE);
 
-// ⚡ 立即检查是否有 pending 新消息
-updateLocalRefs();
+  currentPage.value = 1;
+  isInitialLoad.value = false;
 
-if (pendingMessages.value.length > 0) {
-  logger.info(
-    `首次加载检测到 ${pendingMessages.value.length} 条新消息`
-  );
-}
+  // ④ 【核心修复】在启动网络前，先开启提醒开关
+  readyForPending.value = true;
 
-    
-  };
-
-  localLoad(); // 不 await -> 先渲染首屏
-
-  // ② 网络订阅异步启动
+  // ⑤ 启动网络订阅（不 await，让它后台连接）
   startSub().catch(console.error);
 
+  // ⑥ 立即检查是否有“缓存中比水位线新”的消息，并处理通知跳转
+  updateLocalRefs();
   handleNotificationJump();
+
+  if (pendingMessages.value.length > 0) {
+    logger.info(`首次加载检测到 ${pendingMessages.value.length} 条新消息`);
+  }
 });
 
    watch(
