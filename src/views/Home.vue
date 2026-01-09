@@ -212,7 +212,11 @@ export default defineComponent({
     const route = useRoute();
     const notificationJumpDone = ref(false);
     const lastSeenCreatedAt = ref(0); // Track the watermark for filtering pending messages
-
+    const inboxSnapshot = computed(() =>
+  msgs.inbox
+    .map(m => m.id)
+    .join("|")
+);
 
     const status = ref("未连接");
     let sub: any = null;
@@ -458,10 +462,6 @@ export default defineComponent({
 
   msgs.addInbox(added);
 
-  // ⭐ PWA 关键：事件一进 inbox，立即重新计算 pending
-  if (readyForPending.value) {
-    updateLocalRefs();
-  }
 
   return true;
 }
@@ -1253,11 +1253,18 @@ logger.info(
      { deep: true }
    );
 
-   watch(readyForPending, (v) => {
-      if (v) {
-        updateLocalRefs();
-      }
-   });
+   
+
+   watch(
+  inboxSnapshot,
+  () => {
+    if (!readyForPending.value) return;
+
+    // ⭐ 唯一、绝对、最终入口
+    updateLocalRefs();
+  },
+  { flush: "post" }
+);
    
    // Watch for changes to friend list (add/remove) and restart subscriptions
    // This ensures that when friends are added or removed, the subscription
@@ -1270,20 +1277,7 @@ logger.info(
      }
    });
    
-    // Watch for changes to msgs.inbox to handle optimistic UI updates
-    // This ensures own messages added via PostEditorModal appear immediately
-    // Using 'post' flush to batch updates and run after component updates
-    watch(
-  () => msgs.inbox.length,
-  (newLength, oldLength) => {
-    if (!readyForPending.value) return;
-    if (newLength <= oldLength) return;
-
-    // ⚡ 只要 inbox 增长，并且 pending 已启用
-    updateLocalRefs();
-  },
-  { flush: 'post' }
-);
+   
     // Watch for route query changes to handle notification jump state
     watch(() => route.query, (newQuery, oldQuery) => {
       // If we had notification jump params but they're now gone, reset the state
