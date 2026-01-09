@@ -1270,13 +1270,17 @@ if (pendingMessages.value.length > 0) {
     // Watch for changes to msgs.inbox to handle optimistic UI updates
     // This ensures own messages added via PostEditorModal appear immediately
     // Using 'post' flush to batch updates and run after component updates
-    watch(() => msgs.inbox.length, (newLength, oldLength) => {
-      // Only update if not during initial load and if messages were added (not removed)
-      if (!isInitialLoad.value && newLength > oldLength) {
-        updateLocalRefs();
-      }
-    }, { flush: 'post' });
-    
+    watch(
+  () => msgs.inbox.length,
+  (newLength, oldLength) => {
+    if (!readyForPending.value) return;
+    if (newLength <= oldLength) return;
+
+    // ⚡ 只要 inbox 增长，并且 pending 已启用
+    updateLocalRefs();
+  },
+  { flush: 'post' }
+);
     // Watch for route query changes to handle notification jump state
     watch(() => route.query, (newQuery, oldQuery) => {
       // If we had notification jump params but they're now gone, reset the state
