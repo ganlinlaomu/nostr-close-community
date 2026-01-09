@@ -208,7 +208,8 @@ export default defineComponent({
     const keys = useKeyStore();
     const msgs = useMessagesStore();
     const interactions = useInteractionsStore();
-    const readyForPending = ref(false);
+    const startupIds = ref<Set<string>>(new Set());
+const readyForPending = ref(false);
     const route = useRoute();
     const notificationJumpDone = ref(false);
     const lastSeenCreatedAt = ref(0); // Track the watermark for filtering pending messages
@@ -322,50 +323,57 @@ export default defineComponent({
     
     
     function updateLocalRefs() {
-      // Sort messages by timestamp descending (newest first)
-      messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+  // 1. 基础排序
+  messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+  
+  // 2. 获取当前已显示和已在待处理队列中的 ID 集合
+  const displayedIds = new Set(displayedMessages.value.map(m => m.id));
+  const pendingIds = new Set(pendingMessages.value.map(m => m.id));
+  
+  // 3. 过滤出不在界面上的消息
+  const newMessages = messagesRef.value.filter(m => !displayedIds.has(m.id) && !pendingIds.has(m.id));
+  
+  if (newMessages.length > 0) {
+    // A. 自己的消息：无论何时，直接插入 displayedMessages 立即显示
+    const ownMessages: InboxItem[] = newMessages.filter(msg => msg.pubkey === keys.pkHex);
+    if (ownMessages.length > 0) {
+      logger.info(`收到 ${ownMessages.length} 条自己的新消息，立即显示`);
+      const sortedOwn = ownMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+      displayedMessages.value = mergeSortedMessagesWithDedup(sortedOwn, displayedMessages.value);
+    }
+
+    // B. 其他人的消息：进入提醒条判定逻辑
+    if (readyForPending.value) {
+      const othersMessages: InboxItem[] = newMessages.filter(msg => msg.pubkey !== keys.pkHex);
       
-      // Check for new messages that aren't currently displayed
-      const displayedIds = new Set(displayedMessages.value.map(m => m.id));
-      const pendingIds = new Set(pendingMessages.value.map(m => m.id));
-      const newMessages = messagesRef.value.filter(m => !displayedIds.has(m.id) && !pendingIds.has(m.id));
-      
-      if (newMessages.length > 0 && readyForPending.value) {
-        // Separate own messages from others' messages using filter for better readability
-        const ownMessages: InboxItem[] = newMessages.filter(msg => msg.pubkey === keys.pkHex);
-        const othersMessages: InboxItem[] = newMessages.filter(msg => msg.pubkey !== keys.pkHex);
+      if (othersMessages.length > 0) {
+        /**
+         * 核心改进逻辑：
+         * 只有【不在启动快照内】的消息，才被认为是 App 运行期间产生/回填的新动态。
+         * 这避开了“分页加载时，旧消息因为没在第一页显示而误跳提醒”的问题。
+         */
+        const trulyNewMessages = othersMessages.filter(msg => !startupIds.value.has(msg.id));
         
-        // Own messages: insert directly into displayedMessages (immediate display)
-        if (ownMessages.length > 0) {
-          logger.info(`收到 ${ownMessages.length} 条自己的新消息，立即显示`);
-          // Sort own messages first
-          const sortedOwn = ownMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-          // Merge with displayedMessages using efficient sorted merge with de-duplication
-          displayedMessages.value = mergeSortedMessagesWithDedup(sortedOwn, displayedMessages.value);
-        }
-        
-        // Others' messages: filter by lastSeenCreatedAt before adding to pending queue
-        if (othersMessages.length > 0) {
-          const currentLastSeen = lastSeenCreatedAt.value;
-          // Only consider messages newer than lastSeen as "new"
-          const trulyNewMessages = othersMessages.filter(msg => (msg.created_at || 0) > currentLastSeen);
+        if (trulyNewMessages.length > 0) {
+          logger.info(`捕捉到 ${trulyNewMessages.length} 条真正的动态更新，加入提醒队列`);
           
-          if (trulyNewMessages.length > 0) {
-            logger.info(`收到 ${trulyNewMessages.length} 条其他用户的新消息（晚于 lastSeen），等待刷新显示`);
-            // Sort other messages by timestamp (newest first) before adding
-            const sortedOthers = trulyNewMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-            // Merge with existing pending messages, de-duplicate by id, and keep sorted
-            const combined = [...sortedOthers, ...pendingMessages.value];
-            const deduped = Array.from(new Map(combined.map(m => [m.id, m])).values());
-            pendingMessages.value = deduped.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-          } else {
-            logger.debug(`收到 ${othersMessages.length} 条其他用户的消息，但都不晚于 lastSeen (${new Date(currentLastSeen * 1000).toLocaleString()})，不显示提示`);
-          }
+          const sortedOthers = trulyNewMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+          
+          // 合并并去重
+          const combined = [...sortedOthers, ...pendingMessages.value];
+          const deduped = Array.from(new Map(combined.map(m => [m.id, m])).values());
+          
+          // 更新待显示队列
+          pendingMessages.value = deduped.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        } else {
+          logger.debug(`过滤了 ${othersMessages.length} 条属于启动前缓存的旧分页消息`);
         }
       }
-      
-      updateMessageTimeRange();
     }
+  }
+  
+  updateMessageTimeRange();
+}
     
     // 加载更多消息
     function loadMoreMessages() {
@@ -1211,10 +1219,15 @@ logger.info(
   // ① 【关键】必须先等待缓存加载完毕
   await msgs.load();
 
-  // ② 确定水位线（这一步是确保提醒条“准”的前提，从缓存中恢复）
+  // ② 【新增：拍照】记录 App 启动瞬间数据库中已有的所有 ID
+  // 这一步必须在更新 displayedMessages 之前，把 inbox 里的老数据全部标记为“已存在”
+  startupIds.value = new Set(msgs.inbox.map(m => m.id));
+
+  // ③ 确定水位线（保持对旧逻辑的兼容，用于数据库水位记录）
   lastSeenCreatedAt.value = getLastSeenCreatedAt(keys.pkHex);
 
-  // ③ 立即渲染首屏
+  // ④ 立即渲染首屏
+  // 这里只显示第一页，剩下的消息因为已经在 startupIds 里了，不会触发提醒条
   displayedMessages.value = [...msgs.inbox]
     .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
     .slice(0, PAGE_SIZE);
@@ -1222,19 +1235,24 @@ logger.info(
   currentPage.value = 1;
   isInitialLoad.value = false;
 
-  // ④ 【核心修复】在启动网络前，先开启提醒开关
-  readyForPending.value = true;
+  // ⑤ 【核心修复】延迟开启提醒开关
+  // 延迟 500ms 是为了躲开某些插件或 Store 在初始化时可能产生的重复推送波动
+  setTimeout(() => {
+    readyForPending.value = true;
+    
+    // 启动网络前先扫一遍，捕捉从 msgs.load 到现在这段极短时间内进入的消息
+    updateLocalRefs();
+    
+    if (pendingMessages.value.length > 0) {
+      logger.info(`首次加载检测到 ${pendingMessages.value.length} 条新消息`);
+    }
+  }, 500);
 
-  // ⑤ 启动网络订阅（不 await，让它后台连接）
+  // ⑥ 启动网络订阅
   startSub().catch(console.error);
 
-  // ⑥ 立即检查是否有“缓存中比水位线新”的消息，并处理通知跳转
-  updateLocalRefs();
+  // ⑦ 处理通知跳转
   handleNotificationJump();
-
-  if (pendingMessages.value.length > 0) {
-    logger.info(`首次加载检测到 ${pendingMessages.value.length} 条新消息`);
-  }
 });
 
    watch(
