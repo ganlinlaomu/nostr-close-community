@@ -1207,10 +1207,34 @@ logger.info(
       }
     }
 
-    onMounted(() => { 
-      startSub().catch(console.error); 
-      handleNotificationJump();
-    });
+    onMounted(() => {
+  // ① 不 await，先渲染首屏
+  const localLoad = async () => {
+    await msgs.load();
+    displayedMessages.value = [...msgs.inbox]
+      .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+      .slice(0, PAGE_SIZE);
+
+    currentPage.value = 1;
+    isInitialLoad.value = false;
+
+    // 初始化 lastSeenCreatedAt
+    if (lastSeenCreatedAt.value === 0 && displayedMessages.value.length > 0) {
+      lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, displayedMessages.value);
+    }
+
+    // 准备 pending 消息
+    readyForPending.value = true;
+    updateLocalRefs(); 
+  };
+
+  localLoad(); // 不 await -> 先渲染首屏
+
+  // ② 网络订阅异步启动
+  startSub().catch(console.error);
+
+  handleNotificationJump();
+});
 
    watch(
      () => interactions.interactions,
