@@ -1218,14 +1218,19 @@ logger.info(
     currentPage.value = 1;
     isInitialLoad.value = false;
 
-    // 初始化 lastSeenCreatedAt
-    if (lastSeenCreatedAt.value === 0 && displayedMessages.value.length > 0) {
-      lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, displayedMessages.value);
-    }
+    // 准备 pending 消息（首屏完成后）
+readyForPending.value = true;
 
-    // 准备 pending 消息
-    readyForPending.value = true;
-    updateLocalRefs(); 
+// ⚡ 立即检查是否有 pending 新消息
+updateLocalRefs();
+
+if (pendingMessages.value.length > 0) {
+  logger.info(
+    `首次加载检测到 ${pendingMessages.value.length} 条新消息`
+  );
+}
+
+    
   };
 
   localLoad(); // 不 await -> 先渲染首屏
