@@ -1215,32 +1215,54 @@ logger.info(
     }
 
     onMounted(async () => {
-  // ① 【关键】必须先等待缓存加载完毕
-  await msgs.load();
+  try {
+    // ① 加载本地缓存（Dexie / IndexedDB）
+    await msgs.load();
 
-  // ② 确定水位线（这一步是确保提醒条“准”的前提，从缓存中恢复）
-  lastSeenCreatedAt.value = getLastSeenCreatedAt(keys.pkHex);
+    // ② 恢复 lastSeen（用于判断 🆕）
+    lastSeenCreatedAt.value = getLastSeenCreatedAt(keys.pkHex) || 0;
 
-  // ③ 立即渲染首屏
-  displayedMessages.value = [...msgs.inbox]
-    .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
-    .slice(0, PAGE_SIZE);
+    // ③ 首屏：用本地缓存快速渲染
+    messagesRef.value = [...msgs.inbox].sort(
+      (a, b) => (b.created_at || 0) - (a.created_at || 0)
+    );
 
-  currentPage.value = 1;
-  isInitialLoad.value = false;
+    displayedMessages.value = messagesRef.value.slice(0, PAGE_SIZE);
+    currentPage.value = 1;
 
-  // ④ 【核心修复】在启动网络前，先开启提醒开关
-  readyForPending.value = true;
+    // ④ 首屏完成，关闭 initial load
+    isInitialLoad.value = false;
 
-  // ⑤ 启动网络订阅（不 await，让它后台连接）
-  startSub().catch(console.error);
+    // ⑤ 允许 pending 逻辑开始工作
+    readyForPending.value = true;
 
-  // ⑥ 立即检查是否有“缓存中比水位线新”的消息，并处理通知跳转
-  updateLocalRefs();
-  handleNotificationJump();
+    // ⑥ 启动订阅（⚠️ 不要被 pageActive 卡住）
+    startSub().catch(console.error);
 
-  if (pendingMessages.value.length > 0) {
-    logger.info(`首次加载检测到 ${pendingMessages.value.length} 条新消息`);
+    // ⑦ 首次对账一次（处理“冷启动已存在的新消息”）
+    updateLocalRefs();
+
+    // ⑧ 处理通知跳转（如果有）
+    handleNotificationJump();
+
+    // ===============================
+    // ⭐ PWA 关键：前后台切换兜底
+    // ===============================
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        logger.info("[PWA] visibilitychange → visible，强制对账 pending");
+        updateLocalRefs();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    // ⑨ 清理（非常重要，避免重复绑定）
+    onBeforeUnmount(() => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    });
+  } catch (err) {
+    console.error("onMounted init failed:", err);
   }
 });
 
