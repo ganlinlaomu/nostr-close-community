@@ -326,50 +326,58 @@ export default defineComponent({
     
     
     function updateLocalRefs() {
-      // Sort messages by timestamp descending (newest first)
-      messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-      
-      // Check for new messages that aren't currently displayed
-      const displayedIds = new Set(displayedMessages.value.map(m => m.id));
-      const pendingIds = new Set(pendingMessages.value.map(m => m.id));
-      const newMessages = messagesRef.value.filter(m => !displayedIds.has(m.id) && !pendingIds.has(m.id));
-      
-      if (newMessages.length > 0 && readyForPending.value) {
-        // Separate own messages from others' messages using filter for better readability
-        const ownMessages: InboxItem[] = newMessages.filter(msg => msg.pubkey === keys.pkHex);
-        const othersMessages: InboxItem[] = newMessages.filter(msg => msg.pubkey !== keys.pkHex);
-        
-        // Own messages: insert directly into displayedMessages (immediate display)
-        if (ownMessages.length > 0) {
-          logger.info(`收到 ${ownMessages.length} 条自己的新消息，立即显示`);
-          // Sort own messages first
-          const sortedOwn = ownMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-          // Merge with displayedMessages using efficient sorted merge with de-duplication
-          displayedMessages.value = mergeSortedMessagesWithDedup(sortedOwn, displayedMessages.value);
-        }
-        
-        // Others' messages: filter by lastSeenCreatedAt before adding to pending queue
-        if (othersMessages.length > 0) {
-          const currentLastSeen = lastSeenCreatedAt.value;
-          // Only consider messages newer than lastSeen as "new"
-          const trulyNewMessages = othersMessages.filter(msg => (msg.created_at || 0) > currentLastSeen);
-          
-          if (trulyNewMessages.length > 0) {
-            logger.info(`收到 ${trulyNewMessages.length} 条其他用户的新消息（晚于 lastSeen），等待刷新显示`);
-            // Sort other messages by timestamp (newest first) before adding
-            const sortedOthers = trulyNewMessages.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-            // Merge with existing pending messages, de-duplicate by id, and keep sorted
-            const combined = [...sortedOthers, ...pendingMessages.value];
-            const deduped = Array.from(new Map(combined.map(m => [m.id, m])).values());
-            pendingMessages.value = deduped.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-          } else {
-            logger.debug(`收到 ${othersMessages.length} 条其他用户的消息，但都不晚于 lastSeen (${new Date(currentLastSeen * 1000).toLocaleString()})，不显示提示`);
-          }
-        }
-      }
-      
-      updateMessageTimeRange();
-    }
+  // ① 按时间排序 inbox
+  messagesRef.value = [...msgs.inbox].sort(
+    (a, b) => (b.created_at || 0) - (a.created_at || 0)
+  );
+
+  if (!readyForPending.value) {
+    updateMessageTimeRange();
+    return;
+  }
+
+  const lastSeen = lastSeenCreatedAt.value;
+
+  // ⭐ ② 真正的“新消息”定义：只看时间
+  const newMessages = messagesRef.value.filter(
+    m => (m.created_at || 0) > lastSeen
+  );
+
+  if (newMessages.length === 0) {
+    updateMessageTimeRange();
+    return;
+  }
+
+  // ③ 区分自己 / 他人
+  const ownMessages = newMessages.filter(m => m.pubkey === keys.pkHex);
+  const othersMessages = newMessages.filter(m => m.pubkey !== keys.pkHex);
+
+  // ④ 自己的消息：直接显示（不走 pending）
+  if (ownMessages.length > 0) {
+    const sortedOwn = ownMessages.sort(
+      (a, b) => (b.created_at || 0) - (a.created_at || 0)
+    );
+
+    displayedMessages.value = mergeSortedMessagesWithDedup(
+      sortedOwn,
+      displayedMessages.value
+    );
+  }
+
+  // ⑤ 别人的消息：全部进 pending（只要晚于 lastSeen）
+  if (othersMessages.length > 0) {
+    const combined = [...othersMessages, ...pendingMessages.value];
+    const deduped = Array.from(
+      new Map(combined.map(m => [m.id, m])).values()
+    );
+
+    pendingMessages.value = deduped.sort(
+      (a, b) => (b.created_at || 0) - (a.created_at || 0)
+    );
+  }
+
+  updateMessageTimeRange();
+}
     
     // 加载更多消息
     function loadMoreMessages() {
