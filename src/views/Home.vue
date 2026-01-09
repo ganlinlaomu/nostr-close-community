@@ -941,23 +941,52 @@ export default defineComponent({
         readyForPending.value = true;
         
         // 首屏只显示最新 20 条消息
-        messagesRef.value = [...msgs.inbox].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-        if (isInitialLoad.value) {
-          // 首次加载：只显示前 20 条
-          displayedMessages.value = messagesRef.value.slice(0, PAGE_SIZE);
-          currentPage.value = 1;
-          isInitialLoad.value = false;
-          logger.info(`首屏加载: 显示 ${displayedMessages.value.length} 条消息（共 ${messagesRef.value.length} 条）`);
-          
-          // If lastSeenCreatedAt not set, initialize it to the newest displayed message
-          if (lastSeenCreatedAt.value === 0 && displayedMessages.value.length > 0) {
-            lastSeenCreatedAt.value = updateLastSeenToNewest(keys.pkHex, displayedMessages.value);
-            logger.info(`首次初始化 lastSeenCreatedAt: ${new Date(lastSeenCreatedAt.value * 1000).toLocaleString()}`);
-          }
-        } else {
-          // 后续刷新：新消息进入待显示队列
-          updateLocalRefs();
-        }
+messagesRef.value = [...msgs.inbox].sort(
+  (a, b) => (b.created_at || 0) - (a.created_at || 0)
+);
+
+if (isInitialLoad.value) {
+  // 首次加载：只显示前 20 条
+  displayedMessages.value = messagesRef.value.slice(0, PAGE_SIZE);
+  currentPage.value = 1;
+  isInitialLoad.value = false;
+
+  logger.info(
+    `首屏加载: 显示 ${displayedMessages.value.length} 条消息（共 ${messagesRef.value.length} 条）`
+  );
+
+  // 初始化 lastSeenCreatedAt，如果之前没记录过
+  if (lastSeenCreatedAt.value === 0 && displayedMessages.value.length > 0) {
+    lastSeenCreatedAt.value = updateLastSeenToNewest(
+      keys.pkHex,
+      displayedMessages.value
+    );
+    logger.info(
+      `首次初始化 lastSeenCreatedAt: ${new Date(
+        lastSeenCreatedAt.value * 1000
+      ).toLocaleString()}`
+    );
+  }
+
+  // ⚡ 首屏加载后，立即检查是否有 pending 消息
+  updateLocalRefs(); // 处理 newMessages -> pendingMessages
+
+  if (pendingMessages.value.length > 0) {
+    logger.info(
+      `首次加载检测到 ${pendingMessages.value.length} 条新消息，显示提醒`
+    );
+
+    // —— 选项 A：显示提示条，让用户点击展开
+    showNewMessageBanner.value = true; // 你页面可以根据这个渲染“🆕条新消息”
+
+    // —— 选项 B（可选）：直接把 pendingMessages 合并到 displayedMessages
+    // displayedMessages.value = [...pendingMessages.value, ...displayedMessages.value];
+    // pendingMessages.value = [];
+  }
+} else {
+  // 后续刷新：新消息进入待显示队列
+  updateLocalRefs();
+}
         updateMessageTimeRange();
 
         const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
