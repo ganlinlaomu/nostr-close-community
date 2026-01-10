@@ -1253,6 +1253,8 @@ logger.info(
   onBeforeUnmount(() => {
     document.removeEventListener("visibilitychange", refreshPendingOnForeground);
     window.removeEventListener("focus", refreshPendingOnForeground);
+    if (sub) { try { sub.close?.(); } catch {} }
+    if (interactionsSub) { try { interactionsSub.close?.(); } catch {} }
   });
 });
 
@@ -1318,14 +1320,7 @@ logger.info(
   }
 });
 
-    onBeforeUnmount(() => {
-      if (sub) {
-        try { if (typeof sub.close === "function") sub.close(); else if (typeof sub.unsub === "function") sub.unsub(); else if (typeof sub.unsubscribe === "function") sub.unsubscribe(); else if (typeof sub === "function") sub(); } catch {}
-      }
-      if (interactionsSub) {
-        try { if (typeof interactionsSub.close === "function") interactionsSub.close(); else if (typeof interactionsSub.unsub === "function") interactionsSub.unsub(); else if (typeof interactionsSub.unsubscribe === "function") interactionsSub.unsubscribe(); else if (typeof interactionsSub === "function") interactionsSub(); } catch {}
-      }
-    });
+    
 
     return { 
       displayedMessages,
