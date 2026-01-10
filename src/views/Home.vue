@@ -1230,7 +1230,7 @@ logger.info(
     updateLocalRefs();
 
     // ⑥ 通知跳转
-    handleNotificationJump();
+   await handleNotificationJump();
   } catch (err) {
     console.error("onMounted init failed:", err);
   }
@@ -1291,15 +1291,12 @@ logger.info(
    
     // Watch for route query changes to handle notification jump state
     watch(() => route.query, (newQuery, oldQuery) => {
-      // If we had notification jump params but they're now gone, reset the state
-      if (hasNotificationParams(oldQuery) && !hasNotificationParams(newQuery)) {
-        notificationJumpDone.value = false;
-      }
-      // If new notification jump params arrive, trigger the jump
-      if (hasNotificationParams(newQuery) && !notificationJumpDone.value) {
-        handleNotificationJump();
-      }
-    });
+  if (!hasNotificationParams(newQuery)) {
+    notificationJumpDone.value = false;
+  } else {
+    handleNotificationJump().catch(console.error);
+  }
+});
 
     onBeforeUnmount(() => {
       if (sub) {
