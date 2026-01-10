@@ -1231,18 +1231,17 @@ logger.info(
 
     // ⑥ 通知跳转
     handleNotificationJump();
+  } catch (err) {
+    console.error("onMounted init failed:", err);
+  }
+});
 
-    // ⑦ 启动 Realtime Reconcile
+  // 启动 Realtime Reconcile
     useRealtimeInboxReconcile({
       reconcile: safeUpdateLocalRefs,
       isReady: () => readyForPending.value,
       debug: true,
     });
-
-  } catch (err) {
-    console.error("onMounted init failed:", err);
-  }
-});
 
    watch(
   () => keys.isLoggedIn,
