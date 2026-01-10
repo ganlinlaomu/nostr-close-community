@@ -329,7 +329,7 @@ export default defineComponent({
   if (!readyForPending.value) return;
   logger.info("[Home] App 前台或重新打开 → 刷新 pendingMessages");
   safeUpdateLocalRefs(); // 核心对账函数
-｝
+}
     
     
     function updateLocalRefs() {
