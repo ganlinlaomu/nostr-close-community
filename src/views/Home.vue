@@ -1235,24 +1235,35 @@ logger.info(
     updateLocalRefs();
 
     // ⑥ 通知跳转
-   await handleNotificationJump();
+    await handleNotificationJump();
   } catch (err) {
     console.error("onMounted init failed:", err);
   }
+
+  // --------------------
+  // 前台刷新 pending 消息函数
+  // --------------------
   const refreshPendingOnForeground = () => {
     if (!readyForPending.value) return;
     logger.info("[Home] App 前台或重新打开 → 刷新 pendingMessages");
     safeUpdateLocalRefs();
   };
 
-  document.addEventListener("visibilitychange", () => {
+  // 固定引用，避免 removeEventListener 解绑失败
+  const handleVisibilityChange = () => {
     if (document.visibilityState === "visible") refreshPendingOnForeground();
-  });
+  };
+
+  document.addEventListener("visibilitychange", handleVisibilityChange);
   window.addEventListener("focus", refreshPendingOnForeground);
 
+  // --------------------
+  // 清理函数
+  // --------------------
   onBeforeUnmount(() => {
-    document.removeEventListener("visibilitychange", refreshPendingOnForeground);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
     window.removeEventListener("focus", refreshPendingOnForeground);
+
     if (sub) { try { sub.close?.(); } catch {} }
     if (interactionsSub) { try { interactionsSub.close?.(); } catch {} }
   });
