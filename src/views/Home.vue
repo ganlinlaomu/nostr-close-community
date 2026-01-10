@@ -1220,22 +1220,7 @@ logger.info(
     // ⑥ 通知跳转
     handleNotificationJump();
 
-    // ⑦ PWA 前后台兜底
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        logger.info("[PWA] visible → reconcile pending");
-        updateLocalRefs();
-      }
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
-    onBeforeUnmount(() => {
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    });
-  } catch (err) {
-    console.error("onMounted init failed:", err);
-  }
-});
+    
 
   useRealtimeInboxReconcile({
   reconcile: updateLocalRefs,
