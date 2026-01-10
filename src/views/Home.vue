@@ -383,7 +383,23 @@ export default defineComponent({
 
   updateMessageTimeRange();
 }
-    
+  // --------------------
+// ⭐ 防重复触发包装（加在这里）
+// --------------------
+let reconciling = false;
+
+function safeUpdateLocalRefs() {
+  if (reconciling) return;
+  reconciling = true;
+
+  try {
+    updateLocalRefs();
+  } finally {
+    queueMicrotask(() => {
+      reconciling = false;
+    });
+  }
+}
     // 加载更多消息
     function loadMoreMessages() {
       if (isLoadingMore.value || !hasMore.value) return;
@@ -412,7 +428,7 @@ export default defineComponent({
     } = usePullToRefresh({
       onRefresh: async () => {
         await startSub();      // 重逻辑
-        updateLocalRefs();     // UI 刷新
+        safeUpdateLocalRefs();     // UI 刷新
       }
     });
 
@@ -1075,7 +1091,7 @@ logger.info(
 
   // ⭐⭐⭐ 关键修复：实时新消息立刻触发对账
   if (added && readyForPending.value) {
-    updateLocalRefs();
+    safeUpdateLocalRefs();
   }
 } catch (e) {
   logger.warn(`实时事件 ${evt.id?.slice(0,8)} 对称解密失败`, e);
@@ -1223,7 +1239,7 @@ logger.info(
     
 
   useRealtimeInboxReconcile({
-  reconcile: updateLocalRefs,
+  reconcile: safeUpdateLocalRefs,
   isReady: () => readyForPending.value,
   debug: true, // 开发期建议开
 });
@@ -1257,7 +1273,7 @@ logger.info(
     if (!readyForPending.value) return;
 
     // ⭐ 唯一、绝对、最终入口
-    updateLocalRefs();
+    safeUpdateLocalRefs();
   },
   { flush: "post" }
 );
