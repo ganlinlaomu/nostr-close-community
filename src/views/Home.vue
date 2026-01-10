@@ -343,13 +343,8 @@ export default defineComponent({
   const newMessages = messagesRef.value.filter(m => {
   const ts = m.created_at || 0;
 
-  // 必须同时满足：
-  // ① 晚于用户 lastSeen
-  // ② 晚于本次 realtime session 启动
-  return (
-    ts > lastSeen &&
-    ts >= realtimeSessionSince.value
-  );
+  // ⭐ 唯一标准：是否晚于 lastSeen
+  return ts > lastSeen;
 });
 
   if (newMessages.length === 0) {
