@@ -173,6 +173,7 @@ import { useRoute } from "vue-router";
 import { usePullToRefresh } from "@/components/usePullToRefresh";
 import { getLastSeenCreatedAt, setLastSeenCreatedAt, updateLastSeenToNewest } from "@/utils/lastSeen";
 import { extractVideoData as extractVideoDataUtil, getVideoUrlRemovalPatterns } from "@/utils/videoUtils";
+import { useRealtimeInboxReconcile } from "@/components/useRealtimeInboxReconcile";
 
 
 // reuse the regex logic from extractImageUrls to strip out image markdown and plain image URLs
@@ -1234,6 +1235,12 @@ logger.info(
   } catch (err) {
     console.error("onMounted init failed:", err);
   }
+});
+
+  useRealtimeInboxReconcile({
+  reconcile: updateLocalRefs,
+  isReady: () => readyForPending.value,
+  debug: true, // 开发期建议开
 });
 
    watch(
