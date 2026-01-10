@@ -1164,46 +1164,53 @@ logger.info(
 
     onMounted(async () => {
   try {
-    // ① 加载本地缓存（Dexie / IndexedDB）
+    // ① 加载本地缓存
     await msgs.load();
 
-    // ② 恢复 lastSeen（用于判断 🆕）
-    lastSeenCreatedAt.value = getLastSeenCreatedAt(keys.pkHex) || 0;
-
-    // ③ 首屏：用本地缓存快速渲染
+    // ② 首屏渲染（只用本地）
     messagesRef.value = [...msgs.inbox].sort(
       (a, b) => (b.created_at || 0) - (a.created_at || 0)
     );
 
     displayedMessages.value = messagesRef.value.slice(0, PAGE_SIZE);
     currentPage.value = 1;
-
-    // ④ 首屏完成，关闭 initial load
     isInitialLoad.value = false;
 
-    // ⑤ 允许 pending 逻辑开始工作
+    // ③ 恢复上次 lastSeen
+    const storedLastSeen = getLastSeenCreatedAt(keys.pkHex) || 0;
+
+    // ⭐ 关键修复点：
+    // 用“当前首屏最新消息” 与 “存储的 lastSeen” 取 max
+    if (displayedMessages.value.length > 0) {
+      const newestInUI = displayedMessages.value[0].created_at || 0;
+      lastSeenCreatedAt.value = Math.max(storedLastSeen, newestInUI);
+    } else {
+      lastSeenCreatedAt.value = storedLastSeen;
+    }
+
+    logger.info(
+      "[init] lastSeenCreatedAt =",
+      new Date(lastSeenCreatedAt.value * 1000).toLocaleString()
+    );
+
+    // ④ 现在才允许 pending 逻辑
     readyForPending.value = true;
 
-
-    // ⑦ 首次对账一次（处理“冷启动已存在的新消息”）
+    // ⑤ 冷启动对账（这次一定准）
     updateLocalRefs();
 
-    // ⑧ 处理通知跳转（如果有）
+    // ⑥ 通知跳转
     handleNotificationJump();
 
-    // ===============================
-    // ⭐ PWA 关键：前后台切换兜底
-    // ===============================
+    // ⑦ PWA 前后台兜底
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        logger.info("[PWA] visibilitychange → visible，强制对账 pending");
+        logger.info("[PWA] visible → reconcile pending");
         updateLocalRefs();
       }
     };
-
     document.addEventListener("visibilitychange", onVisibilityChange);
 
-    // ⑨ 清理（非常重要，避免重复绑定）
     onBeforeUnmount(() => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
     });
@@ -1211,6 +1218,7 @@ logger.info(
     console.error("onMounted init failed:", err);
   }
 });
+
    watch(
   () => keys.isLoggedIn,
   (loggedIn) => {
