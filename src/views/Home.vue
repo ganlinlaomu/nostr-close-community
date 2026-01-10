@@ -1057,11 +1057,17 @@ logger.info(
                 }
               }
               try {
-                const plain = await symDecryptPackage(symHex, payload.pkg);
-                addMessageIfNew(evt, plain);
-              } catch (e) {
-                logger.warn(`实时事件 ${evt.id?.slice(0,8)} 对称解密失败`, e);
-              }
+  const plain = await symDecryptPackage(symHex, payload.pkg);
+
+  const added = addMessageIfNew(evt, plain);
+
+  // ⭐⭐⭐ 关键修复：实时新消息立刻触发对账
+  if (added && readyForPending.value) {
+    updateLocalRefs();
+  }
+} catch (e) {
+  logger.warn(`实时事件 ${evt.id?.slice(0,8)} 对称解密失败`, e);
+}
             } catch (e) {
               logger.warn("handle event fail", e);
             }
