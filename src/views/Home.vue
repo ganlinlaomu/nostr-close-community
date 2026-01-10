@@ -936,74 +936,14 @@ export default defineComponent({
         logger.info("开始订阅流程");
         
         // ============ 阶段1：首屏本地数据加载（同步，快速） ============
-        friends.load().catch(console.error);
-        logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
         
         if (!keys.isLoggedIn) {
           status.value = "未登录";
+          logger.warn("[startSub] skip: not logged in");
           return;
         }
-        
-        // Initialize lastSeenCreatedAt from localStorage
-        lastSeenCreatedAt.value = getLastSeenCreatedAt(keys.pkHex);
-        logger.info(`初始化 lastSeenCreatedAt: ${lastSeenCreatedAt.value > 0 ? new Date(lastSeenCreatedAt.value * 1000).toLocaleString() : '未设置'}`);
-        
-        // 同步加载本地缓存的消息和互动数据
-        await Promise.all([
-          msgs.load(),
-          interactions.load()
-        ]);
-        readyForPending.value = true;
-        
-        // 首屏只显示最新 20 条消息
-messagesRef.value = [...msgs.inbox].sort(
-  (a, b) => (b.created_at || 0) - (a.created_at || 0)
-);
-
-if (isInitialLoad.value) {
-  // 首次加载：只显示前 20 条
-  displayedMessages.value = messagesRef.value.slice(0, PAGE_SIZE);
-  currentPage.value = 1;
-  isInitialLoad.value = false;
-
-  logger.info(
-    `首屏加载: 显示 ${displayedMessages.value.length} 条消息（共 ${messagesRef.value.length} 条）`
-  );
-
-  // 初始化 lastSeenCreatedAt，如果之前没记录过
-  if (lastSeenCreatedAt.value === 0 && displayedMessages.value.length > 0) {
-    lastSeenCreatedAt.value = updateLastSeenToNewest(
-      keys.pkHex,
-      displayedMessages.value
-    );
-    logger.info(
-      `首次初始化 lastSeenCreatedAt: ${new Date(
-        lastSeenCreatedAt.value * 1000
-      ).toLocaleString()}`
-    );
-  }
-
-  // ⚡ 首屏加载后，立即检查是否有 pending 消息
-  updateLocalRefs(); // 处理 newMessages -> pendingMessages
-
-  if (pendingMessages.value.length > 0) {
-    logger.info(
-      `首次加载检测到 ${pendingMessages.value.length} 条新消息，显示提醒`
-    );
-
-    // —— 选项 A：显示提示条，让用户点击展开
-    showNewMessageBanner.value = true; // 你页面可以根据这个渲染“🆕条新消息”
-
-    // —— 选项 B（可选）：直接把 pendingMessages 合并到 displayedMessages
-    // displayedMessages.value = [...pendingMessages.value, ...displayedMessages.value];
-    // pendingMessages.value = [];
-  }
-} else {
-  // 后续刷新：新消息进入待显示队列
-  updateLocalRefs();
-}
-        updateMessageTimeRange();
-
+        friends.load().catch(console.error);
+        logger.info(`好友列表加载完成: ${friends.list.length} 个好友`);
         const friendSet = new Set<string>((friends.list || []).map((f: any) => f.pubkey));
         if (keys.pkHex) friendSet.add(keys.pkHex);
         logger.info(`准备订阅 ${friendSet.size} 个作者（包括自己）`);
@@ -1244,8 +1184,6 @@ logger.info(
     // ⑤ 允许 pending 逻辑开始工作
     readyForPending.value = true;
 
-    // ⑥ 启动订阅（⚠️ 不要被 pageActive 卡住）
-    startSub().catch(console.error);
 
     // ⑦ 首次对账一次（处理“冷启动已存在的新消息”）
     updateLocalRefs();
@@ -1273,7 +1211,18 @@ logger.info(
     console.error("onMounted init failed:", err);
   }
 });
+   watch(
+  () => keys.isLoggedIn,
+  (loggedIn) => {
+    if (!loggedIn) return;
 
+    logger.info("[Home] keys ready → startSub()");
+    startSub().catch((e) => {
+      logger.error("startSub failed", e);
+    });
+  },
+  { immediate: true }
+);
    watch(
      () => interactions.interactions,
      () => {
