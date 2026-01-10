@@ -210,6 +210,7 @@ export default defineComponent({
     const interactions = useInteractionsStore();
     const readyForPending = ref(false);
     const route = useRoute();
+    const realtimeSessionSince = ref(0);
     const notificationJumpDone = ref(false);
     const lastSeenCreatedAt = ref(0); // Track the watermark for filtering pending messages
     const inboxSnapshot = computed(() =>
@@ -339,9 +340,17 @@ export default defineComponent({
   const lastSeen = lastSeenCreatedAt.value;
 
   // ⭐ ② 真正的“新消息”定义：只看时间
-  const newMessages = messagesRef.value.filter(
-    m => (m.created_at || 0) > lastSeen
+  const newMessages = messagesRef.value.filter(m => {
+  const ts = m.created_at || 0;
+
+  // 必须同时满足：
+  // ① 晚于用户 lastSeen
+  // ② 晚于本次 realtime session 启动
+  return (
+    ts > lastSeen &&
+    ts >= realtimeSessionSince.value
   );
+});
 
   if (newMessages.length === 0) {
     updateMessageTimeRange();
@@ -995,6 +1004,13 @@ const threeDaysAgo = now - THREE_DAYS_IN_SECONDS;
 
 const messageBreakpoint =
   loadBackfillBreakpoint(`messages_${keys.pkHex}`) || 0;
+
+realtimeSessionSince.value = Math.floor(Date.now() / 1000);
+
+logger.info(
+  "[realtime] session since =",
+  new Date(realtimeSessionSince.value * 1000).toLocaleString()
+);
 
 // ⭐ 关键：订阅 since = max(断点, 3天前)
 const since = Math.max(
