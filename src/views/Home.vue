@@ -325,6 +325,11 @@ export default defineComponent({
       }
     }
     
+    function refreshPendingOnForeground() {
+  if (!readyForPending.value) return;
+  logger.info("[Home] App 前台或重新打开 → 刷新 pendingMessages");
+  safeUpdateLocalRefs(); // 核心对账函数
+｝
     
     
     function updateLocalRefs() {
@@ -1234,6 +1239,21 @@ logger.info(
   } catch (err) {
     console.error("onMounted init failed:", err);
   }
+  const refreshPendingOnForeground = () => {
+    if (!readyForPending.value) return;
+    logger.info("[Home] App 前台或重新打开 → 刷新 pendingMessages");
+    safeUpdateLocalRefs();
+  };
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshPendingOnForeground();
+  });
+  window.addEventListener("focus", refreshPendingOnForeground);
+
+  onBeforeUnmount(() => {
+    document.removeEventListener("visibilitychange", refreshPendingOnForeground);
+    window.removeEventListener("focus", refreshPendingOnForeground);
+  });
 });
 
   // 启动 Realtime Reconcile
