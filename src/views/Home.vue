@@ -1196,7 +1196,7 @@ logger.info(
       }
     }
 
-    onMounted(async () => {
+   onMounted(async () => {
   try {
     // ① 加载本地缓存
     await msgs.load();
@@ -1205,16 +1205,12 @@ logger.info(
     messagesRef.value = [...msgs.inbox].sort(
       (a, b) => (b.created_at || 0) - (a.created_at || 0)
     );
-
     displayedMessages.value = messagesRef.value.slice(0, PAGE_SIZE);
     currentPage.value = 1;
     isInitialLoad.value = false;
 
     // ③ 恢复上次 lastSeen
     const storedLastSeen = getLastSeenCreatedAt(keys.pkHex) || 0;
-
-    // ⭐ 关键修复点：
-    // 用“当前首屏最新消息” 与 “存储的 lastSeen” 取 max
     if (displayedMessages.value.length > 0) {
       const newestInUI = displayedMessages.value[0].created_at || 0;
       lastSeenCreatedAt.value = Math.max(storedLastSeen, newestInUI);
@@ -1230,18 +1226,22 @@ logger.info(
     // ④ 现在才允许 pending 逻辑
     readyForPending.value = true;
 
-    // ⑤ 冷启动对账（这次一定准）
+    // ⑤ 冷启动对账
     updateLocalRefs();
 
     // ⑥ 通知跳转
     handleNotificationJump();
 
-    
+    // ⑦ 启动 Realtime Reconcile
+    useRealtimeInboxReconcile({
+      reconcile: safeUpdateLocalRefs,
+      isReady: () => readyForPending.value,
+      debug: true,
+    });
 
-  useRealtimeInboxReconcile({
-  reconcile: safeUpdateLocalRefs,
-  isReady: () => readyForPending.value,
-  debug: true, // 开发期建议开
+  } catch (err) {
+    console.error("onMounted init failed:", err);
+  }
 });
 
    watch(
